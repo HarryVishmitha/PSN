@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body {
+    font-family: 'Be Vietnam Pro', sans-serif;
+}
+.no-dropdown-triangle::after {
+    display: none;
+}
+/* Add these styles in your CSS file */
+.alert-enter {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+
+  .alert-enter-active {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+  }
+
+  .alert-exit {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .alert-exit-active {
+    opacity: 0;
+    transform: translateX(120%);
+    transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+}
+
+[type='text'],
+[type='email'],
+[type='url'],
+[type='password'],
+[type='number'],
+[type='date'],
+[type='datetime-local'],
+[type='month'],
+[type='search'],
+[type='tel'],
+[type='time'],
+[type='week'],
+[multiple],
+textarea,
+select {
+  background-color: transparent !important;
+  border-color: var(--input-form-light) !important;
+  border-radius: 5px !important;
+}
