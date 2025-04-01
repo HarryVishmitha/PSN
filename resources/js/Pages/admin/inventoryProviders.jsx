@@ -11,13 +11,13 @@ import Meta from '@/Components/Metaheads';
 
 const InventoryProviders = ({ userDetails }) => {
 
+
     return(
         <>
             <Head title="Users - Admin" />
             <Meta title='Users - Admin' description='Manage users, view details, and update information.' />
             <AdminDashboard userDetails={userDetails}>
                 <Breadcrumb title="All Users" />
-                {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
                 
             </AdminDashboard>
             <CookiesV />
