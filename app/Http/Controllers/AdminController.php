@@ -17,6 +17,7 @@ use App\Models\DailyCustomer;
 use App\Models\ActivityLog;
 use Illuminate\Support\Facades\DB;
 use FFI\Exception;
+use App\Models\Provider;
 
 use function Illuminate\Log\log;
 
@@ -846,18 +847,118 @@ class AdminController extends Controller
         ]);
     }
 
-    public function inventoryProviders()
+    public function inventoryProviders(Request $request)
     {
-        // Log the activity for viewing the inventory providers list.
+        // Retrieve query parameters with defaults.
+        $perPage = $request->query('perPage', 10);
+        $search  = $request->query('search', '');
+
+        // Build the query for providers.
+        $query = Provider::query();
+
+        // If there's a search term, filter by name or contact_info.
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%')
+                    ->orWhere('contact_info', 'like', '%' . $search . '%');
+            });
+        }
+
+        // Order by creation date (newest first) and paginate the results.
+        $providers = $query->orderBy('created_at', 'desc')->paginate($perPage)->withQueryString();
+
         ActivityLog::create([
             'user_id'     => Auth::id(),
-            'action_type' => 'inventory_providers_view',
+            'action_type' => 'provider_view',
             'description' => 'Admin viewed inventory providers list.',
             'ip_address'  => request()->ip(),
         ]);
 
-        // Render the Inertia view for inventory providers.
+        // Render the Inertia page with the providers and user details.
         return Inertia::render('admin/inventoryProviders', [
+            'userDetails' => Auth::user(),
+            'inProviders' => $providers,
+        ]);
+    }
+
+    public function addInventoryProvider(Request $request)
+    {
+        // Validate the incoming request data.
+        $validatedData = $request->validate([
+            'name'         => 'required|string|max:255|unique:providers,name',
+            'contact_info' => 'required|string',
+        ]);
+
+        try {
+
+            // Create a new provider record.
+            $provider = Provider::create($validatedData);
+
+            // Log the activity in the activity log table.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'provider_added',
+                'description' => 'Admin added a new inventory provider: ' . $provider->name,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            // Redirect back with a success message.
+            return redirect()->back()->with('success', 'Provider added successfully.');
+        } catch (\Exception $e) {
+            // Log the exception for debugging purposes.
+            Log::error('Error in addInventoryProvider: ' . $e->getMessage());
+
+            // Redirect back with an error message.
+            return redirect()->back()->with('error', 'Failed to add provider. Please try again.');
+        }
+    }
+
+    public function editInventoryProvider(Request $request, $id)
+    {
+        // Validate incoming request data.
+        $validatedData = $request->validate([
+            'name'         => 'required|string|max:255|unique:providers,name,' . $id,
+            'contact_info' => 'required|string',
+        ]);
+        try {
+
+            // Find the provider record or fail.
+            $provider = Provider::findOrFail($id);
+
+            // Update the provider record.
+            $provider->update($validatedData);
+
+            // Log the update activity.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'provider_updated',
+                'description' => 'Admin updated inventory provider: ' . $provider->name,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            // Redirect back with a success message.
+            return redirect()->back()->with('success', 'Provider updated successfully.');
+        } catch (\Exception $e) {
+            // Log the error for debugging purposes.
+            Log::error('Error in editInventoryProvider: ' . $e->getMessage());
+
+            // Redirect back with an error message.
+            return redirect()->back()->with('error', 'Failed to update provider. Please try again.');
+        }
+    }
+
+    public function inventory()
+    {
+        // Log the activity for viewing the inventory page.
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'inventory_view',
+            'description' => 'Admin viewed inventory page.',
+            'ip_address'  => request()->ip(),
+        ]);
+
+        // Render the Inertia view for inventory.
+        return Inertia::render('admin/inventory', [
             'userDetails' => Auth::user(),
         ]);
     }

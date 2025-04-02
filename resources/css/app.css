@@ -49,5 +49,5 @@ textarea,
 select {
   background-color: transparent !important;
   border-color: var(--input-form-light) !important;
-  border-radius: 5px !important;
+  border-radius: 8px !important;
 }

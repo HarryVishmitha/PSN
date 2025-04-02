@@ -57,9 +57,11 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/manage/{id}/working-group', [AdminController::class, 'manageWs'])->name('manageWS');
     Route::get('/products', [AdminController::class, 'products'])->name('products');
     Route::get('/add-new-product', [AdminController::class, 'addProduct'])->name('addProduct');
-    Route::get('/inventory')->name('inventory');
+    Route::get('/inventory', [AdminController::class, 'inventory'])->name('inventory');
     Route::get('/manage/inventory/providers', [AdminController::class, 'inventoryProviders'])->name('inventoryProviders');
-    
+    Route::post('/api/inventory/providers', [AdminController::class, 'addInventoryProvider'])->name('addInventoryProvider');
+    Route::patch('/api/inventory/providers/{id}', [AdminController::class, 'editInventoryProvider'])->name('editInventoryProvider');
+
     // Add more admin routes here
 });
 
