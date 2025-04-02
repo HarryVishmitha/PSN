@@ -517,7 +517,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                             </div>
                             <div className='col-auto'>
                                 <p className='mb-0'>
-                                    Developed by <span className='text-primary-600'>2119</span>
+                                    Developed by <span className='text-primary-600'>Thejan Vishmitha</span> @Printair
                                 </p>
                             </div>
                         </div>

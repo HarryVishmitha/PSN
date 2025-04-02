@@ -59,7 +59,6 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/add-new-product', [AdminController::class, 'addProduct'])->name('addProduct');
     Route::get('/inventory')->name('inventory');
     Route::get('/manage/inventory/providers', [AdminController::class, 'inventoryProviders'])->name('inventoryProviders');
-
     
     // Add more admin routes here
 });

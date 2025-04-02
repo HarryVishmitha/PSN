@@ -14,10 +14,10 @@ const InventoryProviders = ({ userDetails }) => {
 
     return(
         <>
-            <Head title="Users - Admin" />
-            <Meta title='Users - Admin' description='Manage users, view details, and update information.' />
+            <Head title="Providers - Admin" />
+            <Meta title='Providers - Admin' description='Manage providers, view details, and update information.' />
             <AdminDashboard userDetails={userDetails}>
-                <Breadcrumb title="All Users" />
+                <Breadcrumb title="Providers" />
                 
             </AdminDashboard>
             <CookiesV />
