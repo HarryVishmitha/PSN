@@ -10,6 +10,8 @@ class ProductInventory extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected $table = 'product_inventory';
+
     protected $fillable = [
         'product_id',
         'product_variant_id',

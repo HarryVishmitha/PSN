@@ -61,6 +61,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/manage/inventory/providers', [AdminController::class, 'inventoryProviders'])->name('inventoryProviders');
     Route::post('/api/inventory/providers', [AdminController::class, 'addInventoryProvider'])->name('addInventoryProvider');
     Route::patch('/api/inventory/providers/{id}', [AdminController::class, 'editInventoryProvider'])->name('editInventoryProvider');
+    Route::get('/api/inventory/add-new-roll', [AdminController::class, 'addInventoryItem'])->name('addInventoryItem');
 
     // Add more admin routes here
 });

@@ -18,6 +18,10 @@ use App\Models\ActivityLog;
 use Illuminate\Support\Facades\DB;
 use FFI\Exception;
 use App\Models\Provider;
+use App\Models\ProductInventory;
+use App\Models\Roll;
+use App\Models\Category;
+
 
 use function Illuminate\Log\log;
 
@@ -947,19 +951,47 @@ class AdminController extends Controller
         }
     }
 
-    public function inventory()
+    public function inventory(Request $request)
     {
         // Log the activity for viewing the inventory page.
         ActivityLog::create([
             'user_id'     => Auth::id(),
             'action_type' => 'inventory_view',
             'description' => 'Admin viewed inventory page.',
-            'ip_address'  => request()->ip(),
+            'ip_address'  => $request->ip(),
         ]);
+
+        // Build queries for inventory and rolls with eager loading and ordering.
+        $inventoryQuery = ProductInventory::with('provider')
+            ->orderBy('updated_at', 'desc');
+
+        $rollsQuery = Roll::with('provider')
+            ->orderBy('updated_at', 'desc');
+
+        // If a search term is provided, apply filtering to both queries.
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $inventoryQuery->where('id', 'like', "%{$search}%");
+            $rollsQuery->where('id', 'like', "%{$search}%");
+        }
+
+        // Use the "show" query parameter for pagination count, defaulting to 10.
+        $perPage = $request->input('show', 10);
+
+        // Paginate the results and append all request parameters so pagination links include them.
+        $inventory = $inventoryQuery->paginate($perPage)->appends($request->all());
+        $rolls = $rollsQuery->paginate($perPage)->appends($request->all());
 
         // Render the Inertia view for inventory.
         return Inertia::render('admin/inventory', [
             'userDetails' => Auth::user(),
+            'inventory'   => $inventory,
+            'rolls'       => $rolls,
         ]);
+    }
+
+    public function addInventoryItem()
+    {
+        
     }
 }
