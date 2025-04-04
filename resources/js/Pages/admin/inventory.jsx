@@ -203,7 +203,7 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
     // Rolls pagination (using backend paginator).
     const handleRollPageChange = (page) => {
         if (rolls.path) {
-            router.visit(`${rolls.path}?page=${page}&perPage=${showCount}`, {
+            router.visit(`${rolls.path}?inventoryType=${inventoryType}&search=${searchTerm}&page=${page}&show=${showCount}`, {
                 preserveState: true,
                 preserveScroll: true,
             });
@@ -213,9 +213,6 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
     const renderRollsPagination = () => (
         rolls && rolls.last_page > 1 && (
             <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-24">
-                <span>
-                    Showing {rolls.from || 0} to {rolls.to || 0} of {rolls.total || 0} entries
-                </span>
                 <ul className="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center">
                     {rolls.current_page > 1 && (
                         <li className="page-item">
@@ -318,6 +315,8 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
                                 onChange={handleShowCountChange}
                             >
                                 <option value="Select Number" disabled>Select Number</option>
+                                <option value="1">1</option>
+                                <option value="5">5</option>
                                 <option value="10">10</option>
                                 <option value="25">25</option>
                                 <option value="50">50</option>
