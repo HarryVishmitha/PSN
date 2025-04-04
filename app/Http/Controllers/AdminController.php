@@ -963,10 +963,10 @@ class AdminController extends Controller
 
         // Build queries for inventory and rolls with eager loading and ordering.
         $inventoryQuery = ProductInventory::with('provider')
-            ->orderBy('updated_at', 'desc');
+            ->orderBy('id', 'asc');
 
         $rollsQuery = Roll::with('provider')
-            ->orderBy('updated_at', 'desc');
+            ->orderBy('id', 'asc');
 
         // If a search term is provided, apply filtering to both queries.
         if ($request->filled('search')) {
@@ -981,17 +981,116 @@ class AdminController extends Controller
         // Paginate the results and append all request parameters so pagination links include them.
         $inventory = $inventoryQuery->paginate($perPage)->appends($request->all());
         $rolls = $rollsQuery->paginate($perPage)->appends($request->all());
+        $providers = Provider::orderby('name', 'asc')->get();
 
         // Render the Inertia view for inventory.
         return Inertia::render('admin/inventory', [
             'userDetails' => Auth::user(),
             'inventory'   => $inventory,
             'rolls'       => $rolls,
+            'providers'   => $providers,
         ]);
     }
 
-    public function addInventoryItem()
+    public function addInventoryItem(Request $request)
     {
-        
+        // Validate incoming request data.
+        $validatedData = $request->validate([
+            'provider'    => 'required|exists:providers,id',
+            'rollType'    => 'required|string|max:100',
+            'rollSize'    => 'nullable|string|max:50',
+            'rollWidth'   => 'required|numeric',
+            'rollHeight'  => 'required|numeric',
+            'priceRate'   => 'required|numeric',
+            'offcutPrice' => 'nullable|numeric',
+        ]);
+
+        try {
+            // Create new Roll instance and assign validated data.
+            $roll = new Roll();
+            $roll->provider_id = $validatedData['provider'];
+            $roll->roll_type = $validatedData['rollType'];
+            $roll->roll_size = $validatedData['rollSize'] ?? null;
+            $roll->roll_width = $validatedData['rollWidth'];
+            $roll->roll_height = $validatedData['rollHeight'];
+            $roll->price_rate_per_sqft = $validatedData['priceRate'];
+            $roll->offcut_price = $validatedData['offcutPrice'] ?? 0;
+
+            // Save the new roll in the database.
+            $roll->save();
+
+            // Log the activity in the activity log table.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'roll_added',
+                'description' => 'Admin added a new roll: ' . $roll->id,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            return redirect()->back()->with('success', 'Roll added successfully.');
+        } catch (\Exception $e) {
+            Log::error("Failed to add roll: " . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to add roll. Please try again later.');
+        }
+    }
+
+    public function editInventoryItem(Request $request, $id)
+    {
+        // Validate the incoming data.
+        $validatedData = $request->validate([
+            'provider'    => 'required|exists:providers,id',
+            'rollType'    => 'required|string|max:100',
+            'rollSize'    => 'nullable|string|max:50',
+            'rollWidth'   => 'required|numeric',
+            'rollHeight'  => 'required|numeric',
+            'priceRate'   => 'required|numeric',
+            'offcutPrice' => 'nullable|numeric',
+        ]);
+
+        try {
+            // Find the roll record by ID; throws ModelNotFoundException if not found.
+            $roll = Roll::findOrFail($id);
+
+            // Update roll properties using validated data.
+            $roll->provider_id = $validatedData['provider'];
+            $roll->roll_type = $validatedData['rollType'];
+            $roll->roll_size = $validatedData['rollSize'] ?? null;
+            $roll->roll_width = $validatedData['rollWidth'];
+            $roll->roll_height = $validatedData['rollHeight'];
+            $roll->price_rate_per_sqft = $validatedData['priceRate'];
+            $roll->offcut_price = $validatedData['offcutPrice'] ?? 0;
+
+            // Save changes to the database.
+            $roll->save();
+
+            return redirect()->back()->with('success', 'Roll updated successfully.');
+        } catch (\Exception $e) {
+            Log::error("Failed to update roll: " . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to update roll. Please try again.');
+        }
+    }
+
+    public function deleteInventoryItem(Request $request, $id)
+    {
+        try {
+            // Find the roll record by ID; throws ModelNotFoundException if not found.
+            $roll = Roll::findOrFail($id);
+
+            // Delete the roll from the database.
+            $roll->delete();
+
+            // Log the deletion activity.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'roll_deleted',
+                'description' => 'Admin deleted roll: ' . $roll->id,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            return redirect()->back()->with('success', 'Roll deleted successfully.');
+        } catch (\Exception $e) {
+            Log::error("Failed to delete roll: " . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to delete roll. Please try again.');
+        }
     }
 }
