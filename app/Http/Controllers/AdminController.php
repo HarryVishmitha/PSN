@@ -845,12 +845,13 @@ class AdminController extends Controller
             'ip_address'  => request()->ip(),
         ]);
         $workingGroups = WorkingGroup::where('status', 'active')->get();
+        $Categories = Category::orderby('name', 'asc')->get();
 
         // Render the Inertia view for adding a new product.
         return Inertia::render('admin/addProduct', [
             'userDetails' => Auth::user(),
             'workingGroups' => $workingGroups,
-            'categories'   => Category::orderBy('name', 'asc')->get(),
+            'categories'   => $Categories,
         ]);
     }
 
@@ -1094,6 +1095,77 @@ class AdminController extends Controller
         } catch (\Exception $e) {
             Log::error("Failed to delete roll: " . $e->getMessage());
             return redirect()->back()->with('error', 'Failed to delete roll. Please try again.');
+        }
+    }
+
+    public function addCategory(Request $request)
+    {
+        try {
+            $validatedData = $request->validate([
+                'newCategoryName' => 'required|string|max:255|unique:categories,name',
+                'description' => 'nullable|string|max:1000',
+            ]);
+        } catch (ValidationException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status' => 'error',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+            throw $e;
+        }
+
+        try {
+            // Create a new category instance and assign validated data.
+            // $category = new Category();
+            // $category->name = $validatedData['newCategoryName'];
+            // $category->description = $validatedData['description'] ?? null;
+            // $category->active = true; // Default status
+            // $category->created_by = Auth::id(); // Set the creator ID
+            // $category->updated_by = Auth::id(); // Set the updater ID
+            // $category->created_at = now(); // Set the creation timestamp
+            // $category->updated_at = now(); // Set the update timestamp
+            // $category->deleted_at = null; // Set deleted_at to null for new categories
+
+            // Save the new category in the database.
+            Category::create([
+                'name'        => $validatedData['newCategoryName'],
+                'description' => $validatedData['description'] ?? null,
+                'active'      => true,
+                'created_by'  => Auth::id(),
+                'updated_by'  => Auth::id(),
+                'created_at'  => now(),
+                'updated_at'  => now(),
+                'deleted_at'  => null,
+            ]);
+
+            // Log the activity in the activity log table.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'category_added',
+                'description' => 'Admin added a new category: ' . $validatedData['newCategoryName'],
+                'ip_address'  => $request->ip(),
+            ]);
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status'  => 'success',
+                    'message' => 'Category added successfully.',
+                ], 200);
+            }
+
+            return redirect()->back()->with('success', 'Category added successfully.');
+        } catch (\Exception $e) {
+            Log::error("Failed to add category: " . $e->getMessage());
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Failed to add category. Please try again later.',
+                ], 500);
+            }
+
+            return redirect()->back()->with('error', 'Failed to add category. Please try again later.');
         }
     }
 }

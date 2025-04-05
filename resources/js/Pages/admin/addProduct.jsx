@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AdminDashboard from '../../Layouts/AdminDashboard';
 import Breadcrumb from "@/components/Breadcrumb";
@@ -6,8 +6,10 @@ import { Icon } from "@iconify/react";
 import CookiesV from '@/Components/CookieConsent';
 import Alert from "@/Components/Alert";
 import Meta from "@/Components/Metaheads";
+import hljs from "highlight.js";
+import ReactQuill from "react-quill-new";
 
-const AddProduct = ({ userDetails, workingGroups }) => {
+const AddProduct = ({ userDetails, workingGroups, categories }) => {
     const [alert, setAlert] = useState(null); // { type: 'success' | 'danger', message: string }
     const [currentStep, setCurrentStep] = useState(1);
     const [formDataArray, setFormDataArray] = useState([]);
@@ -15,7 +17,107 @@ const AddProduct = ({ userDetails, workingGroups }) => {
     const [errors, setErrors] = useState({}); // To capture errors for each step
     const [showCookieConsent, setShowCookieConsent] = useState(true);
     const [name, setName] = useState('');
+    const [productDescription, setProductDescription] = useState('');
+    const [seoTitle, setSeoTitle] = useState('');
+    const [seoDescription, setSeoDescription] = useState('');
+    const [selectedCategories, setSelectedCategories] = useState([]);
+    const [loading, setLoading] = useState(false);
 
+    // States for "Add New Category" modal
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newCategoryDescription, setNewCategoryDescription] = useState('');
+    const [modalErrors, setModalErrors] = useState({});
+    const [modalLoading, setModalLoading] = useState(false);
+
+
+
+    //Text Editor
+    const quillRef = useRef(null);
+    // const [value, setValue] = useState(``);
+    const [isHighlightReady, setIsHighlightReady] = useState(false);
+
+    useEffect(() => {
+        // Load highlight.js configuration and signal when ready
+        hljs?.configure({
+            languages: [
+                "javascript",
+                "ruby",
+                "python",
+                "java",
+                "csharp",
+                "cpp",
+                "go",
+                "php",
+                "swift",
+            ],
+
+        });
+
+    }, []);
+
+    // eslint-disable-next-line no-unused-vars
+    const handleSave = () => {
+        const editorContent = quillRef.current.getEditor().root.innerHTML;
+        console.log("Editor content:", editorContent);
+    };
+
+    // Quill editor modules with syntax highlighting (only load if highlight.js is ready)
+    const modules = isHighlightReady
+        ? {
+            syntax: {
+                highlight: (text) => hljs?.highlightAuto(text).value, // Enable highlight.js in Quill
+            },
+            toolbar: {
+                container: "#toolbar-container", // Custom toolbar container
+            },
+        }
+        : {
+            toolbar: {
+                container: "#toolbar-container", // Custom toolbar container
+            },
+        };
+
+    const formats = [
+        "font",
+        "size",
+        "bold",
+        "italic",
+        "underline",
+        "strike",
+        "color",
+        "background",
+        "script",
+        "header",
+        "blockquote",
+        "code-block",
+        "list",
+        "indent",
+        "direction",
+        "align",
+        "link",
+        "image",
+        "video",
+        "formula",
+    ];
+
+    const validateStepTwo = () => {
+        const errors = {};
+
+        if (!name || name.trim() === "") {
+            errors.productName = "Please enter a product name.";
+        }
+        if (!productDescription || productDescription.trim() === "") {
+            errors.productDescription = "Please enter a product description.";
+        }
+        if (!seoTitle || seoTitle.trim() === "") {
+            errors.seoTitle = "Please enter a SEO title.";
+        }
+        if (!seoDescription || seoDescription.trim() === "") {
+            errors.seoDescription = "Please enter a SEO description.";
+        }
+
+        return errors;
+    };
 
     const nextStep = () => {
         if (currentStep === 1 && !selectedWorkingGroup) {
@@ -27,31 +129,92 @@ const AddProduct = ({ userDetails, workingGroups }) => {
         if (currentStep === 1) {
             // Append the working group selection to the array.
             setFormDataArray(prev => [...prev, { workingGroup: selectedWorkingGroup }]);
-            console.log('Form Data Array:', formDataArray);
         }
 
-        if (currentStep === 2 && !name) {
-            setAlert({ type: 'danger', message: 'Please enter a product name.' });
-            setErrors({ productName: 'Please enter a product name.' });
-            return;
-        }
         if (currentStep === 2) {
+            const newErrors = validateStepTwo();
+            if (Object.keys(newErrors).length > 0) {
+                setErrors(newErrors);
+                setAlert({ type: "danger", message: "Please enter all required fields" });
+                return;
+            }
             // Capture data from step 2 and add to the array.
-            const productName = document.querySelector('input[name="productName"]').value;
-            setFormDataArray(prev => [...prev, { productName }]);
+            setFormDataArray(prev => [...prev, { productName: name, productDescription: productDescription, seoTitle: seoTitle, seoDescription: seoDescription }]);
+
         }
 
         setAlert(null);
+        setErrors({}); // Clear errors
         if (currentStep < 5) {
             setCurrentStep(currentStep + 1);
         }
     };
+
+    useEffect(() => {
+        console.log('Form Data Array Updated:', formDataArray);
+    }, [formDataArray]); // Runs whenever formDataArray changes
 
     const prevStep = () => {
         if (currentStep > 1) {
             setCurrentStep(currentStep - 1);
         }
     };
+
+    // Modal functions for adding a new category
+    const resetCategoryForm = () => {
+        setNewCategoryName('');
+        setNewCategoryDescription('');
+        setModalErrors({});
+    };
+
+    const handleAddCategory = async (e) => {
+        e.preventDefault();
+        setModalErrors({});
+        if (!newCategoryName.trim()) {
+            setModalErrors({ newCategoryName: 'Category name is required.' });
+            return;
+        }
+        setModalLoading(true);
+        try {
+            const response = await axios.post('/admin/api/add-new-category', {
+                newCategoryName: newCategoryName,
+                description: newCategoryDescription,
+            });
+            // alert('Category added successfully');
+            setAlert({ type: 'success', message: 'Category added successfully!' });
+            document.querySelector('#addCat .btn-close').click();
+            // Optionally update the categories list here
+            // Optionally close the modal programmatically if desired
+        } catch (error) {
+            if (error.response && error.response.data && error.response.data.errors) {
+                setModalErrors(error.response.data.errors);
+                setAlert({ type: 'danger', message: 'Failed to add category. Please check the errors.' });
+                console.log(error.response.data);
+            } else {
+                setModalErrors({ general: 'Backend error happened. Please try again later.' });
+                setAlert({ type: 'danger', message: 'Failed to add category. Please try again later.' });
+                // console.log(error.response ? error.response.data : error);
+            }
+        } finally {
+            setModalLoading(false);
+        }
+    };
+
+    // Reset modal form on modal hide
+    useEffect(() => {
+        const modalElement = document.getElementById('addCat');
+        const handleModalHidden = () => {
+            resetCategoryForm();
+        };
+        if (modalElement) {
+            modalElement.addEventListener('hidden.bs.modal', handleModalHidden);
+        }
+        return () => {
+            if (modalElement) {
+                modalElement.removeEventListener('hidden.bs.modal', handleModalHidden);
+            }
+        };
+    }, []);
 
     return (
         <>
@@ -63,10 +226,6 @@ const AddProduct = ({ userDetails, workingGroups }) => {
 
                 <div className='card'>
                     <div className='card-body'>
-                        <h6 className='mb-4 tw-text-xl tw-font-semibold tw-text-black mt-3'>Add New Product</h6>
-                        <p className='text-neutral-500'>
-                            Fill up product details and proceed...
-                        </p>
                         {/* Form Wizard Start */}
                         <div className='form-wizard'>
                             <form action='#' method='post'>
@@ -93,7 +252,7 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                                 <span className='count'>2</span>
                                             </div>
                                             <span className='text text-xs fw-semibold'>
-                                                Import Data
+                                                Basic Information
                                             </span>
                                         </li>
                                         <li
@@ -105,7 +264,7 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                                 <span className='count'>3</span>
                                             </div>
                                             <span className='text text-xs fw-semibold'>
-                                                Setup Privacy
+                                                Add Product Category & more attributions
                                             </span>
                                         </li>
                                         <li
@@ -117,7 +276,7 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                                 <span className='count'>4</span>
                                             </div>
                                             <span className='text text-xs fw-semibold'>
-                                                Add Location
+                                                Pricing & Inventory
                                             </span>
                                         </li>
                                         <li
@@ -128,7 +287,7 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                             <div className='form-wizard-list__line'>
                                                 <span className='count'>5</span>
                                             </div>
-                                            <span className='text text-xs fw-semibold'>Completed</span>
+                                            <span className='text text-xs fw-semibold'>Review & Finish</span>
                                         </li>
                                     </ul>
                                 </div>
@@ -143,7 +302,7 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                     <div className='form-group mb-3'>
                                         <label className='form-label'>Select Category*</label>
                                         <div className='position-relative'>
-                                            <select className= {`form-control form-select ${errors.workingGroup ? 'is-invalid' : ''} wizard-required`}
+                                            <select className={`form-control form-select ${errors.workingGroup ? 'is-invalid' : ''}`}
                                                 value={selectedWorkingGroup}
                                                 onChange={(e) => setSelectedWorkingGroup(e.target.value)}
                                             >
@@ -205,55 +364,99 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                                 )}
                                             </div>
                                         </div>
-                                        <div className='col-sm-4'>
-                                            <label className='form-label'>Card Number*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='number'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Card Number '
-                                                    required=''
-                                                />
+                                        <div className='col-12 mb-3'>
+                                            <div>
+                                                <label className='form-label fw-bold text-neutral-900'>
+                                                    Product Description*
+                                                </label>
+                                                <div className='border border-neutral-200 radius-8 overflow-hidden'>
+                                                    <div className='height-200'>
+                                                        {/* Toolbar */}
+                                                        <div id='toolbar-container'>
+                                                            <span className='ql-formats'>
+                                                                <select className='ql-font'></select>
+                                                                <select className='ql-size'></select>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-bold'></button>
+                                                                <button className='ql-italic'></button>
+                                                                <button className='ql-underline'></button>
+                                                                <button className='ql-strike'></button>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <select className='ql-color'></select>
+                                                                <select className='ql-background'></select>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-script' value='sub'></button>
+                                                                <button className='ql-script' value='super'></button>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-header' value='1'></button>
+                                                                <button className='ql-header' value='2'></button>
+                                                                <button className='ql-blockquote'></button>
+                                                                <button className='ql-code-block'></button>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-list' value='ordered'></button>
+                                                                <button className='ql-list' value='bullet'></button>
+                                                                <button className='ql-indent' value='-1'></button>
+                                                                <button className='ql-indent' value='+1'></button>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-direction' value='rtl'></button>
+                                                                <select className='ql-align'></select>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-link'></button>
+                                                                <button className='ql-image'></button>
+                                                                <button className='ql-video'></button>
+                                                                <button className='ql-formula'></button>
+                                                            </span>
+                                                            <span className='ql-formats'>
+                                                                <button className='ql-clean'></button>
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Editor */}
+                                                        <ReactQuill
+                                                            ref={quillRef}
+                                                            theme='snow'
+                                                            value={productDescription}
+                                                            onChange={setProductDescription}
+                                                            modules={modules}
+                                                            formats={formats}
+                                                            placeholder='This product is specially made to...'
+                                                            className={`${errors.productDescription ? 'is-invalid' : ''}`}
+                                                            id='editor'
+                                                        />
+                                                    </div>
+                                                </div>
                                                 <div className='wizard-form-error' />
+                                                {errors.productDescription && (
+                                                    <div className="tw-text-red-500">{errors.productDescription}</div>
+                                                )}
                                             </div>
                                         </div>
-                                        <div className='col-sm-4'>
-                                            <label className='form-label'>
-                                                Card Expiration(MM/YY)*
-                                            </label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='number'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Card Expiration'
-                                                    required=''
-                                                />
+                                        <div className="col-sm-6 mt-1">
+                                            <>
+                                                <label className='form-label'>SEO title*</label>
+                                                <textarea className={`form-control ${errors.seoTitle ? 'is-invalid' : ''}`} onChange={(e) => setSeoTitle(e.target.value)}></textarea>
                                                 <div className='wizard-form-error' />
-                                            </div>
+                                                {errors.seoTitle && (
+                                                    <div className="invalid-feedback">{errors.seoTitle}</div>
+                                                )}
+                                            </>
                                         </div>
-                                        <div className='col-sm-4'>
-                                            <label className='form-label'>CVV Number*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='number'
-                                                    className='form-control wizard-required'
-                                                    placeholder='CVV Number'
-                                                    required=''
-                                                />
+                                        <div className="col-sm-6 mt-1">
+                                            <>
+                                                <label className='form-label'>SEO description*</label>
+                                                <textarea className={`form-control ${errors.seoDescription ? 'is-invalid' : ''}`} onChange={(e) => setSeoDescription(e.target.value)}></textarea>
                                                 <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-12'>
-                                            <label className='form-label'>Password*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='password'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Password'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
+                                                {errors.seoDescription && (
+                                                    <div className="invalid-feedback">{errors.seoDescription}</div>
+                                                )}
+                                            </>
                                         </div>
                                         <div className='form-group d-flex align-items-center justify-content-end gap-8'>
                                             <button
@@ -273,243 +476,45 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                         </div>
                                     </div>
                                 </fieldset>
-                                <fieldset
-                                    className={`wizard-fieldset ${currentStep === 3 && "show"} `}
-                                >
-                                    <h6 className='text-md text-neutral-500'>Bank Information</h6>
-                                    <div className='row gy-3'>
-                                        <div className='col-sm-6'>
-                                            <label className='form-label'>Bank Name*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='text'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Bank Name'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-sm-6'>
-                                            <label className='form-label'>Branch Name*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='text'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Branch Name'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-sm-6'>
-                                            <label className='form-label'>Account Name*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='text'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Account Name'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-sm-6'>
-                                            <label className='form-label'>Account Number*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='number'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Account Number'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='form-group d-flex align-items-center justify-content-end gap-8'>
-                                            <button
-                                                onClick={prevStep}
-                                                type='button'
-                                                className='form-wizard-previous-btn btn btn-neutral-500 border-neutral-100 px-32'
+
+                                {/* Step 3 */}
+                                <fieldset className={`wizard-fieldset ${currentStep === 3 && "show"} `}>
+                                    <h6 className='text-md tw-text-neutral-500'>Add product categories and other attributions</h6>
+                                    <div className='tw-text-yellow-500'> Select at least one category for a product</div>
+                                    <div className="form-group">
+                                        <label className='form-label'>Select Categories*</label>
+                                        {categories && categories.length > 0 ? (
+                                            <select
+                                                multiple
+                                                value={selectedCategories}
+                                                onChange={(e) => {
+                                                    // Capture selected options as an array of IDs
+                                                    const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                                    setSelectedCategories(selected);
+                                                }}
+                                                className={`form-control ${errors.categories ? 'is-invalid' : ''}`}
                                             >
-                                                Back
-                                            </button>
-                                            <button
-                                                onClick={nextStep}
-                                                type='button'
-                                                className='form-wizard-next-btn btn btn-primary-600 px-32'
-                                            >
-                                                Next
-                                            </button>
-                                        </div>
+                                                {categories.map(category => (
+                                                    <option key={category.id} value={category.id}>
+                                                        {category.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <div className="tw-w-full tw-bg-neutral-100 tw-border tw-border-neutral-500 tw-rounded-lg tw-p-4 d-flex justify-content-center align-items-center gap-2 mb-3">
+                                                <Icon icon="material-symbols:info" className="tw-text-2xl tw-text-neutral-500" />
+                                                <p>No categories available</p>
+                                            </div>
+                                        )}
+                                        <div className='wizard-form-error' />
+                                        {errors.categories && (
+                                            <div className="invalid-feedback">{errors.categories}</div>
+                                        )}
+                                        <div className="btn btn-outline-secondary mb-3" data-bs-toggle="modal" data-bs-target="#addCat">Add new category</div>
+                                        <hr />
+
                                     </div>
-                                </fieldset>
-                                <fieldset
-                                    className={`wizard-fieldset ${currentStep === 4 && "show"} `}
-                                >
-                                    <h6 className='text-md text-neutral-500'>
-                                        Payment Information
-                                    </h6>
-                                    <div className='row gy-3'>
-                                        <div className='col-sm-12'>
-                                            <label className='form-label'>Holder Name*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='text'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Holder Name'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-sm-6'>
-                                            <label className='form-label'>Card Number*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='number'
-                                                    className='form-control wizard-required'
-                                                    placeholder='Enter Card Number'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-sm-6'>
-                                            <label className='form-label'>CVC Number*</label>
-                                            <div className='position-relative'>
-                                                <input
-                                                    type='number'
-                                                    className='form-control wizard-required'
-                                                    placeholder='CVC Number'
-                                                    required=''
-                                                />
-                                                <div className='wizard-form-error' />
-                                            </div>
-                                        </div>
-                                        <div className='col-12'>
-                                            <label className='form-label'>Expiry Date*</label>
-                                            <div className='row gy-4'>
-                                                <div className='col-sm-4'>
-                                                    <div className='position-relative'>
-                                                        <select
-                                                            className='form-control form-select'
-                                                            defaultValue=''
-                                                        >
-                                                            <option value='Date'>Date</option>
-                                                            <option value='1'>1</option>
-                                                            <option value='2'>2</option>
-                                                            <option value='3'>3</option>
-                                                            <option value='4'>4</option>
-                                                            <option value='5'>5</option>
-                                                            <option value='6'>6</option>
-                                                            <option value='7'>7</option>
-                                                            <option value='8'>8</option>
-                                                            <option value='9'>9</option>
-                                                            <option value='10'>10</option>
-                                                            <option value='11'>11</option>
-                                                            <option value='12'>12</option>
-                                                            <option value='13'>13</option>
-                                                            <option value='14'>14</option>
-                                                            <option value='15'>15</option>
-                                                            <option value='16'>16</option>
-                                                            <option value='17'>17</option>
-                                                            <option value='18'>18</option>
-                                                            <option value='19'>19</option>
-                                                            <option value='20'>20</option>
-                                                            <option value='21'>21</option>
-                                                            <option value='22'>22</option>
-                                                            <option value='23'>23</option>
-                                                            <option value='24'>24</option>
-                                                            <option value='25'>25</option>
-                                                            <option value='26'>26</option>
-                                                            <option value='27'>27</option>
-                                                            <option value='28'>28</option>
-                                                            <option value='29'>29</option>
-                                                            <option value='30'>30</option>
-                                                            <option value='31'>31</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div className='col-sm-4'>
-                                                    <div className='position-relative'>
-                                                        <select
-                                                            className='form-control form-select'
-                                                            defaultValue='jan'
-                                                        >
-                                                            <option value='Month'>Month</option>
-                                                            <option value='jan'>jan</option>
-                                                            <option value='Feb'>Feb</option>
-                                                            <option value='March'>March</option>
-                                                            <option value='April'>April</option>
-                                                            <option value='May'>May</option>
-                                                            <option value='June'>June</option>
-                                                            <option value='July'>July</option>
-                                                            <option value='August'>August</option>
-                                                            <option value='Sept'>Sept</option>
-                                                            <option value='Oct'>Oct</option>
-                                                            <option value='Nov'>Nov</option>
-                                                            <option value='Dec'>Dec</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div className='col-sm-4'>
-                                                    <div className='position-relative'>
-                                                        <select
-                                                            className='form-control form-select'
-                                                            defaultValue='2019'
-                                                        >
-                                                            <option value='Years'>Years</option>
-                                                            <option value='2019'>2019</option>
-                                                            <option value='2020'>2020</option>
-                                                            <option value='2021'>2021</option>
-                                                            <option value='2022'>2022</option>
-                                                            <option value='2023'>2023</option>
-                                                            <option value='2024'>2024</option>
-                                                            <option value='2025'>2025</option>
-                                                            <option value='2026'>2026</option>
-                                                            <option value='2027'>2027</option>
-                                                            <option value='2028'>2028</option>
-                                                            <option value='2029'>2029</option>
-                                                            <option value='2030'>2030</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className='form-group d-flex align-items-center justify-content-end gap-8'>
-                                            <button
-                                                onClick={prevStep}
-                                                type='button'
-                                                className='form-wizard-previous-btn btn btn-neutral-500 border-neutral-100 px-32'
-                                            >
-                                                Back
-                                            </button>
-                                            <button
-                                                onClick={nextStep}
-                                                type='button'
-                                                className='form-wizard-next-btn btn btn-primary-600 px-32'
-                                            >
-                                                Next
-                                            </button>
-                                        </div>
-                                    </div>
-                                </fieldset>
-                                <fieldset
-                                    className={`wizard-fieldset ${currentStep === 5 && "show"} `}
-                                >
-                                    <div className='text-center mb-40'>
-                                        <img
-                                            src='assets/images/gif/success-img3.gif'
-                                            alt=''
-                                            className='gif-image mb-24'
-                                        />
-                                        <h6 className='text-md text-neutral-600'>Congratulations </h6>
-                                        <p className='text-neutral-400 text-sm mb-0'>
-                                            Well done! You have successfully completed.
-                                        </p>
-                                    </div>
-                                    <div className='form-group d-flex align-items-center justify-content-end gap-8'>
+                                    <div className='form-group d-flex align-items-center justify-content-end gap-8 mt-3'>
                                         <button
                                             onClick={prevStep}
                                             type='button'
@@ -518,20 +523,74 @@ const AddProduct = ({ userDetails, workingGroups }) => {
                                             Back
                                         </button>
                                         <button
+                                            onClick={nextStep}
                                             type='button'
-                                            className='form-wizard-submit btn btn-primary-600 px-32'
+                                            className='form-wizard-next-btn btn btn-primary-600 px-32'
                                         >
-                                            Publish
+                                            Next
                                         </button>
                                     </div>
                                 </fieldset>
+
                             </form>
                         </div>
                         {/* Form Wizard End */}
                     </div>
                 </div>
 
+                <div className="modal fade" id="addCat" tabIndex={-1} aria-labelledby="addCatLabel" aria-hidden="true">
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header py-16 px-24 border-0">
+                                <h5 className="modal-title fs-5" id="addCatLabel">
+                                    Add New Category
+                                </h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+                            </div>
+                            <div className="modal-body px-24">
+                                <form onSubmit={handleAddCategory}>
+                                    <div className="mb-3">
+                                        <label htmlFor="categoryName" className="form-label">
+                                            Category Name*
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="categoryName"
+                                            className={`form-control ${modalErrors.newCategoryName ? 'is-invalid' : ''}`}
+                                            placeholder="Enter category name"
+                                            value={newCategoryName}
+                                            onChange={(e) => setNewCategoryName(e.target.value)}
+                                        />
+                                        {modalErrors.newCategoryName && <div className="invalid-feedback">{modalErrors.newCategoryName}</div>}
+                                    </div>
+                                    <div className="mb-3">
+                                        <label htmlFor="categoryDescription" className="form-label">
+                                            Category Description
+                                        </label>
+                                        <textarea
+                                            id="categoryDescription"
+                                            className="form-control"
+                                            placeholder="Enter category description (optional)"
+                                            value={newCategoryDescription}
+                                            onChange={(e) => setNewCategoryDescription(e.target.value)}
+                                        />
+                                    </div>
+                                    {modalErrors.general && <div className="alert alert-danger">{modalErrors.general}</div>}
+                                    <div className="modal-footer px-24">
+                                        <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">
+                                            Cancel
+                                        </button>
+                                        <button type="submit" className="btn btn-primary" disabled={modalLoading}>
+                                            {modalLoading ? 'Saving...' : 'Save Category'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </AdminDashboard>
+            <CookiesV />
         </>
     );
 
