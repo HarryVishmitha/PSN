@@ -844,10 +844,13 @@ class AdminController extends Controller
             'description' => 'Admin viewed add product page.',
             'ip_address'  => request()->ip(),
         ]);
+        $workingGroups = WorkingGroup::where('status', 'active')->get();
 
         // Render the Inertia view for adding a new product.
         return Inertia::render('admin/addProduct', [
             'userDetails' => Auth::user(),
+            'workingGroups' => $workingGroups,
+            'categories'   => Category::orderBy('name', 'asc')->get(),
         ]);
     }
 

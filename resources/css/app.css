@@ -51,3 +51,10 @@ select {
   border-color: var(--input-form-light) !important;
   border-radius: 8px !important;
 }
+.form-control.is-invalid, .was-validated .form-control:invalid {
+  border-color: var(--danger-main) !important;
+  background-size: '' !important;
+}
+.form-select.is-invalid, .was-validated .form-select:invalid {
+  border-color: var(--bs-form-invalid-border-color) !important;
+}
