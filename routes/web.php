@@ -57,6 +57,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/manage/{id}/working-group', [AdminController::class, 'manageWs'])->name('manageWS');
     Route::get('/products', [AdminController::class, 'products'])->name('products');
     Route::get('/add-new-product', [AdminController::class, 'addProduct'])->name('addProduct');
+    Route::post('/api/add-new-product', [AdminController::class, 'storeProduct'])->name('storeProduct');
     Route::get('/inventory', [AdminController::class, 'inventory'])->name('inventory');
     Route::get('/manage/inventory/providers', [AdminController::class, 'inventoryProviders'])->name('inventoryProviders');
     Route::post('/api/inventory/providers', [AdminController::class, 'addInventoryProvider'])->name('addInventoryProvider');
@@ -65,6 +66,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::patch('/api/inventory/{id}/edit', [AdminController::class, 'editInventoryItem'])->name('editInventoryItem');
     Route::delete('/api/inventory/{id}', [AdminController::class, 'deleteInventoryItem'])->name('deleteInventoryItem');
     Route::post('/api/add-new-category', [AdminController::class, 'addCategory'])->name('addCategory');
+    Route::get('/api/json-categories', [AdminController::class, 'jsonCats'])->name('getCategories');
 
     // Add more admin routes here
 });

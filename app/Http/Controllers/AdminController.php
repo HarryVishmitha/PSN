@@ -846,13 +846,41 @@ class AdminController extends Controller
         ]);
         $workingGroups = WorkingGroup::where('status', 'active')->get();
         $Categories = Category::orderby('name', 'asc')->get();
+        $Providers = Provider::orderby('name', 'asc')->get();
 
         // Render the Inertia view for adding a new product.
         return Inertia::render('admin/addProduct', [
             'userDetails' => Auth::user(),
             'workingGroups' => $workingGroups,
             'categories'   => $Categories,
+            'providers'    => $Providers,
         ]);
+    }
+
+    public function jsonCats()
+    {
+        // Retrieve all categories from the database.
+        $categories = Category::all();
+
+        // Return the list of categories as JSON.
+        return response()->json([
+            'categories' => $categories
+        ], 200);
+    }
+
+    public function storeProduct(Request $request)
+    {
+        try {
+            Log::info('Store Product request received', [
+                'data' => $request->all()
+            ]);
+            return back()->with('success', 'Product added successfully.');
+
+        } catch ( Exception $e) {
+            Log::error('Error in storeProduct: ' . $e->getMessage());
+            return back()->with('error', 'Failed to add product. Please try again later.');
+        }
+
     }
 
     public function inventoryProviders(Request $request)
