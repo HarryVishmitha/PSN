@@ -21,7 +21,8 @@ use App\Models\Provider;
 use App\Models\ProductInventory;
 use App\Models\Roll;
 use App\Models\Category;
-
+use App\Models\Product;
+use App\Models\ProductImage;
 
 use function Illuminate\Log\log;
 
@@ -123,6 +124,8 @@ class AdminController extends Controller
             'newPassword'     => 'nullable|min:6|confirmed',
             'profile_picture' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
+
+        Log::info($request->all());
 
         $user = User::find(Auth::id());
         if (!$user) {
@@ -870,17 +873,188 @@ class AdminController extends Controller
 
     public function storeProduct(Request $request)
     {
-        try {
-            Log::info('Store Product request received', [
-                'data' => $request->all()
-            ]);
-            return back()->with('success', 'Product added successfully.');
+        Log::info('Store Product request received', [
+            'data' => $request->all()
+        ]);
 
-        } catch ( Exception $e) {
+        // Validate the incoming request data.
+        $validatedData = $request->validate([
+            'workingGroup'           => 'required|exists:working_groups,id',
+            'productName'            => 'required|string|max:255|unique:products,name',
+            'productDescription'     => 'required|string',
+            'seoTitle'               => 'required|string|max:255',
+            'seoDescription'         => 'required|string|max:1000',
+            'pricingMethod'          => 'required|in:standard,roll',
+            'basePrice'              => 'nullable|numeric|min:0',
+            'globalQuantity'         => 'nullable|integer|min:1',
+            'globalReorderThreshold' => 'nullable|integer|min:0',
+            'globalProvider'         => 'nullable|exists:providers,id',
+            'globalUnitDetails'      => 'nullable|string',
+            'pricePerSqft'           => 'nullable|numeric|min:0',
+            'hasVariants'            => 'required|in:true,false',
+            'variants'               => 'nullable|string', // Expecting JSON string
+            'categories'             => 'required|string', // Expecting JSON string
+            'images'                 => 'required|array|min:1'
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            // Create the product record.
+            $product = Product::create([
+                'working_group_id'  => $validatedData['workingGroup'],
+                'name'              => $validatedData['productName'],
+                'description'       => $validatedData['productDescription'],
+                'pricing_method'    => $validatedData['pricingMethod'],
+                'price'             => $validatedData['pricingMethod'] === 'standard' ? $validatedData['basePrice'] : null,
+                'price_per_sqft'    => $validatedData['pricingMethod'] === 'roll' ? $validatedData['pricePerSqft'] : null,
+                'unit_of_measure'   => $validatedData['pricingMethod'] === 'roll' ? 'roll' : 'piece',
+                'metadata'          => $validatedData['seoTitle'] . '|' . $validatedData['seoDescription'],
+                'meta_title'        => $validatedData['seoTitle'],
+                'meta_description'  => $validatedData['seoDescription'],
+                'created_at'        => now(),
+                'updated_at'        => now(),
+                'created_by'        => Auth::id(),
+                'updated_by'        => Auth::id(),
+            ]);
+
+            // Attach categories to the product.
+            $categories = json_decode($validatedData['categories'], true);
+            $product->categories()->attach($categories);
+
+            // Handle inventory based on pricing method and variants.
+            if ($validatedData['pricingMethod'] === 'standard' && $validatedData['hasVariants'] === 'false') {
+                // No variants – create a single inventory record.
+                ProductInventory::create([
+                    'product_id'        => $product->id,
+                    'quantity'          => $validatedData['globalQuantity'] ?? 0,
+                    'reorder_threshold' => $validatedData['globalReorderThreshold'] ?? 0,
+                    'provider_id'       => $validatedData['globalProvider'] ?? null,
+                    'unit_details'      => $validatedData['globalUnitDetails'] ?? null,
+                    'created_at'        => now(),
+                    'updated_at'        => now(),
+                    'created_by'        => Auth::id(),
+                    'updated_by'        => Auth::id(),
+                ]);
+                Log::info('Product created successfully');
+            } elseif ($validatedData['pricingMethod'] === 'standard' && $validatedData['hasVariants'] === 'true') {
+                if (!empty($validatedData['variants'])) {
+                    $variants = json_decode($validatedData['variants'], true);
+                    foreach ($variants as $variant) {
+                        // Create the variant and capture its instance.
+                        $createdVariant = $product->variants()->create([
+                            'variant_name'    => $variant['name'],
+                            'variant_value'   => $variant['value'],
+                            'price_adjustment' => $variant['priceAdjustment'],
+                            'created_at'      => now(),
+                            'updated_at'      => now(),
+                            'created_by'      => Auth::id(),
+                            'updated_by'      => Auth::id(),
+                        ]);
+
+                        if ($variant['hasSubvariants'] === 'false') {
+                            // Create inventory for the variant.
+                            $variantInventory = $variant['inventory'];
+                            ProductInventory::create([
+                                'product_id'           => $product->id,
+                                'product_variant_id'   => $createdVariant->id,
+                                'quantity'             => $variantInventory['quantity'] ?? 0,
+                                'reorder_threshold'    => $variantInventory['reorderThreshold'] ?? 0,
+                                'provider_id'          => $variantInventory['providerId'] ?? null,
+                                'unit_details'         => $variantInventory['unitDetails'] ?? null,
+                                'created_at'           => now(),
+                                'updated_at'           => now(),
+                                'created_by'           => Auth::id(),
+                                'updated_by'           => Auth::id(),
+                            ]);
+                        } else {
+                            // Handle subvariants.
+                            foreach ($variant['subvariants'] as $subvariant) {
+                                $createdSubvariant = $createdVariant->subvariants()->create([
+                                    'subvariant_name'   => $subvariant['name'],
+                                    'subvariant_value'  => $subvariant['value'],
+                                    'price_adjustment'  => $subvariant['priceAdjustment'],
+                                    'created_at'        => now(),
+                                    'updated_at'        => now(),
+                                    'created_by'        => Auth::id(),
+                                    'updated_by'        => Auth::id(),
+                                ]);
+
+                                $subvariantInventory = $subvariant['inventory'];
+                                ProductInventory::create([
+                                    'product_id'             => $product->id,
+                                    'product_variant_id'     => $createdVariant->id,
+                                    'product_subvariant_id'  => $createdSubvariant->id,
+                                    'quantity'               => $subvariantInventory['quantity'] ?? 0,
+                                    'reorder_threshold'      => $subvariantInventory['reorderThreshold'] ?? 0,
+                                    'provider_id'            => $subvariantInventory['providerId'] ?? null,
+                                    'unit_details'           => $subvariantInventory['unitDetails'] ?? null,
+                                    'created_at'             => now(),
+                                    'updated_at'             => now(),
+                                    'created_by'             => Auth::id(),
+                                    'updated_by'             => Auth::id(),
+                                ]);
+                            }
+                        }
+                    }
+                } else {
+                    return back()->withErrors("Dev Error: Variants array isn't passed to backend. Check Log!");
+                }
+            }
+            Log::info('Uploaded files:', $request->allFiles());
+
+            // Process images.
+            if ($request->hasFile('images.0.file')) {
+                Log::info('Images detected for upload');
+                // Loop through the images input array.
+                $images = $request->input('images');
+
+                foreach ($images as $index => $imageData) {
+                    if ($request->hasFile("images.$index.file")) {
+                        $file = $request->file("images.$index.file");
+                        $extension = $file->getClientOriginalExtension();
+                        // Generate a unique file name.
+                        $uniqueFileName = uniqid() . '_' . time() . '.' . $extension;
+                        // Move the file to the public/images/products folder.
+                        $destinationPath = public_path('images/products');
+                        $file->move($destinationPath, $uniqueFileName);
+
+                        $order = $request->input("images.$index.order");
+                        $isPrimary = $request->input("images.$index.is_primary");
+                        $path = '/images/products/' . $uniqueFileName;
+
+                        ProductImage::create([
+                            'product_id'  => $product->id,
+                            'image_url'   => $path,
+                            'image_order' => $order,
+                            'is_primary'  => $isPrimary,
+                            'created_by'  => Auth::id(),
+                            'updated_by'  => Auth::id(),
+                        ]);
+                    } else {
+                        Log::warning("No file found for images.$index.file");
+                    }
+                }
+            } else {
+                Log::warning('No images detected in the nested structure (images.0.file)');
+            }
+
+            // Log the product creation activity.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'product_created',
+                'description' => 'Admin created a new product: ' . $product->name,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            DB::commit();
+            Log::info('Product created successfully', ['product_id' => $product->id]);
+            return back()->with('success', 'Product added successfully.');
+        } catch (Exception $e) {
+            DB::rollBack();
             Log::error('Error in storeProduct: ' . $e->getMessage());
             return back()->with('error', 'Failed to add product. Please try again later.');
         }
-
     }
 
     public function inventoryProviders(Request $request)

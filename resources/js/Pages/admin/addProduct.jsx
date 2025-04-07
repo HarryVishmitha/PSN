@@ -571,10 +571,12 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
         data.append('pricingMethod', pricingMethod);
         if (pricingMethod === 'standard') {
             data.append('basePrice', basePrice);
+
             if (hasVariants) {
                 data.append('hasVariants', hasVariants);
                 data.append('variants', JSON.stringify(variants));
             } else {
+                data.append('hasVariants', hasVariants);
                 data.append('globalQuantity', globalQuantity);
                 data.append('globalReorderThreshold', globalReorderThreshold);
                 data.append('globalProvider', globalProvider);
@@ -597,6 +599,8 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
             sortedImages = [primaryImage, ...uploadedImages.filter((img, i) => i !== primaryIndex)];
         }
 
+        console.log('Sorted Images:', sortedImages);
+
         // Append each image file along with its metadata
         sortedImages.forEach((image, index) => {
             // Append the file object
@@ -611,7 +615,8 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
             preserveState: true,
             onSuccess: () => {
                 setAlert({ type: 'success', message: 'Product added successfully!' });
-
+                localStorage.removeItem("addProductFormData");
+                console.log('Product added successfully!');
             },
             onError: (errors) => {
                 setErrors(errors);
@@ -636,6 +641,18 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
 
                 <div className="card">
                     <div className="card-body">
+                        {errors && Object.keys(errors).length > 0 && (
+                            <div
+                                className="alert alert-danger bg-danger-100 text-danger-600 border-danger-600 border-start-width-4-px border-top-0 border-end-0 border-bottom-0 px-24 py-13 mb-0 fw-semibold text-lg radius-4 d-flex align-items-center justify-content-between"
+                                role="alert"
+                            >
+                                <ol>
+                                    {Object.values(errors).map((error, index) => (
+                                        <li key={index}>{error}</li>
+                                    ))}
+                                </ol>
+                            </div>
+                        )}
                         <div className="form-wizard">
                             <form onSubmit={handleFormsubmit} className="form-wizard-form">
                                 <div className="form-wizard-header overflow-x-auto scroll-sm pb-8 my-32">
