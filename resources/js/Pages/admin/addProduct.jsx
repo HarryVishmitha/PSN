@@ -584,6 +584,7 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
             }
         }
         else if (pricingMethod === 'roll') {
+            data.append('hasVariants', hasVariants);
             data.append('pricePerSqft', pricePerSqft);
         }
         data.append('categories', JSON.stringify(selectedCategories.map(cat => cat.value)));
@@ -617,6 +618,7 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
                 setAlert({ type: 'success', message: 'Product added successfully!' });
                 localStorage.removeItem("addProductFormData");
                 console.log('Product added successfully!');
+                router.get(route('admin.addProduct'));
             },
             onError: (errors) => {
                 setErrors(errors);

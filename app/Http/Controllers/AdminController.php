@@ -952,10 +952,11 @@ class AdminController extends Controller
                             'updated_by'      => Auth::id(),
                         ]);
 
-                        if ($variant['hasSubvariants'] === 'false') {
+                        if ($variant['hasSubvariants'] === 'false' || $variant['hasSubvariants'] === null || !$variant['hasSubvariants']) {
+
                             // Create inventory for the variant.
                             $variantInventory = $variant['inventory'];
-                            ProductInventory::create([
+                            $productIN = ProductInventory::create([
                                 'product_id'           => $product->id,
                                 'product_variant_id'   => $createdVariant->id,
                                 'quantity'             => $variantInventory['quantity'] ?? 0,
@@ -967,6 +968,12 @@ class AdminController extends Controller
                                 'created_by'           => Auth::id(),
                                 'updated_by'           => Auth::id(),
                             ]);
+                            if (!$productIN) {
+                                Log::error('Failed to create inventory for variant', [
+                                    'variant_id' => $createdVariant->id,
+                                    'product_id' => $product->id,
+                                ]);
+                            }
                         } else {
                             // Handle subvariants.
                             foreach ($variant['subvariants'] as $subvariant) {
