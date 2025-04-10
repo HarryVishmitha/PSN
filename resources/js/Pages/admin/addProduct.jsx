@@ -618,7 +618,7 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
                 setAlert({ type: 'success', message: 'Product added successfully!' });
                 localStorage.removeItem("addProductFormData");
                 console.log('Product added successfully!');
-                router.get(route('admin.addProduct'));
+                router.get(route('admin.products'));
             },
             onError: (errors) => {
                 setErrors(errors);

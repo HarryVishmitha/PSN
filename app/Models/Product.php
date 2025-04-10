@@ -23,6 +23,7 @@ class Product extends Model
         'meta_description',
         'created_by',
         'updated_by',
+        'status', //published or unpublished
     ];
 
     // Cast JSON columns to arrays.
@@ -68,5 +69,18 @@ class Product extends Model
     public function workingGroup()
     {
         return $this->belongsTo(WorkingGroup::class);
+    }
+    /**
+     * A product belongs to a primary category.
+     */
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
+    // In App\Models\Product
+
+    public function provider()
+    {
+        return $this->belongsTo(Provider::class);
     }
 }

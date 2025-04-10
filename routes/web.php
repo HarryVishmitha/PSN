@@ -67,6 +67,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::delete('/api/inventory/{id}', [AdminController::class, 'deleteInventoryItem'])->name('deleteInventoryItem');
     Route::post('/api/add-new-category', [AdminController::class, 'addCategory'])->name('addCategory');
     Route::get('/api/json-categories', [AdminController::class, 'jsonCats'])->name('getCategories');
+    Route::get('/api/products', [AdminController::class, 'jsonProducts'])->name('getProducts');
 
     // Add more admin routes here
 });
