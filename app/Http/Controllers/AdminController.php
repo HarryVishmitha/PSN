@@ -25,6 +25,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 
 use function Illuminate\Log\log;
+use function Termwind\render;
 
 class AdminController extends Controller
 {
@@ -1482,10 +1483,113 @@ class AdminController extends Controller
         ]);
     }
 
-    public function quickProduct(Request $request)
+    public function quickProduct(Request $request, Product $product)
     {
-        if ($request->isMethod('get')) {
-            
+        try {
+            // Handle GET requests: return product details as JSON.
+            if ($request->isMethod('get')) {
+                return response()->json($product, 200);
+            }
+
+            // Handle PATCH requests: update product details.
+            if ($request->isMethod('patch')) {
+                // Validate the input for quick update.
+                $data = $request->validate([
+                    'name'             => 'required|string|max:255',
+                    'meta_description' => 'nullable|string',
+                    'price'            => 'required|numeric',
+                    'status'           => 'required|in:published,unpublished',
+                ]);
+                ActivityLog::create([
+                    'user_id'     => Auth::id(),
+                    'action_type' => 'product_quick_edit',
+                    'description' => 'Product ID ' . $product->id . ' has been edited. Quickly.',
+                    'ip_address'  => request()->ip(),
+                ]);
+                // Update the product with the validated data.
+                $product->update($data);
+
+                // Return a success response with the updated product.
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Product updated successfully.',
+                    'product' => $product,
+                ], 200);
+            }
+
+            // For any other HTTP method, return a "Method Not Allowed" response.
+            return response()->json(['error' => 'Method Not Allowed'], 405);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // If validation fails, return the error messages.
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            // Log the exception for debugging.
+            Log::error('Error in quickProduct: ' . $e->getMessage(), [
+                'exception' => $e,
+                'product_id' => $product->id,
+            ]);
+
+            // Return a generic error response.
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong. Please try again later.',
+            ], 500);
         }
+    }
+
+    public function deleteProduct(Product $product)
+    {
+        try {
+            // Soft-delete the product by updating the deleted_at column.
+            $product->delete();
+
+            // Optionally log the deletion.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'product_deleted',
+                'description' => 'Product ID ' . $product->id . ' has been deleted.',
+                'ip_address'  => request()->ip(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product soft-deleted successfully.',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error("Error deleting product: " . $e->getMessage(), [
+                'exception' => $e,
+                'product_id' => $product->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting product. Please try again.',
+            ], 500);
+        }
+    }
+
+    public function editProductview(Product $product)
+    {
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'product_editing_view',
+            'description' => 'Product ID ' . $product->id . ' has been viewed for editing.',
+            'ip_address'  => request()->ip(),
+        ]);
+
+        return Inertia::render('admin/productEdit');
+        // return Inertia::render('admin/inventoryProviders', [
+        //     'userDetails' => Auth::user(),
+        //     'inProviders' => $providers,
+        // ]);
+    }
+
+    public function editProduct()
+    {
+
     }
 }
