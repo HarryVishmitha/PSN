@@ -1481,4 +1481,11 @@ class AdminController extends Controller
             ],
         ]);
     }
+
+    public function quickProduct(Request $request)
+    {
+        if ($request->isMethod('get')) {
+            
+        }
+    }
 }

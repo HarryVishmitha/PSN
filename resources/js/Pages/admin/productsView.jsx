@@ -31,6 +31,10 @@ const ProductsView = ({
     const [selectedCategory, setSelectedCategory] = useState(filters.category || '');
     const [alert, setAlert] = useState(null);
 
+    // States for Quick Edit.
+    const [quickProduct, setQuickProduct] = useState(null);
+    const [quickLoading, setQuickLoading] = useState(false);
+
     // Update URL with all current filter parameters. Updated values can be merged.
     const updateFilters = (updated = {}) => {
         router.get(
@@ -147,8 +151,42 @@ const ProductsView = ({
         Array.isArray(products) && products.length > 0
             ? products
             : Array.isArray(products.data) && products.data.length > 0
-            ? products.data
-            : [];
+                ? products.data
+                : [];
+
+    // --- Quick Edit Handlers ---
+    const handleQuickEdit = (productId) => {
+        setQuickProduct(null);
+        setQuickLoading(true);
+        axios.get(`/admin/api/${productId}/product-quick`)
+            .then((res) => {
+                setQuickProduct(res.data);
+            })
+            .catch(() => {
+                setAlert({ type: 'error', message: 'Error retrieving product details for quick edit.' });
+            })
+            .finally(() => {
+                setQuickLoading(false);
+            });
+    };
+
+    const handleQuickProductChange = (e) => {
+        const { name, value } = e.target;
+        setQuickProduct((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleQuickUpdate = (e) => {
+        e.preventDefault();
+        axios.patch(`/admin/api/${quickProduct.id}/product-quick`, quickProduct)
+            .then(() => {
+                setAlert({ type: 'success', message: 'Product updated successfully.' });
+                router.reload();
+                document.querySelector('#quickAction .btn-close').click();
+            })
+            .catch(() => {
+                setAlert({ type: 'error', message: 'Error updating product details.' });
+            });
+    };
 
     return (
         <>
@@ -294,6 +332,16 @@ const ProductsView = ({
                                                 </td>
                                                 <td className="text-center">
                                                     <div className="d-flex align-items-center gap-10 justify-content-center">
+                                                        {/* Quick Edit button */}
+                                                        <button
+                                                            type="button"
+                                                            className="bg-warning-focus bg-hover-warning-200 text-warning-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#quickAction"
+                                                            onClick={() => handleQuickEdit(product.id)}
+                                                        >
+                                                            <Icon icon="ic:baseline-edit" className="menu-icon" />
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             className="bg-info-focus bg-hover-info-200 text-info-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
@@ -374,6 +422,73 @@ const ProductsView = ({
                                 </ul>
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* Quick Edit Modal */}
+                <div className="modal fade" id="quickAction" tabIndex={-1} aria-labelledby="quickActionModalLabel" aria-hidden="true">
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header py-16 px-24 border-0">
+                                <h5 className="modal-title fs-5" id="quickActionModalLabel">
+                                    Quick Edit Product
+                                </h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+                            </div>
+                            <div className="modal-body p-24">
+                                {quickLoading ? (
+                                    <div className="text-center py-20">
+                                        <span>Loading...</span>
+                                    </div>
+                                ) : quickProduct ? (
+                                    <form onSubmit={handleQuickUpdate}>
+                                        <div className="mb-4">
+                                            <label className="form-label">Product Name</label>
+                                            <input
+                                                type="text"
+                                                name="name"
+                                                value={quickProduct.name || ''}
+                                                onChange={handleQuickProductChange}
+                                                className="form-control"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="mb-4">
+                                            <label className="form-label">SEO Description</label>
+                                            <textarea
+                                                name="meta_description"
+                                                value={quickProduct.meta_description || ''}
+                                                onChange={handleQuickProductChange}
+                                                className="form-control"
+                                                rows="3"
+                                            />
+                                        </div>
+                                        <div className="mb-4">
+                                            <label className="form-label">Price</label>
+                                            <input
+                                                type="text"
+                                                name="price"
+                                                value={quickProduct.price || ''}
+                                                onChange={handleQuickProductChange}
+                                                className="form-control"
+                                            />
+                                        </div>
+                                        <div className="d-flex justify-content-end gap-3">
+                                            <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="btn btn-primary">
+                                                Save Changes
+                                            </button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    <div className="text-center">
+                                        No product details available.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </AdminDashboard>

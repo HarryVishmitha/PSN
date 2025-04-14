@@ -68,6 +68,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::post('/api/add-new-category', [AdminController::class, 'addCategory'])->name('addCategory');
     Route::get('/api/json-categories', [AdminController::class, 'jsonCats'])->name('getCategories');
     Route::get('/api/products', [AdminController::class, 'jsonProducts'])->name('getProducts');
+    Route::match(['get', 'patch'], '/admin/api/{product}/product-quick', [AdminController::class, 'quickProduct'])->name('productQuick');
 
     // Add more admin routes here
 });
