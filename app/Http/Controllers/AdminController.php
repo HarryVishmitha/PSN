@@ -945,7 +945,7 @@ class AdminController extends Controller
             'hasVariants'            => 'required|in:true,false',
             'variants'               => 'nullable|string', // Expecting JSON string
             'categories'             => 'required|string', // Expecting JSON string
-            'images'                 => 'required|array|min:1'
+            'images'                 => 'required|array|min:1|max:2048',
         ]);
 
         DB::beginTransaction();
@@ -1013,7 +1013,7 @@ class AdminController extends Controller
                                 'product_variant_id'   => $createdVariant->id,
                                 'quantity'             => $variantInventory['quantity'] ?? 0,
                                 'reorder_threshold'    => $variantInventory['reorderThreshold'] ?? 0,
-                                'provider_id'          => $variantInventory['providerId'] ?? null,
+                                'provider_id'          => $variantInventory['provider'] ?? null,
                                 'unit_details'         => $variantInventory['unitDetails'] ?? null,
                                 'created_at'           => now(),
                                 'updated_at'           => now(),
@@ -1046,7 +1046,7 @@ class AdminController extends Controller
                                     'product_subvariant_id'  => $createdSubvariant->id,
                                     'quantity'               => $subvariantInventory['quantity'] ?? 0,
                                     'reorder_threshold'      => $subvariantInventory['reorderThreshold'] ?? 0,
-                                    'provider_id'            => $subvariantInventory['providerId'] ?? null,
+                                    'provider_id'            => $subvariantInventory['provider'] ?? null,
                                     'unit_details'           => $subvariantInventory['unitDetails'] ?? null,
                                     'created_at'             => now(),
                                     'updated_at'             => now(),
@@ -1599,5 +1599,261 @@ class AdminController extends Controller
     }
 
 
-    public function editProduct() {}
+    public function editProduct(Request $request, Product $product)
+    {
+        Log::info('Edit Product request received', [
+            'product_id' => $product->id,
+            'data'       => $request->all()
+        ]);
+
+        // Validate the incoming request data.
+        // Note: For the product name, use the unique rule excluding the current product.
+        $validatedData = $request->validate([
+            'workingGroup'           => 'required|exists:working_groups,id',
+            'productName'            => 'required|string|max:255|unique:products,name,' . $product->id,
+            'productDescription'     => 'required|string',
+            'seoTitle'               => 'required|string|max:255',
+            'seoDescription'         => 'required|string|max:1000',
+            'pricingMethod'          => 'required|in:standard,roll',
+            'basePrice'              => 'nullable|numeric|min:0',
+            'globalQuantity'         => 'nullable|integer|min:1',
+            'globalReorderThreshold' => 'nullable|integer|min:0',
+            'globalProvider'         => 'nullable|exists:providers,id',
+            'globalUnitDetails'      => 'nullable|string',
+            'pricePerSqft'           => 'nullable|numeric|min:0',
+            'hasVariants'            => 'required|in:true,false',
+            'variants'               => 'nullable|string', // Expecting JSON string
+            'categories'             => 'required|string',   // Expecting JSON string
+            'images'                 => 'required|array|min:1|max:2048',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            // --------- Update Product Main Data Only If Changed ---------
+            $updateData = [];
+
+            // Compare each field
+            if ($product->working_group_id != $validatedData['workingGroup']) {
+                $updateData['working_group_id'] = $validatedData['workingGroup'];
+            }
+            if ($product->name !== $validatedData['productName']) {
+                $updateData['name'] = $validatedData['productName'];
+            }
+            if ($product->description !== $validatedData['productDescription']) {
+                $updateData['description'] = $validatedData['productDescription'];
+            }
+            if ($product->pricing_method !== $validatedData['pricingMethod']) {
+                $updateData['pricing_method'] = $validatedData['pricingMethod'];
+            }
+            if ($validatedData['pricingMethod'] === 'standard') {
+                if ($product->pricing_method === 'standard' && $product->price != $validatedData['basePrice']) {
+                    $updateData['price'] = $validatedData['basePrice'];
+                }
+            } elseif ($validatedData['pricingMethod'] === 'roll') {
+                if ($product->price_per_sqft != $validatedData['pricePerSqft']) {
+                    $updateData['price_per_sqft'] = $validatedData['pricePerSqft'];
+                }
+            }
+
+            $newMetadata = $validatedData['seoTitle'] . '|' . $validatedData['seoDescription'];
+            if ($product->metadata !== $newMetadata) {
+                $updateData['metadata'] = $newMetadata;
+                $updateData['meta_title'] = $validatedData['seoTitle'];
+                $updateData['meta_description'] = $validatedData['seoDescription'];
+            }
+
+            if (!empty($updateData)) {
+                $updateData['updated_at'] = now();
+                $updateData['updated_by'] = Auth::id();
+                $product->update($updateData);
+            } else {
+                Log::info('Product main fields unchanged.');
+            }
+
+            // --------- Categories: Sync if Changed ---------
+            $incomingCategories = json_decode($validatedData['categories'], true);
+            $currentCategoryIds = $product->categories()->pluck('id')->toArray();
+            sort($incomingCategories);
+            sort($currentCategoryIds);
+            if ($incomingCategories !== $currentCategoryIds) {
+                $product->categories()->sync($incomingCategories);
+            } else {
+                Log::info('Product categories unchanged.');
+            }
+
+            // --------- Handle Inventory and Variants ---------
+            // For simplicity here, we delete and re-create inventories/variants only if the incoming data differs.
+            if ($validatedData['pricingMethod'] === 'standard') {
+                if ($validatedData['hasVariants'] === 'false') {
+                    // Check global inventory.
+                    $globalData = [
+                        'quantity'          => $validatedData['globalQuantity'] ?? 0,
+                        'reorder_threshold' => $validatedData['globalReorderThreshold'] ?? 0,
+                        'provider_id'       => $validatedData['globalProvider'] ?? null,
+                        'unit_details'      => $validatedData['globalUnitDetails'] ?? null,
+                    ];
+                    $globalInventory = ProductInventory::where('product_id', $product->id)
+                        ->whereNull('product_variant_id')
+                        ->first();
+                    $needsGlobalUpdate = !$globalInventory ||
+                        $globalInventory->quantity != $globalData['quantity'] ||
+                        $globalInventory->reorder_threshold != $globalData['reorder_threshold'] ||
+                        $globalInventory->provider_id != $globalData['provider_id'] ||
+                        $globalInventory->unit_details != $globalData['unit_details'];
+                    if ($needsGlobalUpdate) {
+                        ProductInventory::where('product_id', $product->id)
+                            ->whereNull('product_variant_id')
+                            ->delete();
+                        ProductInventory::create(array_merge([
+                            'product_id' => $product->id,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                            'created_by' => Auth::id(),
+                            'updated_by' => Auth::id(),
+                        ], $globalData));
+                    } else {
+                        Log::info('Global inventory data unchanged.');
+                    }
+                } else {
+                    // Variants are present
+                    if (!empty($validatedData['variants'])) {
+                        $incomingVariants = json_decode($validatedData['variants'], true);
+
+                        // Basic diff: compare count and a couple fields from each variant.
+                        $oldVariants = $product->variants()->get();
+                        $variantsChanged = ($oldVariants->count() !== count($incomingVariants));
+                        if (!$variantsChanged) {
+                            foreach ($oldVariants as $index => $oldVariant) {
+                                // If one field differs, trigger a full update.
+                                if (
+                                    $oldVariant->variant_name != $incomingVariants[$index]['name'] ||
+                                    $oldVariant->variant_value != $incomingVariants[$index]['value'] ||
+                                    $oldVariant->price_adjustment != $incomingVariants[$index]['priceAdjustment']
+                                ) {
+                                    $variantsChanged = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if ($variantsChanged) {
+                            // Delete existing variants and inventories.
+                            ProductInventory::where('product_id', $product->id)->delete();
+                            $product->variants()->delete();
+
+                            // Re-create variants and inventories.
+                            foreach ($incomingVariants as $variant) {
+                                $createdVariant = $product->variants()->create([
+                                    'variant_name'     => $variant['name'],
+                                    'variant_value'    => $variant['value'],
+                                    'price_adjustment' => $variant['priceAdjustment'],
+                                    'created_at'       => now(),
+                                    'updated_at'       => now(),
+                                    'created_by'       => Auth::id(),
+                                    'updated_by'       => Auth::id(),
+                                ]);
+
+                                if (!$variant['hasSubvariants'] || $variant['hasSubvariants'] === 'false') {
+                                    $variantInventory = $variant['inventory'];
+                                    ProductInventory::create([
+                                        'product_id'         => $product->id,
+                                        'product_variant_id' => $createdVariant->id,
+                                        'quantity'           => $variantInventory['quantity'] ?? 0,
+                                        'reorder_threshold'  => $variantInventory['reorderThreshold'] ?? 0,
+                                        'provider_id'        => $variantInventory['provider'] ?? null,
+                                        'unit_details'       => $variantInventory['unitDetails'] ?? null,
+                                        'created_at'         => now(),
+                                        'updated_at'         => now(),
+                                        'created_by'         => Auth::id(),
+                                        'updated_by'         => Auth::id(),
+                                    ]);
+                                } else {
+                                    foreach ($variant['subvariants'] as $subvariant) {
+                                        $createdSubvariant = $createdVariant->subvariants()->create([
+                                            'subvariant_name'  => $subvariant['name'],
+                                            'subvariant_value' => $subvariant['value'],
+                                            'price_adjustment' => $subvariant['priceAdjustment'],
+                                            'created_at'       => now(),
+                                            'updated_at'       => now(),
+                                            'created_by'       => Auth::id(),
+                                            'updated_by'       => Auth::id(),
+                                        ]);
+                                        $subInv = $subvariant['inventory'];
+                                        ProductInventory::create([
+                                            'product_id'            => $product->id,
+                                            'product_variant_id'    => $createdVariant->id,
+                                            'product_subvariant_id' => $createdSubvariant->id,
+                                            'quantity'              => $subInv['quantity'] ?? 0,
+                                            'reorder_threshold'     => $subInv['reorderThreshold'] ?? 0,
+                                            'provider_id'           => $subInv['provider'] ?? null,
+                                            'unit_details'          => $subInv['unitDetails'] ?? null,
+                                            'created_at'            => now(),
+                                            'updated_at'            => now(),
+                                            'created_by'            => Auth::id(),
+                                            'updated_by'            => Auth::id(),
+                                        ]);
+                                    }
+                                }
+                            }
+                        } else {
+                            Log::info('Variants data unchanged.');
+                        }
+                    } else {
+                        return back()->withErrors("Dev Error: Variants array isn't passed to backend. Check Log!");
+                    }
+                }
+            }
+            // For products with roll pricing, assume inventory is managed elsewhere.
+
+            // --------- Handle Images ---------
+            // If new image files are provided in the request, then update images.
+            if ($request->hasFile('images.0.file')) {
+                // Delete old images.
+                ProductImage::where('product_id', $product->id)->delete();
+                Log::info('New images detected; processing uploads.');
+
+                $images = $request->input('images');
+                foreach ($images as $index => $imageData) {
+                    if ($request->hasFile("images.$index.file")) {
+                        $file = $request->file("images.$index.file");
+                        $extension = $file->getClientOriginalExtension();
+                        $uniqueFileName = uniqid() . '_' . time() . '.' . $extension;
+                        $destinationPath = public_path('images/products');
+                        $file->move($destinationPath, $uniqueFileName);
+                        $order = $request->input("images.$index.order");
+                        $isPrimary = $request->input("images.$index.is_primary");
+                        $path = '/images/products/' . $uniqueFileName;
+                        ProductImage::create([
+                            'product_id'  => $product->id,
+                            'image_url'   => $path,
+                            'image_order' => $order,
+                            'is_primary'  => $isPrimary,
+                            'created_by'  => Auth::id(),
+                            'updated_by'  => Auth::id(),
+                        ]);
+                    } else {
+                        Log::warning("No file found for images.$index.file");
+                    }
+                }
+            } else {
+                Log::info('No new images provided; existing images remain unchanged.');
+            }
+
+            // --------- Log Activity ---------
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'product_updated',
+                'description' => 'Admin updated product: ' . $product->name,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            DB::commit();
+            Log::info('Product updated successfully', ['product_id' => $product->id]);
+            return back()->with('success', 'Product updated successfully.');
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::error('Error in editProduct: ' . $e->getMessage());
+            return back()->with('error', 'Failed to update product. Please try again later.');
+        }
+    }
 }

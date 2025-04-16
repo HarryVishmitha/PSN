@@ -97,7 +97,7 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
               name: sub.subvariant_name,
               value: sub.subvariant_value,
               priceAdjustment: sub.price_adjustment,
-              // Here, for simplicity, the same inventory values are applied.
+              // Applying the same inventory values as a simple mapping:
               inventory: {
                 quantity: inv.quantity || '',
                 reorderThreshold: inv.reorder_threshold || '',
@@ -151,7 +151,7 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
 
   // Check for saved inputs (if desired; you can omit this for the update form if not needed)
   useEffect(() => {
-    const storedData = localStorage.getItem("addProductFormData");
+    const storedData = localStorage.getItem("editProductFormData");
     if (storedData && !productDetails) {
       const parsedData = JSON.parse(storedData);
       if (parsedData.selectedWorkingGroup) setSelectedWorkingGroup(parsedData.selectedWorkingGroup);
@@ -173,7 +173,7 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
       if (parsedData.currentStep) setCurrentStep(parsedData.currentStep);
       if (parsedData.formDataArray) setFormDataArray(parsedData.formDataArray);
     }
-  }, [productDetails]); // Only load from local storage if productDetails is not set (i.e. add mode)
+  }, [productDetails]);
 
   // --- Image functions remain the same ---
   const handleFileChange = (e) => {
@@ -301,18 +301,18 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
 
   const modules = isHighlightReady
     ? {
-        syntax: {
-          highlight: (text) => hljs?.highlightAuto(text).value,
-        },
-        toolbar: {
-          container: "#toolbar-container",
-        },
-      }
+      syntax: {
+        highlight: (text) => hljs?.highlightAuto(text).value,
+      },
+      toolbar: {
+        container: "#toolbar-container",
+      },
+    }
     : {
-        toolbar: {
-          container: "#toolbar-container",
-        },
-      };
+      toolbar: {
+        container: "#toolbar-container",
+      },
+    };
 
   const formats = [
     "font",
@@ -533,7 +533,7 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
       currentStep,
       formDataArray
     };
-    localStorage.setItem("addProductFormData", JSON.stringify(data));
+    localStorage.setItem("editProductFormData", JSON.stringify(data));
   }, [
     selectedWorkingGroup,
     name,
@@ -678,12 +678,13 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
       data.append(`images[${index}][is_primary]`, image.isPrimary ? 1 : 0);
     });
 
-    // Use PUT to update the product (using productDetails.id)
-    router.put(route('admin.updateProduct', productDetails.id), data, {
+    // Use POST to update the product via the route named 'editproduct'
+    router.post(route('admin.editproduct', productDetails.id), data, {
       preserveState: true,
       onSuccess: () => {
         setAlert({ type: 'success', message: 'Product updated successfully!' });
-        localStorage.removeItem("addProductFormData");
+        // Remove the saved form data (using consistent key)
+        localStorage.removeItem("editProductFormData");
         console.log('Product updated successfully!');
         router.get(route('admin.products'));
       },
@@ -709,7 +710,7 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
           <div className="card-body">
             {errors && Object.keys(errors).length > 0 && (
               <div className="alert alert-danger bg-danger-100 text-danger-600 border-danger-600 border-start-width-4-px border-top-0 border-end-0 border-bottom-0 px-24 py-13 mb-0 fw-semibold text-lg radius-4 d-flex align-items-center justify-content-between"
-                   role="alert">
+                role="alert">
                 <ol>
                   {Object.values(errors).map((error, index) => (
                     <li key={index}>{error}</li>
@@ -766,8 +767,8 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                     <label className="form-label">Select Category*</label>
                     <div className="position-relative">
                       <select className={`form-control form-select ${errors.workingGroup ? 'is-invalid' : ''}`}
-                              value={selectedWorkingGroup}
-                              onChange={(e) => setSelectedWorkingGroup(e.target.value)}>
+                        value={selectedWorkingGroup}
+                        onChange={(e) => setSelectedWorkingGroup(e.target.value)}>
                         <option value="" disabled>Select a working group</option>
                         {workingGroups.map((group) => (
                           <option key={group.id} value={group.id}>{group.name}</option>
@@ -783,7 +784,6 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                     <button onClick={nextStep} type="button" className="form-wizard-next-btn btn btn-primary-600 px-32">Next</button>
                   </div>
                 </fieldset>
-
                 {/* Step 2: Basic Product Information */}
                 <fieldset className={`wizard-fieldset ${currentStep === 2 && "show"}`}>
                   <h6 className="text-md text-neutral-500">Basic Product Information</h6>
@@ -891,7 +891,6 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                     </div>
                   </div>
                 </fieldset>
-
                 {/* Step 3: Categorizing */}
                 <fieldset className={`wizard-fieldset ${currentStep === 3 && "show"}`}>
                   <h6 className="text-md tw-text-neutral-500">Add product categories and other attributions</h6>
@@ -926,7 +925,6 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                     <button onClick={nextStep} type="button" className="btn btn-primary-600 px-32">Next</button>
                   </div>
                 </fieldset>
-
                 {/* Step 4: Pricing & Inventory */}
                 <fieldset className={`wizard-fieldset ${currentStep === 4 && "show"}`}>
                   <h6 className="tw-text-md tw-text-neutral-500 tw-font-semibold">Pricing</h6>
@@ -1160,7 +1158,6 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                     <button type="button" className="btn btn-primary-600 px-32" onClick={nextStep}>Next</button>
                   </div>
                 </fieldset>
-
                 {/* Step 5: Images */}
                 <fieldset className={`wizard-fieldset ${currentStep === 5 && "show"}`}>
                   <h6 className="tw-text-md tw-text-neutral-500 tw-font-semibold">Images</h6>
@@ -1200,7 +1197,6 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                     <button type="button" className="btn btn-primary-600 px-32" onClick={nextStep}>Next</button>
                   </div>
                 </fieldset>
-
                 {/* Step 6: Review & Finish */}
                 <fieldset className={`wizard-fieldset ${currentStep === 6 && "show"}`}>
                   <h6 className="tw-text-md tw-text-neutral-500 tw-font-semibold mb-4">Review &amp; Finish</h6>
@@ -1315,7 +1311,6 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
             </div>
           </div>
         </div>
-
         <div className="modal fade" id="addCat" tabIndex={-1} aria-labelledby="addCatLabel" aria-hidden="true">
           <div className="modal-dialog modal-lg modal-dialog-centered">
             <div className="modal-content radius-16 bg-base">
@@ -1328,7 +1323,7 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                   <div className="mb-3">
                     <label htmlFor="categoryName" className="form-label">Category Name*</label>
                     <input type="text" id="categoryName" className={`form-control ${modalErrors.newCategoryName ? 'is-invalid' : ''}`}
-                           placeholder="Enter category name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
+                      placeholder="Enter category name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
                     {modalErrors.newCategoryName && <div className="invalid-feedback">{modalErrors.newCategoryName}</div>}
                   </div>
                   <div className="mb-3">
