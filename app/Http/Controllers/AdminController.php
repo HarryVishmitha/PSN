@@ -1856,4 +1856,23 @@ class AdminController extends Controller
             return back()->with('error', 'Failed to update product. Please try again later.');
         }
     }
+
+    public function addDesign()
+    {
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'product_updated',
+            'description' => 'Admin view add design form',
+            'ip_address'  => request()->ip(),
+        ]);
+
+        $workingGroups = WorkingGroup::where('status', 'active')->orderBy('name')->get();
+
+        return Inertia::render('admin/addDesign', [
+            'userDetails'    => Auth::user(),
+            'workingGroups'  => $workingGroups,
+        ]);
+    }
+
+    public function designs() {}
 }

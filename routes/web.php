@@ -72,6 +72,8 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::delete('/api/product/{product}/delete', [AdminController::class, 'deleteProduct'])->name('deleteproduct');
     Route::get('/product/{product}/edit', [AdminController::class, 'editProductview'])->name('producteditView');
     Route::post('/api/product/{product}/edit', [AdminController::class, 'editProduct'])->name('editproduct');
+    Route::get('/designs', [AdminController::class, 'designs'])->name('designs');
+    Route::get('/add-design', [AdminController::class, 'addDesign'])->name('addDesign');
 
     // Add more admin routes here
 });

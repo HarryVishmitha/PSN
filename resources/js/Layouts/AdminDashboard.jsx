@@ -328,6 +328,33 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     </li>
                                 </ul>
                             </li>
+                            {/* Designs */}
+                            <li className='dropdown'>
+                                <Link href={route('admin.designs')}>
+                                    <Icon icon='mdi:paint-outline' className='menu-icon' alt='designs'/>
+                                    <span>Designs</span>
+                                </Link>
+                                <ul className='sidebar-submenu'>
+                                    <li>
+                                        <Link
+                                            href={route('admin.addDesign')}
+                                            className={url === '/admin/add-new-product' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
+                                            Add new design
+                                        </Link>
+                                    </li>
+                                    <li>
+                                        <Link
+                                            href={route('admin.designs')}
+                                            className={url === '/admin/products' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
+                                            All designs
+                                        </Link>
+                                    </li>
+                                </ul>
+                            </li>
                             <li>
                                 <Link
                                     href='/testimonials'
