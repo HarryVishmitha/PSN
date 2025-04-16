@@ -25,6 +25,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 
 use function Illuminate\Log\log;
+use function Termwind\render;
 
 class AdminController extends Controller
 {
@@ -821,20 +822,70 @@ class AdminController extends Controller
         ]);
     }
 
-    public function products()
+    public function products(Request $request)
     {
+        // Build the base product query and eager load possible relationships.
+        $query = Product::query()->with(['category', 'workingGroup', 'provider'])->whereNull('deleted_at');
 
-        // Log the activity for viewing the products list.
+        // Apply search filter on product name and SEO description.
+        if ($request->filled('search')) {
+            $searchTerm = $request->input('search');
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('meta_title', 'like', '%' . $searchTerm . '%');
+            });
+        }
+
+        // Apply status filter, if provided.
+        if ($request->filled('status') && $request->input('status') !== 'Select Status') {
+            $query->where('status', $request->input('status'));
+        }
+
+        // Apply working group filter, if provided.
+        if ($request->filled('working_group') && $request->input('working_group') !== 'Select Working Group') {
+            $query->where('working_group_id', $request->input('working_group'));
+        }
+
+        // Apply category filter using whereHas on the many-to-many relationship.
+        if ($request->filled('category') && $request->input('category') !== 'Select Category') {
+            $query->whereHas('categories', function ($q) use ($request) {
+                // Here we assume that the Category table's primary key is 'id'
+                $q->where('id', $request->input('category'));
+            });
+        }
+
+        // Apply sorting based on request parameters; defaults to sorting by created_at descending.
+        $sortBy = $request->input('sort_by', 'created_at');
+        $order  = $request->input('order', 'desc');
+        $query->orderBy($sortBy, $order);
+
+        // Paginate the products with the per_page count (default to 10) and persist query strings.
+        $perPage = $request->input('per_page', 10);
+        $products = $query->paginate($perPage)->appends(request()->query());
+
+
+        // Fetch active working groups and categories for filters.
+        $workingGroups = WorkingGroup::where('status', 'active')->orderBy('name')->get();
+        $categories = Category::orderBy('name', 'asc')->get();
+
+        // Log the activity with additional context if needed.
         ActivityLog::create([
             'user_id'     => Auth::id(),
             'action_type' => 'products_view',
-            'description' => 'Admin viewed products list.',
-            'ip_address'  => request()->ip(),
+            'description' => 'Admin viewed products list.' . ($request->filled('search') ? ' Searched for: ' . $request->input('search') : ''),
+            'ip_address'  => $request->ip(),
         ]);
 
         // Render the Inertia view for products.
         return Inertia::render('admin/productsView', [
-            'userDetails' => Auth::user(),
+            'userDetails'   => Auth::user(),
+            'workingGroups' => $workingGroups,
+            'categories'    => $categories,
+            'products'      => $products,
+            'perPage'       => $perPage,
+            'sortBy'        => $sortBy,
+            'order'         => $order,
+            'filters'       => $request->only(['search', 'status', 'working_group', 'category']),
         ]);
     }
 
@@ -916,6 +967,7 @@ class AdminController extends Controller
                 'updated_at'        => now(),
                 'created_by'        => Auth::id(),
                 'updated_by'        => Auth::id(),
+                'status'           => 'published',
             ]);
 
             // Attach categories to the product.
@@ -951,11 +1003,12 @@ class AdminController extends Controller
                             'created_by'      => Auth::id(),
                             'updated_by'      => Auth::id(),
                         ]);
-                        
-                        if ($variant['hasSubvariants'] === 'false') {
+
+                        if ($variant['hasSubvariants'] === 'false' || $variant['hasSubvariants'] === null || !$variant['hasSubvariants']) {
+
                             // Create inventory for the variant.
                             $variantInventory = $variant['inventory'];
-                            ProductInventory::create([
+                            $productIN = ProductInventory::create([
                                 'product_id'           => $product->id,
                                 'product_variant_id'   => $createdVariant->id,
                                 'quantity'             => $variantInventory['quantity'] ?? 0,
@@ -967,6 +1020,12 @@ class AdminController extends Controller
                                 'created_by'           => Auth::id(),
                                 'updated_by'           => Auth::id(),
                             ]);
+                            if (!$productIN) {
+                                Log::error('Failed to create inventory for variant', [
+                                    'variant_id' => $createdVariant->id,
+                                    'product_id' => $product->id,
+                                ]);
+                            }
                         } else {
                             // Handle subvariants.
                             foreach ($variant['subvariants'] as $subvariant) {
@@ -1370,4 +1429,175 @@ class AdminController extends Controller
             return redirect()->back()->with('error', 'Failed to add category. Please try again later.');
         }
     }
+
+    public function jsonProducts(Request $request)
+    {
+        // Build the product query.
+        $query = Product::query();
+
+        // Apply search filter on product name and SEO description.
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('seo_description', 'like', '%' . $searchTerm . '%');
+            });
+        }
+
+        // Apply status filter, if set.
+        if ($request->filled('status') && $request->status !== 'Select Status') {
+            $query->where('status', $request->status);
+        }
+
+        // Apply working group filter, if set.
+        if ($request->filled('working_group') && $request->working_group !== 'Select Working Group') {
+            $query->where('working_group', $request->working_group);
+        }
+
+        // Apply category filter, if set.
+        if ($request->filled('category') && $request->category !== 'Select Category') {
+            $query->where('category', $request->category);
+        }
+
+        // Get the per page count from the request; if not provided, default to 10.
+        $perPage = $request->input('per_page', 10);
+        $products = $query->paginate($perPage);
+
+        // Fetch the filter data: working groups and categories.
+        $workingGroups = WorkingGroup::all();
+        $categories = Category::all();
+
+        // Return JSON response with products, pagination info, and filter lists.
+        return response()->json([
+            'products'   => $products->items(), // May be empty array if no products are found.
+            'pagination' => [
+                'current_page' => $products->currentPage(),
+                'last_page'    => $products->lastPage(),
+                'per_page'     => $perPage,
+                'total'        => $products->total(),
+            ],
+            'filters' => [
+                'working_groups' => $workingGroups,
+                'categories'     => $categories,
+            ],
+        ]);
+    }
+
+    public function quickProduct(Request $request, Product $product)
+    {
+        try {
+            // Handle GET requests: return product details as JSON.
+            if ($request->isMethod('get')) {
+                return response()->json($product, 200);
+            }
+
+            // Handle PATCH requests: update product details.
+            if ($request->isMethod('patch')) {
+                // Validate the input for quick update.
+                $data = $request->validate([
+                    'name'             => 'required|string|max:255',
+                    'meta_description' => 'nullable|string',
+                    'price'            => 'required|numeric',
+                    'status'           => 'required|in:published,unpublished',
+                ]);
+                ActivityLog::create([
+                    'user_id'     => Auth::id(),
+                    'action_type' => 'product_quick_edit',
+                    'description' => 'Product ID ' . $product->id . ' has been edited. Quickly.',
+                    'ip_address'  => request()->ip(),
+                ]);
+                // Update the product with the validated data.
+                $product->update($data);
+
+                // Return a success response with the updated product.
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Product updated successfully.',
+                    'product' => $product,
+                ], 200);
+            }
+
+            // For any other HTTP method, return a "Method Not Allowed" response.
+            return response()->json(['error' => 'Method Not Allowed'], 405);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // If validation fails, return the error messages.
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            // Log the exception for debugging.
+            Log::error('Error in quickProduct: ' . $e->getMessage(), [
+                'exception' => $e,
+                'product_id' => $product->id,
+            ]);
+
+            // Return a generic error response.
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong. Please try again later.',
+            ], 500);
+        }
+    }
+
+    public function deleteProduct(Product $product)
+    {
+        try {
+            // Soft-delete the product by updating the deleted_at column.
+            $product->delete();
+
+            // Optionally log the deletion.
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'product_deleted',
+                'description' => 'Product ID ' . $product->id . ' has been deleted.',
+                'ip_address'  => request()->ip(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product soft-deleted successfully.',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error("Error deleting product: " . $e->getMessage(), [
+                'exception' => $e,
+                'product_id' => $product->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting product. Please try again.',
+            ], 500);
+        }
+    }
+
+    public function editProductview(Product $product)
+    {
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'product_editing_view',
+            'description' => 'Product ID ' . $product->id . ' has been viewed for editing.',
+            'ip_address'  => request()->ip(),
+        ]);
+
+        // Eager load all necessary relationships on the product model.
+        $product->load(['categories', 'images', 'variants.subvariants', 'workingGroup', 'provider', 'inventories']);
+        Log::info($product);
+        // Retrieve additional data for the form.
+        $workingGroups = WorkingGroup::where('status', 'active')->orderBy('name')->get();
+        $Categories = Category::orderBy('name', 'asc')->get();
+        $Providers = Provider::orderBy('name', 'asc')->get();
+
+        return Inertia::render('admin/productEdit', [
+            'userDetails'    => Auth::user(),
+            'productDetails' => $product,
+            'workingGroups'  => $workingGroups,
+            'categories'     => $Categories,
+            'providers'      => $Providers,
+        ]);
+    }
+
+
+    public function editProduct() {}
 }

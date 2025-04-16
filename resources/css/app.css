@@ -58,3 +58,16 @@ select {
 .form-select.is-invalid, .was-validated .form-select:invalid {
   border-color: var(--bs-form-invalid-border-color) !important;
 }
+
+@keyframes tw-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.tw-animation-spin {
+    animation: tw-spin 2s linear infinite;
+}
