@@ -291,7 +291,8 @@ const ProductsView = ({
                             </select>
                         </div>
                         <Link
-                            to="/admin/add-product"
+                            to="/admin/add-new-product"
+                            href={route('admin.addProduct')}
                             className="btn btn-primary text-sm btn-sm px-12 py-12 radius-8 d-flex align-items-center gap-2"
                         >
                             <Icon icon="ic:baseline-plus" className="icon text-xl line-height-1" />

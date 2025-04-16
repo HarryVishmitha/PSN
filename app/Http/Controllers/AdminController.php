@@ -967,7 +967,7 @@ class AdminController extends Controller
                 'updated_at'        => now(),
                 'created_by'        => Auth::id(),
                 'updated_by'        => Auth::id(),
-                'status'           => 'status',
+                'status'           => 'published',
             ]);
 
             // Attach categories to the product.
@@ -1581,15 +1581,23 @@ class AdminController extends Controller
             'ip_address'  => request()->ip(),
         ]);
 
-        return Inertia::render('admin/productEdit');
-        // return Inertia::render('admin/inventoryProviders', [
-        //     'userDetails' => Auth::user(),
-        //     'inProviders' => $providers,
-        // ]);
+        // Eager load all necessary relationships on the product model.
+        $product->load(['categories', 'images', 'variants.subvariants', 'workingGroup', 'provider', 'inventories']);
+        Log::info($product);
+        // Retrieve additional data for the form.
+        $workingGroups = WorkingGroup::where('status', 'active')->orderBy('name')->get();
+        $Categories = Category::orderBy('name', 'asc')->get();
+        $Providers = Provider::orderBy('name', 'asc')->get();
+
+        return Inertia::render('admin/productEdit', [
+            'userDetails'    => Auth::user(),
+            'productDetails' => $product,
+            'workingGroups'  => $workingGroups,
+            'categories'     => $Categories,
+            'providers'      => $Providers,
+        ]);
     }
 
-    public function editProduct()
-    {
 
-    }
+    public function editProduct() {}
 }
