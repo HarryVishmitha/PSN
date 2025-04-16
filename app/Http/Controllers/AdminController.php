@@ -951,7 +951,7 @@ class AdminController extends Controller
                             'created_by'      => Auth::id(),
                             'updated_by'      => Auth::id(),
                         ]);
-
+                        
                         if ($variant['hasSubvariants'] === 'false') {
                             // Create inventory for the variant.
                             $variantInventory = $variant['inventory'];
