@@ -52,4 +52,12 @@ class Design extends Model
     {
         return $this->hasMany(DesignAccess::class);
     }
+
+    /**
+     * Design must bind to a product
+     */
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
+    }
 }

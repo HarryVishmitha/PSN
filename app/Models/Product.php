@@ -83,4 +83,12 @@ class Product extends Model
     {
         return $this->belongsTo(Provider::class);
     }
+
+    /**
+     * product can have many design
+     */
+    public function design()
+    {
+        return $this->hasMany(Design::class);
+    }
 }
