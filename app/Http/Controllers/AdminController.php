@@ -25,6 +25,8 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Design;
+use Google\Service\Drive\Permission as Google_Service_Drive_Permission;
+use Google\Service\Drive as GoogleServiceDrive;
 
 use function Illuminate\Log\log;
 use function Termwind\render;
@@ -1877,6 +1879,7 @@ class AdminController extends Controller
     }
     public function storeDesign(Request $request)
     {
+        // 1) Validate
         $data = $request->validate([
             'working_group_id' => 'required|exists:working_groups,id',
             'product_id'       => 'required|exists:products,id',
@@ -1886,17 +1889,33 @@ class AdminController extends Controller
         ]);
 
         DB::beginTransaction();
+
         try {
-            // upload to Drive
+            // 2) Build a 6-char unique filename
             $file     = $request->file('file');
             $base     = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
-            $filename = "{$base}_" . time() . "." . $file->getClientOriginalExtension();
-            $fileId   = Storage::disk('google')->putFileAs('designs', $file, $filename);
-            $url      = "https://drive.google.com/uc?export=view&id={$fileId}";
+            $short    = substr(strtolower(uniqid()), -6);
+            $ext      = $file->getClientOriginalExtension();
+            $filename = "{$short}_{$base}.{$ext}";
 
-            // create Design
+            // 3) Upload via your google disk
+            $disk   = Storage::disk('google');
+            $fileId = $disk->putFileAs('designs', $file, $filename);
+
+            // 4) Make it publicly readable
+            $permission = new Google_Service_Drive_Permission([
+                'type' => 'anyone',
+                'role' => 'reader',
+            ]);
+            $driveService = new GoogleServiceDrive(app('google.client'));
+            $driveService->permissions->create($fileId, $permission);
+
+            // 5) Build the view URL
+            $url = "https://drive.google.com/uc?export=view&id={$fileId}";
+
+            // 6) Persist the Design
             $design = Design::create([
-                'name'             => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+                'name'             => $base,
                 'description'      => '',
                 'width'            => $data['width'],
                 'height'           => $data['height'],
@@ -1911,23 +1930,26 @@ class AdminController extends Controller
 
             DB::commit();
 
+            // 7) Log the action
             ActivityLog::create([
                 'user_id'     => Auth::id(),
                 'action_type' => 'design_upload',
-                'description' => 'Admin uploaded a design to Google Drive',
+                'description' => "Uploaded design {$design->id} to Google Drive",
                 'ip_address'  => $request->ip(),
             ]);
 
+            // 8) Return success
             return response()->json([
                 'message'   => 'Design uploaded successfully',
                 'design_id' => $design->id,
                 'image_url' => $url,
             ], 201);
+
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Design upload failed: {$e->getMessage()}");
             return response()->json([
-                'message' => 'Upload failed, please try again.'
+                'message' => 'Upload failed, please try again.',
             ], 500);
         }
     }

@@ -29,21 +29,43 @@ class AppServiceProvider extends ServiceProvider
     {
         Vite::prefetch(concurrency: 3);
         Storage::extend('google', function ($app, $config) {
-            // 1. build Google client
+            // build the Google client
             $client = new GoogleClient();
             $client->setClientId($config['clientId']);
             $client->setClientSecret($config['clientSecret']);
-            $client->refreshToken($config['refreshToken']);
+            $client->setAccessType('offline');
+            $client->setPrompt('consent');
+            $client->setScopes([GoogleServiceDrive::DRIVE_FILE]);
 
-            // 2. build the Drive service & adapter
+            // **use** your refresh token to fetch a fresh access token
+            if (empty($config['refreshToken'])) {
+                throw new \InvalidArgumentException('GOOGLE_DRIVE_REFRESH_TOKEN is not set in your .env');
+            }
+            $accessToken = $client->fetchAccessTokenWithRefreshToken($config['refreshToken']);
+            $client->setAccessToken($accessToken);
+
+            // build the Drive service & adapter
             $service = new GoogleServiceDrive($client);
-            $adapter = new GoogleDriveAdapter($service, $config['folder'] ?? '/');
+            // Pass folderId *and* “true” to treat it as an ID
+            $adapter  = new GoogleDriveAdapter($service, $config['folderId'], true);
+            $flysys   = new Filesystem($adapter);
+            return new FilesystemAdapter($flysys, $adapter, $config);
+        });
 
-            // 3. create a Flysystem filesystem
-            $flysystem = new Filesystem($adapter);
+        // register the Drive service so we can inject it
+        $this->app->singleton(GoogleServiceDrive::class, function ($app) {
+            $config = config('filesystems.disks.google');
 
-            // 4. wrap it in Laravel’s FilesystemAdapter
-            return new FilesystemAdapter($flysystem, $adapter, $config);
+            $client = new GoogleClient();
+            $client->setClientId($config['clientId']);
+            $client->setClientSecret($config['clientSecret']);
+            $client->setAccessType('offline');
+            $client->setPrompt('consent');
+            $client->setScopes([GoogleServiceDrive::DRIVE_FILE]);
+            $client->fetchAccessTokenWithRefreshToken($config['refreshToken']);
+            $client->fetchAccessTokenWithRefreshToken($config['refreshToken']);
+
+            return new GoogleServiceDrive($client);
         });
     }
 }
