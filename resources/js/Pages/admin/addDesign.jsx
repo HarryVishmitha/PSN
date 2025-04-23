@@ -157,14 +157,21 @@ const AddDesign = ({ userDetails, workingGroups }) => {
             })
                 .then(() => {
                     setStatuses(s => { const c = [...s]; c[idx] = 'uploaded'; return c })
+                    setAlert({ type: 'success', message: 'All uploads complete.' })
                 })
-                .catch(() => {
+                .catch((err) => {
                     setStatuses(s => { const c = [...s]; c[idx] = 'error'; return c })
+                    if (err.response && err.response.data && err.response.data.errors) {
+                        setErrors(prev => ({ ...prev, ...err.response.data.errors }))
+                        setAlert({ type: 'danger', message: 'Validation errors occurred. Please check the form.' })
+                    } else {
+                        setAlert({ type: 'danger', message: 'Something happened! Please try again later!' })
+                    }
                 })
         }))
 
         setIsSubmitting(false)
-        setAlert({ type: 'success', message: 'All uploads complete.' })
+
     }
 
     return (
@@ -239,7 +246,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                             {/* Dimensions */}
                             <div className="input-group mb-3">
                                 <input
-                                    type="text"
+                                    type="number"
                                     name="width"
                                     value={dimensions.width}
                                     onChange={handleDimensionChange}
@@ -249,7 +256,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                                 />
                                 <span className="input-group-text">x</span>
                                 <input
-                                    type="text"
+                                    type="number"
                                     name="height"
                                     value={dimensions.height}
                                     onChange={handleDimensionChange}
