@@ -13,6 +13,9 @@ class Design extends Model
     protected $fillable = [
         'name',
         'description',
+        'width',
+        'height',
+        'product_id',
         'image_url',
         'access_type',
         'working_group_id',

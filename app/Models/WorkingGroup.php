@@ -20,4 +20,11 @@ class WorkingGroup extends Model
     {
         return $this->hasMany(User::class);
     }
+    /**
+     * A working-group has many products.
+     */
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'working_group_id')->where('status', 'published')->whereNull('deleted_at')->orderBy('name');
+    }
 }

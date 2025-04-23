@@ -10,6 +10,7 @@ use App\Models\Role;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Models\WorkingGroup;
@@ -23,6 +24,7 @@ use App\Models\Roll;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\Design;
 
 use function Illuminate\Log\log;
 use function Termwind\render;
@@ -1866,13 +1868,70 @@ class AdminController extends Controller
             'ip_address'  => request()->ip(),
         ]);
 
-        $workingGroups = WorkingGroup::where('status', 'active')->orderBy('name')->get();
+        $workingGroups = WorkingGroup::where('status', 'active')->with('products')->get();
 
         return Inertia::render('admin/addDesign', [
             'userDetails'    => Auth::user(),
             'workingGroups'  => $workingGroups,
         ]);
     }
+    public function storeDesign(Request $request)
+    {
+        $data = $request->validate([
+            'working_group_id' => 'required|exists:working_groups,id',
+            'product_id'       => 'required|exists:products,id',
+            'width'            => 'required|numeric',
+            'height'           => 'required|numeric',
+            'file'             => 'required|file|mimes:jpg,jpeg|max:102400',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // upload to Drive
+            $file     = $request->file('file');
+            $base     = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
+            $filename = "{$base}_" . time() . "." . $file->getClientOriginalExtension();
+            $fileId   = Storage::disk('google')->putFileAs('designs', $file, $filename);
+            $url      = "https://drive.google.com/uc?export=view&id={$fileId}";
+
+            // create Design
+            $design = Design::create([
+                'name'             => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+                'description'      => '',
+                'width'            => $data['width'],
+                'height'           => $data['height'],
+                'product_id'       => $data['product_id'],
+                'image_url'        => $url,
+                'access_type'      => 'working_group',
+                'working_group_id' => $data['working_group_id'],
+                'status'           => 'active',
+                'created_by'       => Auth::id(),
+                'updated_by'       => Auth::id(),
+            ]);
+
+            DB::commit();
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'design_upload',
+                'description' => 'Admin uploaded a design to Google Drive',
+                'ip_address'  => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message'   => 'Design uploaded successfully',
+                'design_id' => $design->id,
+                'image_url' => $url,
+            ], 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error("Design upload failed: {$e->getMessage()}");
+            return response()->json([
+                'message' => 'Upload failed, please try again.'
+            ], 500);
+        }
+    }
+
 
     public function designs() {}
 }
