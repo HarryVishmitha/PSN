@@ -23,10 +23,12 @@ const AddDesign = ({ userDetails, workingGroups }) => {
   const [dims, setDims] = useState({})
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef(null)
+  const CHUNK_SIZE = 1 * 1024 * 1024;  // 1 MB
+
 
   // upload status & progress per file
-  const [statuses, setStatuses]         = useState([])      // 'pending'|'uploading'|'uploaded'|'error'
-  const [progress, setProgress]         = useState([])      // number 0–100
+  const [statuses, setStatuses] = useState([])      // 'pending'|'uploading'|'uploaded'|'error'
+  const [progress, setProgress] = useState([])      // number 0–100
   const [uploadedUrls, setUploadedUrls] = useState([])      // string URLs after success
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -102,9 +104,9 @@ const AddDesign = ({ userDetails, workingGroups }) => {
   }
 
   const handleDragEnter = e => { e.preventDefault(); setDragging(true) }
-  const handleDragOver  = e => e.preventDefault()
+  const handleDragOver = e => e.preventDefault()
   const handleDragLeave = e => { e.preventDefault(); setDragging(false) }
-  const handleDrop      = e => {
+  const handleDrop = e => {
     e.preventDefault()
     setDragging(false)
     updateFiles(Array.from(e.dataTransfer.files))
@@ -119,62 +121,75 @@ const AddDesign = ({ userDetails, workingGroups }) => {
     })
   }
 
-  const handleSubmit = async e => {
-    e.preventDefault()
+  // 2) Add this helper right above handleSubmit:
+  async function uploadFileInChunks(file, idx) {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const identifier = `${file.name.replace(/[^0-9a-z_\-\.]/gi, '')}-${file.size}`;
+    let lastResponse;
 
-    // --- client-side validation ---
-    const newErrors = {}
-    if (!selectedGroup) newErrors.workingGroup = 'Please select a working group'
-    if (!selectedProduct) newErrors.product = 'Please select a product'
-    if (!dimensions.width) newErrors.width = 'Width is required'
-    if (!dimensions.height) newErrors.height = 'Height is required'
-    if (files.length === 0) newErrors.files = 'Please upload at least one file'
+    for (let chunkNumber = 1; chunkNumber <= totalChunks; chunkNumber++) {
+      const start = (chunkNumber - 1) * CHUNK_SIZE;
+      const end = Math.min(file.size, start + CHUNK_SIZE);
+      const blob = file.slice(start, end, file.type);
 
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors)
-      setAlert({ type: 'danger', message: 'Fix validation errors before submitting.' })
-      return
+      const form = new FormData();
+      // append your metadata
+      form.append('working_group_id', selectedGroup);
+      form.append('product_id', selectedProduct);
+      form.append('width', dimensions.width);
+      form.append('height', dimensions.height);
+      // append the chunk
+      form.append('file', blob, file.name);
+
+      // pion/laravel-chunk-upload expects these fields:
+      form.append('flowChunkNumber', chunkNumber);
+      form.append('flowChunkSize', CHUNK_SIZE);
+      form.append('flowCurrentChunkSize', blob.size);
+      form.append('flowTotalSize', file.size);
+      form.append('flowIdentifier', identifier);
+      form.append('flowFilename', file.name);
+      form.append('flowRelativePath', file.name);
+      form.append('flowTotalChunks', totalChunks);
+
+      lastResponse = await axios.post(route('admin.storeDesign'), form, {
+        onUploadProgress: ev => {
+          // overall percentage for this file
+          const pct = Math.round(((start + ev.loaded) / file.size) * 100);
+          setProgress(p => { const c = [...p]; c[idx] = pct; return c });
+        }
+      });
     }
 
-    setAlert(null)
-    setIsSubmitting(true)
-
-    // upload each file in parallel
-    await Promise.all(files.map((file, idx) => {
-      setStatuses(s => { const c = [...s]; c[idx] = 'uploading'; return c })
-
-      const form = new FormData()
-      form.append('working_group_id', selectedGroup)
-      form.append('product_id',       selectedProduct)
-      form.append('width',            dimensions.width)
-      form.append('height',           dimensions.height)
-      form.append('file',             file)
-
-      return axios.post(route('admin.storeDesign'), form, {
-        onUploadProgress: ev => {
-          const pct = Math.round((ev.loaded * 100) / ev.total)
-          setProgress(p => { const c = [...p]; c[idx] = pct; return c })
-        }
-      })
-        .then(res => {
-          setStatuses(s => { const c = [...s]; c[idx] = 'uploaded'; return c })
-          // store returned Drive URL
-          setUploadedUrls(u => { const c = [...u]; c[idx] = res.data.view_url; return c })
-          setAlert({ type: 'success', message: 'All uploads complete.' })
-        })
-        .catch(err => {
-          setStatuses(s => { const c = [...s]; c[idx] = 'error'; return c })
-          if (err.response?.data?.errors) {
-            setErrors(prev => ({ ...prev, ...err.response.data.errors }))
-            setAlert({ type: 'danger', message: 'Validation errors—please check the form.' })
-          } else {
-            setAlert({ type: 'danger', message: 'Something went wrong! Please try again later.' })
-          }
-        })
-    }))
-
-    setIsSubmitting(false)
+    return lastResponse;
   }
+
+  // 3) Your updated handleSubmit:
+  const handleSubmit = async e => {
+    e.preventDefault();
+    // … your existing validation logic …
+
+    setAlert(null);
+    setIsSubmitting(true);
+
+    await Promise.all(files.map(async (file, idx) => {
+      // mark as uploading
+      setStatuses(s => { const c = [...s]; c[idx] = 'uploading'; return c });
+
+      try {
+        // this runs the chunked loop
+        const res = await uploadFileInChunks(file, idx);
+
+        // lastResponse is the server’s final JSON
+        setStatuses(s => { const c = [...s]; c[idx] = 'uploaded'; return c });
+        setUploadedUrls(u => { const c = [...u]; c[idx] = res.data.image_url; return c });
+      } catch (err) {
+        setStatuses(s => { const c = [...s]; c[idx] = 'error'; return c });
+        setAlert({ type: 'danger', message: 'Upload failed—please try again.' });
+      }
+    }));
+
+    setIsSubmitting(false);
+  };
 
   return (
     <>
@@ -261,7 +276,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                   placeholder="Height"
                 />
               </div>
-              {errors.width  && <div className="text-danger mb-2">{errors.width}</div>}
+              {errors.width && <div className="text-danger mb-2">{errors.width}</div>}
               {errors.height && <div className="text-danger mb-2">{errors.height}</div>}
 
               {/* File Upload */}

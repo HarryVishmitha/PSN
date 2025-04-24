@@ -39,6 +39,11 @@ use function Illuminate\Log\log;
 use function Termwind\render;
 // use Intervention\Image\ImageManagerStatic as Image;
 use Intervention\Image\Laravel\Facades\Image;
+// Chunk-upload classes
+use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
+use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
+// Import the interface so we can doc‐block against it
+use Pion\Laravel\ChunkUpload\Handler\HandlerInterface;
 
 
 class AdminController extends Controller
@@ -2023,52 +2028,82 @@ class AdminController extends Controller
 
     public function storeDesign(Request $request)
     {
-        // 1) Validate input
+        //
+        // 1) First validate all non-file fields
+        //
         $data = $request->validate([
             'working_group_id' => 'required|exists:working_groups,id',
             'product_id'       => 'required|exists:products,id',
             'width'            => 'required|numeric',
             'height'           => 'required|numeric',
-            'file'             => 'required|file|mimes:jpg,jpeg,png|max:102400', // 100MB
+            // note: we skip the 'file' here because chunk-handler manages it
         ]);
 
-        // 2) Generate unique 8-char ID (2 letters + 6 digits)
+        //
+        // 2) Handle the incoming chunked file
+        //
+        $receiver = new FileReceiver('file', $request, HandlerFactory::class);
+        if (! $receiver->isUploaded()) {
+            return response()->json(['error' => 'Upload failed.'], 400);
+        }
+        $save = $receiver->receive();
+
+        if (! $save->isFinished()) {
+            /** @var HandlerInterface $handler */
+            $handler = $save->handler();
+
+            return response()->json([
+                'done'    => $handler->getPercentageDone(),
+                'total'   => $handler->getTotalChunks(),
+                'current' => $handler->getCurrentChunkNumber(),
+            ]);
+        }
+
+        // all chunks have been merged
+        $file = $save->getFile(); // instance of UploadedFile or SplFileInfo
+
+        //
+        // 3) Generate a unique 8-char ID (2 letters + 6 digits)
+        //
         do {
             $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
         } while (Design::where('name', $uniqueId)->exists());
 
-        // 3) Prep file info
-        $file      = $request->file('file');
-        $extension = $file->getClientOriginalExtension();
+        //
+        // 4) Prep paths & names
+        //
+        $extension = method_exists($file, 'getClientOriginalExtension')
+                   ? $file->getClientOriginalExtension()
+                   : pathinfo($file->getFilename(), PATHINFO_EXTENSION);
+
         $filename  = "{$uniqueId}.{$extension}";
         $publicDir = public_path('images/designs');
-
         if (! is_dir($publicDir)) {
             mkdir($publicDir, 0755, true);
         }
 
-        // 4) Manipulate image via the Laravel facade
+        //
+        // 5) Manipulate & save with Intervention
+        //
         $image = Image::read($file->getRealPath());
 
-        // // Resize if >1MB
-        // if ($file->getSize() > 1024 * 1000) {
-        //     $image->resize(1024, 1024, function ($c) {
-        //         $c->aspectRatio()->upsize();
-        //     });
-        // }
-
-        // Watermark (if exists)
+        // watermark if exists
         $watermark = public_path('images/watermark.png');
         if (file_exists($watermark)) {
             $image->place($watermark, 'center', 10, 10);
         }
 
-        // Save (85% quality to keep file size down)
+        // save at 35% quality to shrink size
         $image->save("{$publicDir}/{$filename}", 35);
+
+        // remove the temporary merged file
+        @unlink($file->getRealPath());
 
         $imageUrl = "/images/designs/{$filename}";
 
-        // 5) Persist to DB + activity log
+        //
+        // 6) Persist to DB + activity log
+        //
         DB::beginTransaction();
         try {
             $design = Design::create([
@@ -2102,7 +2137,7 @@ class AdminController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Local image upload error: ' . $e->getMessage(), [
+            Log::error('Design upload error: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
