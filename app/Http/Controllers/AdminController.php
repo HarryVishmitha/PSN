@@ -34,13 +34,17 @@ use Google\Service\Drive\DriveFile;
 use Google\Service\Drive\Permission;
 use Google\Http\MediaFileUpload;
 use Tes\LaravelGoogleDriveStorage\GoogleDriveService;
-
-
+use Intervention\Image\ImageManager;
 use function Illuminate\Log\log;
 use function Termwind\render;
+// use Intervention\Image\ImageManagerStatic as Image;
+use Intervention\Image\Laravel\Facades\Image;
+
 
 class AdminController extends Controller
 {
+
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -1885,21 +1889,138 @@ class AdminController extends Controller
             'workingGroups'  => $workingGroups,
         ]);
     }
-    public function token()
-    {
-        $client_id = \Config('services.google.client_id');
-        $client_secret = \Config('services.google.client_secret');
-        $refresh_token = \Config('services.google.refresh_token');
-        $response = Http::post('https://oauth2.googleapis.com/token', [
-            'client_id'     => $client_id,
-            'client_secret' => $client_secret,
-            'refresh_token' => $refresh_token,
-            'grant_type'    => 'refresh_token',
-        ]);
+    //images will upload to google drive
+    // public function token()
+    // {
+    //     $client_id = \Config('services.google.client_id');
+    //     $client_secret = \Config('services.google.client_secret');
+    //     $refresh_token = \Config('services.google.refresh_token');
+    //     $response = Http::post('https://oauth2.googleapis.com/token', [
+    //         'client_id'     => $client_id,
+    //         'client_secret' => $client_secret,
+    //         'refresh_token' => $refresh_token,
+    //         'grant_type'    => 'refresh_token',
+    //     ]);
 
-        $accessToken = json_decode((string)$response->getBody(), true)['access_token'];
-        return $accessToken;
-    }
+    //     $accessToken = json_decode((string)$response->getBody(), true)['access_token'];
+    //     return $accessToken;
+    // }
+    // public function storeDesign(Request $request)
+    // {
+    //     // 1) Validate input…
+    //     $data = $request->validate([
+    //         'working_group_id' => 'required|exists:working_groups,id',
+    //         'product_id'       => 'required|exists:products,id',
+    //         'width'            => 'required|numeric',
+    //         'height'           => 'required|numeric',
+    //         'file'             => 'required|file|mimes:jpg,jpeg,png|max:102400',
+    //     ]);
+
+    //     // 2) Generate a unique 8-char ID (2 letters + 6 digits)
+    //     do {
+    //         $letters  = strtoupper(\Illuminate\Support\Str::random(2));         // e.g. "AZ"
+    //         $numbers  = random_int(100000, 999999);                              // e.g. 345678
+    //         $uniqueId = $letters . $numbers;                                     // "AZ345678"
+    //     } while (\App\Models\Design::where('name', $uniqueId)->exists());
+
+    //     // 3) Prep file info using that ID as the basename
+    //     $file       = $request->file('file');
+    //     $extension  = $file->getClientOriginalExtension();                      // "jpg"
+    //     $filename   = "{$uniqueId}.{$extension}";                               // "AZ345678.jpg"
+    //     $mimeType   = $file->getClientMimeType();
+    //     $fileSize   = $file->getSize();
+    //     $rootFolder = config('services.google.root_folder');
+    //     $accessToken = $this->token();
+
+    //     DB::beginTransaction();
+    //     try {
+    //         // ... resumable upload initiation & bytes upload as before ...
+    //         // (use $filename whenever you set the 'name' in the init call)
+    //         $init = Http::withToken($accessToken)
+    //             ->withHeaders([
+    //                 'Content-Type'            => 'application/json; charset=UTF-8',
+    //                 'X-Upload-Content-Type'   => $mimeType,
+    //                 'X-Upload-Content-Length' => $fileSize,
+    //             ])->post(
+    //                 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+    //                 [
+    //                     'name'     => $filename,      // <-- our ID-based name
+    //                     'mimeType' => $mimeType,
+    //                     'parents'  => [$rootFolder],
+    //                 ]
+    //             );
+    //         throw_if(! $init->successful(), \Exception::class, 'Init session failed: ' . $init->body());
+    //         $sessionUrl = $init->header('Location');
+    //         throw_if(! $sessionUrl, \Exception::class, 'No resumable session URL returned.');
+
+    //         // upload all bytes in one go (or chunk if you prefer)
+    //         $upload = Http::withToken($accessToken)
+    //             ->withHeaders([
+    //                 'Content-Type'   => $mimeType,
+    //                 'Content-Length' => $fileSize,
+    //             ])
+    //             ->withBody(file_get_contents($file->getRealPath()), $mimeType)
+    //             ->put($sessionUrl);
+    //         throw_if(! in_array($upload->status(), [200, 201]), \Exception::class, 'Upload bytes failed: ' . $upload->body());
+
+    //         $driveFile = $upload->json();
+    //         $fileId    = data_get($driveFile, 'id');
+    //         throw_if(! $fileId, \Exception::class, 'No file ID in upload response.');
+
+    //         // set permissions…
+    //         $perm = Http::withToken($accessToken)
+    //             ->withHeaders(['Content-Type' => 'application/json'])
+    //             ->post("https://www.googleapis.com/drive/v3/files/{$fileId}/permissions", [
+    //                 'role' => 'reader',
+    //                 'type' => 'anyone',
+    //             ]);
+    //         throw_if(! $perm->successful(), \Exception::class, 'Permission set failed: ' . $perm->body());
+
+    //         // build the public URL
+    //         $viewLink = data_get($driveFile, 'webViewLink')
+    //             ?? "https://drive.google.com/uc?export=view&id={$fileId}";
+
+    //         // 4) Persist into your DB, using the same $uniqueId
+    //         $design = \App\Models\Design::create([
+    //             'name'             => $uniqueId,      // store the ID, not the original name
+    //             'description'      => '',
+    //             'width'            => $data['width'],
+    //             'height'           => $data['height'],
+    //             'product_id'       => $data['product_id'],
+    //             'image_url'        => $viewLink,
+    //             'access_type'      => 'working_group',
+    //             'working_group_id' => $data['working_group_id'],
+    //             'status'           => 'active',
+    //             'created_by'       => Auth::id(),
+    //             'updated_by'       => Auth::id(),
+    //         ]);
+
+    //         \App\Models\ActivityLog::create([
+    //             'user_id'     => Auth::id(),
+    //             'action_type' => 'design_upload',
+    //             'description' => "Uploaded design {$design->id} (Drive ID: {$fileId})",
+    //             'ip_address'  => $request->ip(),
+    //         ]);
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'message'   => 'Design uploaded successfully',
+    //             'design_id' => $design->id,
+    //             'view_url'  => $viewLink,
+    //         ], 201);
+    //     } catch (\Throwable $e) {
+    //         DB::rollBack();
+    //         Log::error('Drive upload error: ' . $e->getMessage(), [
+    //             'trace' => $e->getTraceAsString(),
+    //         ]);
+    //         return response()->json([
+    //             'message' => 'Upload failed, please try again.',
+    //             'error'   => substr($e->getMessage(), 0, 200),
+    //         ], 500);
+    //     }
+    // }
+
     public function storeDesign(Request $request)
     {
         // 1) Validate input
@@ -1908,106 +2029,55 @@ class AdminController extends Controller
             'product_id'       => 'required|exists:products,id',
             'width'            => 'required|numeric',
             'height'           => 'required|numeric',
-            'file'             => 'required|file|mimes:jpg,jpeg,png|max:102400',
+            'file'             => 'required|file|mimes:jpg,jpeg,png|max:102400', // 100MB
         ]);
 
-        $accessToken = $this->token();
-        // 2) Prep file info
-        $file       = $request->file('file');
-        $baseName   = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $filename   = Str::slug($baseName) . '.' . $file->getClientOriginalExtension();
-        $mimeType   = $file->getClientMimeType();
-        $fileSize   = $file->getSize();
-        $rootFolder = config('services.google.root_folder');
+        // 2) Generate unique 8-char ID (2 letters + 6 digits)
+        do {
+            $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
+        } while (Design::where('name', $uniqueId)->exists());
 
+        // 3) Prep file info
+        $file      = $request->file('file');
+        $extension = $file->getClientOriginalExtension();
+        $filename  = "{$uniqueId}.{$extension}";
+        $publicDir = public_path('images/designs');
+
+        if (! is_dir($publicDir)) {
+            mkdir($publicDir, 0755, true);
+        }
+
+        // 4) Manipulate image via the Laravel facade
+        $image = Image::read($file->getRealPath());
+
+        // // Resize if >1MB
+        // if ($file->getSize() > 1024 * 1000) {
+        //     $image->resize(1024, 1024, function ($c) {
+        //         $c->aspectRatio()->upsize();
+        //     });
+        // }
+
+        // Watermark (if exists)
+        $watermark = public_path('images/watermark.png');
+        if (file_exists($watermark)) {
+            $image->place($watermark, 'center', 10, 10);
+        }
+
+        // Save (85% quality to keep file size down)
+        $image->save("{$publicDir}/{$filename}", 35);
+
+        $imageUrl = "/images/designs/{$filename}";
+
+        // 5) Persist to DB + activity log
         DB::beginTransaction();
         try {
-            //
-            // 3) INITIATE resumable upload session
-            //
-            $init = Http::withToken($accessToken)
-                ->withHeaders([
-                    'Content-Type'            => 'application/json; charset=UTF-8',
-                    'X-Upload-Content-Type'   => $mimeType,
-                    'X-Upload-Content-Length' => $fileSize,
-                ])
-                ->post(
-                    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-                    [
-                        'name'     => $filename,
-                        'mimeType' => $mimeType,
-                        'parents'  => [$rootFolder],
-                    ]
-                );
-
-            throw_if(
-                ! $init->successful(),
-                \Exception::class,
-                'Init session failed: ' . $init->body()
-            );
-
-            $sessionUrl = $init->header('Location');
-            throw_if(
-                ! $sessionUrl,
-                \Exception::class,
-                'No resumable session URL returned.'
-            );
-
-            //
-            // 4) UPLOAD raw bytes
-            //
-            $upload = Http::withToken($accessToken)
-                ->withHeaders([
-                    'Content-Type'   => $mimeType,
-                    'Content-Length' => $fileSize,
-                ])
-                ->withBody(file_get_contents($file->getRealPath()), $mimeType)
-                ->put($sessionUrl);
-
-            throw_if(
-                ! in_array($upload->status(), [200, 201]),
-                \Exception::class,
-                'Upload bytes failed: ' . $upload->body()
-            );
-
-            $driveFile = $upload->json();
-            $fileId    = data_get($driveFile, 'id');
-            throw_if(
-                ! $fileId,
-                \Exception::class,
-                'No file ID in upload response.'
-            );
-
-            //
-            // 5) SET “anyone with link can read”
-            //
-            $perm = Http::withToken($accessToken)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->post(
-                    "https://www.googleapis.com/drive/v3/files/{$fileId}/permissions",
-                    [
-                        'role' => 'reader',
-                        'type' => 'anyone',
-                    ]
-                );
-
-            throw_if(
-                ! $perm->successful(),
-                \Exception::class,
-                'Permission set failed: ' . $perm->body()
-            );
-
-            // after you've built $viewLink from Drive…
-            $viewLink = data_get($driveFile, 'webViewLink')
-                ?? "https://drive.google.com/uc?export=view&id={$fileId}";
-
             $design = Design::create([
-                'name'             => $baseName,
+                'name'             => $uniqueId,
                 'description'      => '',
                 'width'            => $data['width'],
                 'height'           => $data['height'],
                 'product_id'       => $data['product_id'],
-                'image_url'        => $viewLink,           // ← required
+                'image_url'        => $imageUrl,
                 'access_type'      => 'working_group',
                 'working_group_id' => $data['working_group_id'],
                 'status'           => 'active',
@@ -2018,7 +2088,7 @@ class AdminController extends Controller
             ActivityLog::create([
                 'user_id'     => Auth::id(),
                 'action_type' => 'design_upload',
-                'description' => "Uploaded design {$design->id} (Drive ID: {$fileId})",
+                'description' => "Uploaded design {$design->id} (path: {$imageUrl})",
                 'ip_address'  => $request->ip(),
             ]);
 
@@ -2027,11 +2097,12 @@ class AdminController extends Controller
             return response()->json([
                 'message'   => 'Design uploaded successfully',
                 'design_id' => $design->id,
-                'view_url'  => $design->web_view_link,
+                'image_url' => $imageUrl,
             ], 201);
+
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Drive upload error: ' . $e->getMessage(), [
+            Log::error('Local image upload error: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -2043,6 +2114,50 @@ class AdminController extends Controller
     }
 
 
+    public function designs(Request $request)
+    {
+        // 1️⃣ Log the view
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'design_view',
+            'description' => 'Admin viewed designs list',
+            'ip_address'  => $request->ip(),
+        ]);
 
-    public function designs() {}
+        // 2️⃣ Grab filter & pagination inputs
+        $perPage = $request->input('per_page', 10);
+        $search  = $request->input('search');
+        $status  = $request->input('status');
+
+        // 3️⃣ Base query
+        $query = Design::with(['product', 'workingGroup'])
+            ->whereNull('deleted_at');
+
+        // 4️⃣ Apply search
+        if ($search) {
+            $query->where('name', 'like', "%{$search}%");
+        }
+
+        // 5️⃣ Apply status filter
+        if (in_array($status, ['active', 'inactive'])) {
+            $query->where('status', $status);
+        }
+
+        // 6️⃣ Paginate with query string so filters persist
+        $designs = $query
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // 7️⃣ Return to Inertia
+        return Inertia::render('admin/designs', [
+            'userDetails' => Auth::user(),
+            'designs'     => $designs,
+            'filters'     => [
+                'search'   => $search,
+                'status'   => $status,
+                'per_page' => (int)$perPage,
+            ],
+        ]);
+    }
 }
