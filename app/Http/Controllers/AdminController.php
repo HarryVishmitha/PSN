@@ -10,6 +10,7 @@ use App\Models\Role;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -27,6 +28,13 @@ use App\Models\ProductImage;
 use App\Models\Design;
 use Google\Service\Drive\Permission as Google_Service_Drive_Permission;
 use Google\Service\Drive as GoogleServiceDrive;
+use Google\Client as GoogleClient;
+use Google\Service\Drive as GoogleDrive;
+use Google\Service\Drive\DriveFile;
+use Google\Service\Drive\Permission;
+use Google\Http\MediaFileUpload;
+use Tes\LaravelGoogleDriveStorage\GoogleDriveService;
+
 
 use function Illuminate\Log\log;
 use function Termwind\render;
@@ -1877,50 +1885,129 @@ class AdminController extends Controller
             'workingGroups'  => $workingGroups,
         ]);
     }
+    public function token()
+    {
+        $client_id = \Config('services.google.client_id');
+        $client_secret = \Config('services.google.client_secret');
+        $refresh_token = \Config('services.google.refresh_token');
+        $response = Http::post('https://oauth2.googleapis.com/token', [
+            'client_id'     => $client_id,
+            'client_secret' => $client_secret,
+            'refresh_token' => $refresh_token,
+            'grant_type'    => 'refresh_token',
+        ]);
+
+        $accessToken = json_decode((string)$response->getBody(), true)['access_token'];
+        return $accessToken;
+    }
     public function storeDesign(Request $request)
     {
-        // 1) Validate
+        // 1) Validate input
         $data = $request->validate([
             'working_group_id' => 'required|exists:working_groups,id',
             'product_id'       => 'required|exists:products,id',
             'width'            => 'required|numeric',
             'height'           => 'required|numeric',
-            'file'             => 'required|file|mimes:jpg,jpeg|max:102400',
+            'file'             => 'required|file|mimes:jpg,jpeg,png|max:102400',
         ]);
 
+        $accessToken = $this->token();
+        // 2) Prep file info
+        $file       = $request->file('file');
+        $baseName   = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $filename   = Str::slug($baseName) . '.' . $file->getClientOriginalExtension();
+        $mimeType   = $file->getClientMimeType();
+        $fileSize   = $file->getSize();
+        $rootFolder = config('services.google.root_folder');
+
         DB::beginTransaction();
-
         try {
-            // 2) Build a 6-char unique filename
-            $file     = $request->file('file');
-            $base     = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
-            $short    = substr(strtolower(uniqid()), -6);
-            $ext      = $file->getClientOriginalExtension();
-            $filename = "{$short}_{$base}.{$ext}";
+            //
+            // 3) INITIATE resumable upload session
+            //
+            $init = Http::withToken($accessToken)
+                ->withHeaders([
+                    'Content-Type'            => 'application/json; charset=UTF-8',
+                    'X-Upload-Content-Type'   => $mimeType,
+                    'X-Upload-Content-Length' => $fileSize,
+                ])
+                ->post(
+                    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+                    [
+                        'name'     => $filename,
+                        'mimeType' => $mimeType,
+                        'parents'  => [$rootFolder],
+                    ]
+                );
 
-            // 3) Upload via your google disk
-            $disk   = Storage::disk('google');
-            $fileId = $disk->putFileAs('designs', $file, $filename);
+            throw_if(
+                ! $init->successful(),
+                \Exception::class,
+                'Init session failed: ' . $init->body()
+            );
 
-            // 4) Make it publicly readable
-            $permission = new Google_Service_Drive_Permission([
-                'type' => 'anyone',
-                'role' => 'reader',
-            ]);
-            $driveService = new GoogleServiceDrive(app('google.client'));
-            $driveService->permissions->create($fileId, $permission);
+            $sessionUrl = $init->header('Location');
+            throw_if(
+                ! $sessionUrl,
+                \Exception::class,
+                'No resumable session URL returned.'
+            );
 
-            // 5) Build the view URL
-            $url = "https://drive.google.com/uc?export=view&id={$fileId}";
+            //
+            // 4) UPLOAD raw bytes
+            //
+            $upload = Http::withToken($accessToken)
+                ->withHeaders([
+                    'Content-Type'   => $mimeType,
+                    'Content-Length' => $fileSize,
+                ])
+                ->withBody(file_get_contents($file->getRealPath()), $mimeType)
+                ->put($sessionUrl);
 
-            // 6) Persist the Design
+            throw_if(
+                ! in_array($upload->status(), [200, 201]),
+                \Exception::class,
+                'Upload bytes failed: ' . $upload->body()
+            );
+
+            $driveFile = $upload->json();
+            $fileId    = data_get($driveFile, 'id');
+            throw_if(
+                ! $fileId,
+                \Exception::class,
+                'No file ID in upload response.'
+            );
+
+            //
+            // 5) SET “anyone with link can read”
+            //
+            $perm = Http::withToken($accessToken)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post(
+                    "https://www.googleapis.com/drive/v3/files/{$fileId}/permissions",
+                    [
+                        'role' => 'reader',
+                        'type' => 'anyone',
+                    ]
+                );
+
+            throw_if(
+                ! $perm->successful(),
+                \Exception::class,
+                'Permission set failed: ' . $perm->body()
+            );
+
+            // after you've built $viewLink from Drive…
+            $viewLink = data_get($driveFile, 'webViewLink')
+                ?? "https://drive.google.com/uc?export=view&id={$fileId}";
+
             $design = Design::create([
-                'name'             => $base,
+                'name'             => $baseName,
                 'description'      => '',
                 'width'            => $data['width'],
                 'height'           => $data['height'],
                 'product_id'       => $data['product_id'],
-                'image_url'        => $url,
+                'image_url'        => $viewLink,           // ← required
                 'access_type'      => 'working_group',
                 'working_group_id' => $data['working_group_id'],
                 'status'           => 'active',
@@ -1928,31 +2015,33 @@ class AdminController extends Controller
                 'updated_by'       => Auth::id(),
             ]);
 
-            DB::commit();
-
-            // 7) Log the action
             ActivityLog::create([
                 'user_id'     => Auth::id(),
                 'action_type' => 'design_upload',
-                'description' => "Uploaded design {$design->id} to Google Drive",
+                'description' => "Uploaded design {$design->id} (Drive ID: {$fileId})",
                 'ip_address'  => $request->ip(),
             ]);
 
-            // 8) Return success
+            DB::commit();
+
             return response()->json([
                 'message'   => 'Design uploaded successfully',
                 'design_id' => $design->id,
-                'image_url' => $url,
+                'view_url'  => $design->web_view_link,
             ], 201);
-
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error("Design upload failed: {$e->getMessage()}");
+            Log::error('Drive upload error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'message' => 'Upload failed, please try again.',
+                'error'   => substr($e->getMessage(), 0, 200),
             ], 500);
         }
     }
+
 
 
     public function designs() {}

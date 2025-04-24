@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6f3785667f2eaec52922d234048e8275",
+    "content-hash": "cfd62e3cbfc1d652b5edf6c6667b0b8f",
     "packages": [
         {
             "name": "brick/math",
@@ -6243,6 +6243,56 @@
                 }
             ],
             "time": "2025-01-17T11:39:41+00:00"
+        },
+        {
+            "name": "tes/laravel-google-drive-storage",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Thomas-Emad/laravel-google-drive-storage.git",
+                "reference": "6b22bb93e4f6524c1d5028b3a491cedb867ea932"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Thomas-Emad/laravel-google-drive-storage/zipball/6b22bb93e4f6524c1d5028b3a491cedb867ea932",
+                "reference": "6b22bb93e4f6524c1d5028b3a491cedb867ea932",
+                "shasum": ""
+            },
+            "require": {
+                "masbug/flysystem-google-drive-ext": "^2.2",
+                "php": "^8.2"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Tes\\LaravelGoogleDriveStorage\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Thomas Emad",
+                    "email": "thomas.emad.shawky@gmail.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A Laravel package that integrates Google Drive as a storage option, allowing seamless file uploads, folder creation, and file management directly from your Laravel application. ",
+            "homepage": "https://github.com/Thomas-Emad/laravel-google-drive-storage",
+            "keywords": [
+                "filesystem",
+                "google drive",
+                "laravel",
+                "php",
+                "storage"
+            ],
+            "support": {
+                "issues": "https://github.com/Thomas-Emad/laravel-google-drive-storage/issues",
+                "source": "https://github.com/Thomas-Emad/laravel-google-drive-storage/tree/v1.0.0"
+            },
+            "time": "2024-09-05T16:49:38+00:00"
         },
         {
             "name": "tightenco/ziggy",
