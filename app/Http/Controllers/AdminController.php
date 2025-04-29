@@ -44,6 +44,9 @@ use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
 use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
 // Import the interface so we can doc‐block against it
 use Pion\Laravel\ChunkUpload\Handler\HandlerInterface;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\Encoders\WebpEncoder;
+use Intervention\Image\Encoders\AutoEncoder;
 
 
 class AdminController extends Controller
@@ -2028,82 +2031,156 @@ class AdminController extends Controller
 
     public function storeDesign(Request $request)
     {
-        //
-        // 1) First validate all non-file fields
-        //
-        $data = $request->validate([
+        Log::debug('storeDesign called', ['all_input' => $request->all()]);
+
+        // A) Initialize Pion chunk receiver
+        $receiver = new FileReceiver('file', $request, HandlerFactory::classFromRequest($request));
+        Log::debug('Receiver initialized', [
+            'isUploaded' => $receiver->isUploaded(),
+            // 'handler'    => get_class($receiver->getHandler()),
+        ]);
+
+        if (! $receiver->isUploaded()) {
+            Log::warning('No chunk uploaded');
+            return response()->json(['message' => 'No file uploaded'], 400);
+        }
+
+        // B) Receive this chunk (or the full file if it’s the last one)
+        $save = $receiver->receive();
+        Log::debug('Chunk received', [
+            'isFinished' => $save->isFinished(),
+            'percentage' => $save->handler()->getPercentageDone(),
+        ]);
+
+        // C) If not yet the last chunk, return current progress
+        if (! $save->isFinished()) {
+            $pct = $save->handler()->getPercentageDone();
+            Log::info('Returning intermediate chunk progress', ['done' => $pct]);
+            return response()->json(['done' => $pct], 200);
+        }
+
+        // D) Full file is assembled—grab it
+        /** @var \Illuminate\Http\UploadedFile $file */
+        $file = $save->getFile();
+        Log::info('Assembled file ready', [
+            'original_name' => $file->getClientOriginalName(),
+            'size'          => $file->getSize(),
+            'mime'          => $file->getMimeType(),
+        ]);
+
+        // E) Validate your other inputs
+        $data = validator($request->all(), [
             'working_group_id' => 'required|exists:working_groups,id',
             'product_id'       => 'required|exists:products,id',
             'width'            => 'required|numeric',
             'height'           => 'required|numeric',
-            // note: we skip the 'file' here because chunk-handler manages it
-        ]);
+        ])->validate();
+        Log::debug('Input data validated', $data);
 
-        //
-        // 2) Handle the incoming chunked file
-        //
-        $receiver = new FileReceiver('file', $request, HandlerFactory::class);
-        if (! $receiver->isUploaded()) {
-            return response()->json(['error' => 'Upload failed.'], 400);
-        }
-        $save = $receiver->receive();
-
-        if (! $save->isFinished()) {
-            /** @var HandlerInterface $handler */
-            $handler = $save->handler();
-
-            return response()->json([
-                'done'    => $handler->getPercentageDone(),
-                'total'   => $handler->getTotalChunks(),
-                'current' => $handler->getCurrentChunkNumber(),
-            ]);
-        }
-
-        // all chunks have been merged
-        $file = $save->getFile(); // instance of UploadedFile or SplFileInfo
-
-        //
-        // 3) Generate a unique 8-char ID (2 letters + 6 digits)
-        //
+        // F) Generate a unique 8-char ID
         do {
             $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
         } while (Design::where('name', $uniqueId)->exists());
+        Log::info('Generated uniqueId', ['uniqueId' => $uniqueId]);
 
-        //
-        // 4) Prep paths & names
-        //
-        $extension = method_exists($file, 'getClientOriginalExtension')
-                   ? $file->getClientOriginalExtension()
-                   : pathinfo($file->getFilename(), PATHINFO_EXTENSION);
-
+        // G) Prep destination paths
+        $extension = $file->getClientOriginalExtension();
         $filename  = "{$uniqueId}.{$extension}";
         $publicDir = public_path('images/designs');
         if (! is_dir($publicDir)) {
             mkdir($publicDir, 0755, true);
+            Log::debug('Created publicDir', ['path' => $publicDir]);
         }
 
-        //
-        // 5) Manipulate & save with Intervention
-        //
-        $image = Image::read($file->getRealPath());
+        // H) Move the assembled file into public/images/designs
+        //    (Pion will auto-remove the temp chunk file for you)
+        try {
+            $movedFile = $file->move($publicDir, $filename);
+            Log::info('File moved', [
+                'destination' => $movedFile->getPathname(),
+                'size'        => $movedFile->getSize(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to move assembled file', ['exception' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to move file'], 500);
+        }
 
-        // watermark if exists
+        // I) Image manipulation with debug
+        // 1) Instantiate GD driver & manager
+        $driver  = new GdDriver();
+        $manager = new ImageManager($driver);
+        Log::debug('ImageManager initialized', ['driver' => get_class($driver)]);
+
+        try {
+            $image = Image::read($movedFile->getPathname());
+            Log::info('Image loaded', [
+                'width'  => $image->width(),
+                'height' => $image->height(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Image read() failed', ['exception' => $e->getMessage()]);
+            return response()->json(['message' => 'Image processing error', 'error' => $e->getMessage()], 500);
+        }
+        Log::info('hi');
+        // Get original dimensions
+        $originalWidth  = $image->width();
+        $originalHeight = $image->height();
+
+        // Define maximum dimensions
+        $maxWidth  = 2048;
+        $maxHeight = 2048;
+
+        // Determine if resizing is needed
+        if ($originalWidth > $maxWidth || $originalHeight > $maxHeight) {
+            $ratio = $originalWidth / $originalHeight;
+            if ($maxWidth / $maxHeight > $ratio) {
+                // Height is the limiting factor
+                $newWidth = $maxHeight * $ratio;
+                $newHeight = $maxHeight;
+            } else {
+                // Width is the limiting factor
+                $newWidth = $maxWidth;
+                $newHeight = $maxWidth / $ratio;
+            }
+            $image->resize((int)$newWidth, (int)$newHeight);
+        } else {
+            // No resizing needed; keep original dimensions
+            // Optionally, you can still call resize() if you wish to enforce integer values
+            $image->resize($originalWidth, $originalHeight);
+        }
+        Log::debug('Image resized to', ['w'=>$image->width(),'h'=>$image->height()]);
+        
+        // Optional resize
+        // $image->resize(1024, 1024, fn($c) => $c->aspectRatio()->upsize());
+
+        // Watermark
         $watermark = public_path('images/watermark.png');
         if (file_exists($watermark)) {
-            $image->place($watermark, 'center', 10, 10);
+            $image->place($watermark, 'center', 25, 25);
+            Log::debug('Watermark applied', ['watermark' => $watermark]);
+        } else {
+            Log::warning('Watermark file not found', ['path' => $watermark]);
         }
 
-        // save at 35% quality to shrink size
-        $image->save("{$publicDir}/{$filename}", 35);
-
-        // remove the temporary merged file
-        @unlink($file->getRealPath());
+        // Encode to JPEG at 50% quality and save
+        Log::debug('Starting image re-encoding process', [
+            'filename'  => $filename,
+            'publicDir' => $publicDir,
+        ]);
+        $jpegData  = $image->toJpeg(50);
+        $finalPath = "{$publicDir}/{$filename}";
+        file_put_contents($finalPath, $jpegData);
+        Log::info('Image re-encoded & saved', [
+            'path'  => $finalPath,
+            'bytes' => filesize($finalPath),
+        ]);
+        Log::debug('Re-encoded image details', [
+            'dimensions' => getimagesize($finalPath),
+        ]);
 
         $imageUrl = "/images/designs/{$filename}";
 
-        //
-        // 6) Persist to DB + activity log
-        //
+        // J) Persist to database + activity log
         DB::beginTransaction();
         try {
             $design = Design::create([
@@ -2119,28 +2196,24 @@ class AdminController extends Controller
                 'created_by'       => Auth::id(),
                 'updated_by'       => Auth::id(),
             ]);
-
             ActivityLog::create([
                 'user_id'     => Auth::id(),
                 'action_type' => 'design_upload',
                 'description' => "Uploaded design {$design->id} (path: {$imageUrl})",
                 'ip_address'  => $request->ip(),
             ]);
-
             DB::commit();
+
+            Log::info('Design record created', ['design_id' => $design->id]);
 
             return response()->json([
                 'message'   => 'Design uploaded successfully',
                 'design_id' => $design->id,
                 'image_url' => $imageUrl,
             ], 201);
-
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Design upload error: '.$e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
-
+            Log::error('Database error on design create', ['exception' => $e->getMessage()]);
             return response()->json([
                 'message' => 'Upload failed, please try again.',
                 'error'   => substr($e->getMessage(), 0, 200),
