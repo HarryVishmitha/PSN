@@ -2149,7 +2149,7 @@ class AdminController extends Controller
             $image->resize($originalWidth, $originalHeight);
         }
         Log::debug('Image resized to', ['w'=>$image->width(),'h'=>$image->height()]);
-        
+
         // Optional resize
         // $image->resize(1024, 1024, fn($c) => $c->aspectRatio()->upsize());
 
@@ -2266,6 +2266,53 @@ class AdminController extends Controller
                 'status'   => $status,
                 'per_page' => (int)$perPage,
             ],
+            'workingGroups' => WorkingGroup::where('status', 'active')->with('products')->get(),
         ]);
+    }
+
+    public function deleteDesign(Design $design)
+    {
+        try {
+            DB::transaction(function () use ($design) {
+
+
+                // 2️⃣ Remove image file if present
+                if ($design->image_url && file_exists(public_path($design->image_url))) {
+                    if(unlink(public_path($design->image_url)))
+                    {
+                        Log::info('Design image deleted', ['path' => public_path($design->image_url)]);
+                    } else {
+                        Log::error('Failed to delete design image', ['path' => public_path($design->image_url)]);
+                        return redirect()
+                            ->back()
+                            ->with('error', 'Failed to delete design image. Please try again.');
+                    }
+                }
+
+                // 1️⃣ Delete any restricted‐access entries
+                $design->designAccesses()->delete();
+
+                // 3️⃣ Soft‐delete the design record
+                $design->delete();
+
+                // 4️⃣ Log the action
+                ActivityLog::create([
+                    'user_id'     => Auth::id(),
+                    'action_type' => 'design_delete',
+                    'description' => "Admin deleted design ID {$design->id}",
+                    'ip_address'  => request()->ip(),
+                ]);
+            });
+        } catch (\Exception $e) {
+            // Something went wrong—log and inform the user
+            Log::error("Failed to delete design [{$design->id}]: " . $e->getMessage());
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to delete design. Please try again.');
+        }
+
+        return redirect()
+            ->back()
+            ->with('success', 'Design deleted successfully.');
     }
 }
