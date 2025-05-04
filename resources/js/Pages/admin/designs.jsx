@@ -10,10 +10,13 @@ import 'react-quill-new/dist/quill.snow.css';
 
 export default function Designs({ userDetails, designs, filters, workingGroups }) {
     const { flash } = usePage().props
+
     const [selected, setSelected] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [editProducts, setEditProducts] = useState([]);
     const [alert, setAlert] = useState(null)    // { type, message }
+    const [editLoading, setEditLoading] = useState(false)
+    const [editErrors, setEditErrors] = useState({})
 
     // const [errors, setErrors] = useState({})
 
@@ -24,6 +27,7 @@ export default function Designs({ userDetails, designs, filters, workingGroups }
         width: '',
         height: '',
         status: '',
+        access_type: '',
         product_id: '',
         working_group_id: ''
     });
@@ -37,6 +41,7 @@ export default function Designs({ userDetails, designs, filters, workingGroups }
             width: design.width,
             height: design.height,
             status: design.status,
+            access_type: design.access_type,
             product_id: design.product_id,
             working_group_id: design.working_group_id
         });
@@ -103,15 +108,48 @@ export default function Designs({ userDetails, designs, filters, workingGroups }
     };
 
     const submitEdit = (e) => {
-        e.preventDefault();
-        updateDesign(route('admin.updateDesign', selected.id), {
-            onSuccess: () => {
-                resetEdit();
-                setSelected(null);
-                // close modal via JS if needed
-            }
-        });
-    };
+        e.preventDefault()
+
+        setEditLoading(true)
+        setEditErrors({})
+        setAlert(null)
+
+        // call the `put` helper directly with URL + callbacks
+        updateDesign(route('admin.editDesign', selected.id), {
+            preserveState: true,
+
+            onSuccess: (page) => {
+                // 1) close the modal
+                document
+                    .querySelector('#editDesignModal .btn-close')
+                    .click()
+
+                // 2) grab the exact flash (success or error) the backend sent
+                setAlert({
+                    type: 'success',
+                    message: 'Design details updated successfully!',
+                })
+
+                // 3) reset the form state
+                resetEdit()
+            },
+
+            onError: (errors) => {
+                // Inertia gives you back the validation errors object
+                setEditErrors(errors)
+                setAlert({
+                    type: 'danger',
+                    message: 'Please correct the errors below.',
+                })
+            },
+
+            onFinish: () => {
+                setEditLoading(false)
+            },
+        })
+    }
+
+
 
     return (
         <>
@@ -353,7 +391,20 @@ export default function Designs({ userDetails, designs, filters, workingGroups }
                                                     <input type="number" name="height" className="form-control" value={editData.height} onChange={e => setEditData('height', e.target.value)} />
                                                 </div>
                                             </div>
-
+                                            <div className="mb-3">
+                                                <label className="form-label">Access Type</label>
+                                                <select
+                                                    name="access_type"
+                                                    className="form-select"
+                                                    value={editData.access_type}
+                                                    onChange={e => setEditData('access_type', e.target.value)}
+                                                >
+                                                    <option value="">Select access</option>
+                                                    <option value="public">Public</option>
+                                                    <option value="working_group">Working Group</option>
+                                                    <option value="restricted">Restricted</option>
+                                                </select>
+                                            </div>
                                             <div className="mb-3">
                                                 <label className="form-label">Working Group</label>
                                                 <select
@@ -394,7 +445,13 @@ export default function Designs({ userDetails, designs, filters, workingGroups }
                                             </div>
                                             <div className="modal-footer d-flex justify-content-end">
                                                 <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                <button type="submit" className="btn btn-primary">Update Design</button>
+                                                <button type="submit" className="btn btn-primary" disabled={editLoading}>
+                                                    {editLoading && (
+                                                        <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                    )}
+                                                    Update Design
+                                                </button>
+
                                             </div>
                                         </form>
                                     </div>

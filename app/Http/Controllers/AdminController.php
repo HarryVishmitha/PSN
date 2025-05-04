@@ -2315,4 +2315,71 @@ class AdminController extends Controller
             ->back()
             ->with('success', 'Design deleted successfully.');
     }
+
+    public function editDesign(Request $request, Design $design)
+    {
+        $validated = $request->validate([
+            'name'             => 'required|string|max:255',
+            'description'      => 'nullable|string',
+            'width'            => 'required|numeric|min:0',
+            'height'           => 'required|numeric|min:0',
+            'status'           => 'required|in:active,inactive',
+            'access_type'      => 'required|in:public,working_group,restricted',
+            'working_group_id' => 'required|exists:working_groups,id',
+            'product_id'       => 'required|exists:products,id',
+            'image'            => 'nullable|image|mimes:jpg,jpeg,png|max:5120',
+            'access_users'     => 'sometimes|array',
+            'access_users.*'   => 'integer|exists:users,id',
+        ]);
+
+        try {
+            // 2️⃣ Wrap DB + storage operations in a transaction
+            DB::transaction(function () use ($validated, $request, $design) {
+                // Handle optional image replacement
+                if ($request->hasFile('image')) {
+                    // delete old file (ignore if missing)
+                    if ($design->image_url && Storage::exists($design->image_url)) {
+                        Storage::delete($design->image_url);
+                    }
+                    $validated['image_url'] = $request->file('image')
+                                                    ->store('designs', 'public');
+                }
+
+                // Update the design record
+                $design->update(array_merge(
+                    $validated,
+                    ['updated_by' => Auth::id()]
+                ));
+
+                // Sync restricted‐access users
+                if ($validated['access_type'] === 'restricted') {
+                    $design->designAccesses()->delete();
+                    foreach ($validated['access_users'] ?? [] as $userId) {
+                        $design->designAccesses()->create(['user_id' => $userId]);
+                    }
+                } else {
+                    $design->designAccesses()->delete();
+                }
+
+                // Log the update
+                ActivityLog::create([
+                    'user_id'     => Auth::id(),
+                    'action_type' => 'design_update',
+                    'description' => "Admin updated design ID {$design->id}",
+                    'ip_address'  => $request->ip(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            // 3️⃣ Catch any exception, roll back, log, and redirect with an error flash
+            Log::error("Failed to update design [{$design->id}]: {$e->getMessage()}");
+            return redirect()
+                ->back()
+                ->with('error', 'Unexpected error updating design. Please try again.');
+        }
+
+        // 4️⃣ Success—redirect with a success flash
+        return redirect()
+            ->back()
+            ->with('success', 'Design updated successfully.');
+    }
 }
