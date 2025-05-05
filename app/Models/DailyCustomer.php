@@ -17,7 +17,7 @@ class DailyCustomer extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'full_name', 'phone_number', 'email', 'address', 'notes', 'visit_date',
+        'full_name', 'phone_number', 'email', 'address', 'notes', 'visit_date', 'working_group_id',
     ];
 
     public function addresses(): MorphMany
@@ -38,5 +38,9 @@ class DailyCustomer extends Model
     public function invoices(): MorphMany
     {
         return $this->morphMany(Invoice::class, 'customer');
+    }
+    public function workingGroup()
+    {
+        return $this->belongsTo(WorkingGroup::class);
     }
 }

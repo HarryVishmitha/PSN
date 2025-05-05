@@ -338,7 +338,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     <li>
                                         <Link
                                             href={route('admin.addDesign')}
-                                            className={url === '/admin/add-new-product' ? 'active-page' : ''}
+                                            className={url === '/admin/add-design' ? 'active-page' : ''}
                                         >
                                             <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
                                             Add new design
@@ -347,13 +347,26 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     <li>
                                         <Link
                                             href={route('admin.designs')}
-                                            className={url === '/admin/products' ? 'active-page' : ''}
+                                            className={url === '/admin/designs' ? 'active-page' : ''}
                                         >
                                             <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
                                             All designs
                                         </Link>
                                     </li>
                                 </ul>
+                            </li>
+                            
+                            <li>
+                                <Link
+                                    href={route('admin.dailyCustomers')}
+                                    className={url === '/admin/daily-customers' ? 'active-page' : ''}
+                                >
+                                    <Icon
+                                        icon='fa-solid:walking'
+                                        className='menu-icon'
+                                    />
+                                    <span>Daily Customers</span>
+                                </Link>
                             </li>
                             <li>
                                 <Link

@@ -2148,7 +2148,7 @@ class AdminController extends Controller
             // Optionally, you can still call resize() if you wish to enforce integer values
             $image->resize($originalWidth, $originalHeight);
         }
-        Log::debug('Image resized to', ['w'=>$image->width(),'h'=>$image->height()]);
+        Log::debug('Image resized to', ['w' => $image->width(), 'h' => $image->height()]);
 
         // Optional resize
         // $image->resize(1024, 1024, fn($c) => $c->aspectRatio()->upsize());
@@ -2156,7 +2156,7 @@ class AdminController extends Controller
         // Watermark
         $watermark = public_path('images/watermark.png');
         if (file_exists($watermark)) {
-            $image->place($watermark, 'center', 25, 25);
+            $image->place($watermark, 'center', 50, 50, 50);
             Log::debug('Watermark applied', ['watermark' => $watermark]);
         } else {
             Log::warning('Watermark file not found', ['path' => $watermark]);
@@ -2278,8 +2278,7 @@ class AdminController extends Controller
 
                 // 2️⃣ Remove image file if present
                 if ($design->image_url && file_exists(public_path($design->image_url))) {
-                    if(unlink(public_path($design->image_url)))
-                    {
+                    if (unlink(public_path($design->image_url))) {
                         Log::info('Design image deleted', ['path' => public_path($design->image_url)]);
                     } else {
                         Log::error('Failed to delete design image', ['path' => public_path($design->image_url)]);
@@ -2342,7 +2341,7 @@ class AdminController extends Controller
                         Storage::delete($design->image_url);
                     }
                     $validated['image_url'] = $request->file('image')
-                                                    ->store('designs', 'public');
+                        ->store('designs', 'public');
                 }
 
                 // Update the design record
@@ -2382,4 +2381,110 @@ class AdminController extends Controller
             ->back()
             ->with('success', 'Design updated successfully.');
     }
+
+    public function dailyCustomersView(Request $request)
+    {
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'daily_customer_view',
+            'description' => 'Admin viewed daily customers list',
+            'ip_address'  => $request->ip(),
+        ]);
+        $query = DailyCustomer::query();
+
+        if ($request->boolean('trashed')) {
+            $query->withTrashed();
+        }
+
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('full_name',   'like', "%{$search}%")
+                    ->orWhere('email',       'like', "%{$search}%")
+                    ->orWhere('phone_number', 'like', "%{$search}%");
+            });
+        }
+
+        // 5. Working-group filter
+        if ($wg = $request->input('working_group_id')) {
+            $query->where('working_group_id', $wg);
+        }
+
+        $customers = $query
+            ->with('workingGroup')
+            ->orderBy('visit_date', 'asc')
+            ->paginate(10)
+            ->withQueryString();
+
+        return Inertia::render('admin/dailyCustomers', [
+            'userDetails' => Auth::user(),
+            'customers' => $customers,
+            'filters'   => $request->only(['search', 'trashed']),
+            'workingGroups' => WorkingGroup::where('status', 'active')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function addDailyCustomer(Request $request)
+    {
+        // 2) Pull validated data (includes working_group_id now)
+        $data = $request->validate([
+            'full_name'        => 'required|string|max:255',
+            'email'            => 'nullable|email|max:255',
+            'phone_number'     => 'nullable|string|max:20',
+            'visit_date'       => 'required|date',
+            'working_group_id' => 'nullable|exists:working_groups,id',
+            'notes'            => 'nullable|string|max:1000',
+            'address'          => 'nullable|string|max:500',
+        ]);
+
+        try {
+            // 3) Create the record
+            $customer = DailyCustomer::create($data);
+
+            // 4) Log the activity
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'daily_customer_add',
+                'description' => 'Admin added walk-in customer ID ' . $customer->id,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            // 5) Eager-load relationship
+            $customer->load('workingGroup');
+
+            // // 6) Return JSON for Inertia/modal, or redirect for classic
+            // if ($request->wantsJson() || $request->ajax()) {
+            //     return response()->json([
+            //         'success'  => true,
+            //         'customer' => $customer,
+            //         'message'  => 'Customer added successfully.',
+            //     ], 201);
+            // }
+
+            return redirect()->back()
+                ->with('success', 'Walk-in customer added.');
+        } catch (\Throwable $e) {
+            // 7) Log the error for debugging
+            Log::error('Error adding walk-in customer', [
+                'error'   => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
+                'payload' => $data,
+            ]);
+
+            // 8) Return JSON error or redirect back with error flash
+            // if ($request->wantsJson() || $request->ajax()) {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Failed to add walk-in customer.',
+            //     ], 500);
+            // }
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to add walk-in customer.');
+        }
+    }
+
+    public function editDailyCustomer() {}
+
+    public function deleteDailyCustomer() {}
 }
