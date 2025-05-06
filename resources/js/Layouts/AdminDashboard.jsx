@@ -331,7 +331,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                             {/* Designs */}
                             <li className='dropdown'>
                                 <Link href={route('admin.designs')}>
-                                    <Icon icon='mdi:paint-outline' className='menu-icon' alt='designs'/>
+                                    <Icon icon='mdi:paint-outline' className='menu-icon' alt='designs' />
                                     <span>Designs</span>
                                 </Link>
                                 <ul className='sidebar-submenu'>
@@ -355,7 +355,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     </li>
                                 </ul>
                             </li>
-                            
+
                             <li>
                                 <Link
                                     href={route('admin.dailyCustomers')}
@@ -367,6 +367,32 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     />
                                     <span>Daily Customers</span>
                                 </Link>
+                            </li>
+                            <li className='dropdown'>
+                                <Link href={route('admin.estimates')}>
+                                    <Icon icon='ph:invoice' className='menu-icon' alt='designs' />
+                                    <span>Estimates</span>
+                                </Link>
+                                <ul className='sidebar-submenu'>
+                                    <li>
+                                        <Link
+                                            href={route('admin.designs')}
+                                            className={url === '/admin/designs' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
+                                            Add New Estimate
+                                        </Link>
+                                    </li>
+                                    <li>
+                                        <Link
+                                            href={route('admin.estimates')}
+                                            className={url === '/admin/estimates' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
+                                            All Estimates
+                                        </Link>
+                                    </li>
+                                </ul>
                             </li>
                             <li>
                                 <Link

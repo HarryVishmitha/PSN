@@ -2409,10 +2409,13 @@ class AdminController extends Controller
             $query->where('working_group_id', $wg);
         }
 
+        $perPage = $request->input('per_page', 10);
+
+
         $customers = $query
             ->with('workingGroup')
-            ->orderBy('visit_date', 'asc')
-            ->paginate(10)
+            ->orderBy('visit_date', 'desc')
+            ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('admin/dailyCustomers', [
@@ -2484,7 +2487,113 @@ class AdminController extends Controller
         }
     }
 
-    public function editDailyCustomer() {}
+    public function editDailyCustomer(Request $request, $id)
+    {
+        $customer = DailyCustomer::findOrFail($id);
+        // Validate the incoming request data
+        $validated = $request->validate([
+            'full_name' => 'required|string|max:255',
+            'phone_number' => 'required|string|max:15',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'visit_date' => 'required|date',
+            'working_group_id' => 'nullable|exists:working_groups,id',
+        ]);
 
-    public function deleteDailyCustomer() {}
+        // Update the customer with the validated data
+        try {
+            $customer->update($validated);
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'daily_customer_update',
+                'description' => 'Admin updated walk-in Customer. customer ID ' . $customer->id,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            // Return the updated customer data
+            return redirect()->back()
+                ->with('success', 'Customer updated successfully.');
+            // return response()->json([
+            //     'status' => 'success',
+            //     'message' => 'Customer details updated successfully!',
+            //     'customer' => $customer,
+            // ], 200);
+        } catch (\Exception $e) {
+            // If something goes wrong, return an error response
+            Log::error('Error updating customer', [
+                'error' => $e->getMessage(),
+                'customer_id' => $customer->id,
+            ]);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to update customer. Please try again.');
+            // return response()->json([
+            //     'status' => 'error',
+            //     'message' => 'There was an issue updating the customer.',
+            //     'error' => $e->getMessage(),
+            // ], 500);
+        }
+    }
+
+    public function deleteDailyCustomer(Request $request, DailyCustomer $customer)
+    {
+
+        try {
+            $customer->delete();
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'daily_customer_delete',
+                'description' => 'Admin deleted walk-in Customer ID ' . $customer->id,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            return redirect()->back()
+                ->with('success', 'Customer deleted successfully.');
+        } catch (\Exception $e) {
+            Log::error('Error deleting customer', [
+                'error'       => $e->getMessage(),
+                'customer_id' => $customer->id,
+            ]);
+
+            return redirect()->back()
+                ->with('error', 'Failed to delete customer. Please try again.');
+        }
+    }
+
+    public function estimateView(Request $request)
+    {
+        // $this->authorize('viewAny', \App\Models\Estimate::class);
+
+        $query = \App\Models\Estimate::with(['customer', 'items.product', 'workingGroup']);
+        if ($status = $request->input('status')) {
+            $query->where('status', $status);
+        }
+        if ($wg = $request->input('working_group_id')) {
+            $query->where('working_group_id', $wg);
+        }
+        if ($search = $request->input('search')) {
+            $query->where('reference', 'like', "%{$search}%");
+        }
+
+        $estimates = $query
+            ->orderBy('created_at', 'desc')
+            ->paginate($request->input('per_page', 15))
+            ->withQueryString();
+
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'estimate_view',
+            'description' => 'Admin viewed estimates list',
+            'ip_address'  => $request->ip(),
+        ]);
+
+        return Inertia::render('admin/estimates/view', [
+            'userDetails' => Auth::user(),
+            'estimates'     => $estimates,
+            'filters'       => $request->only(['status', 'working_group_id', 'search', 'per_page']),
+            'workingGroups' => WorkingGroup::where('status', 'active')->orderBy('name')->get(),
+        ]);
+    }
 }

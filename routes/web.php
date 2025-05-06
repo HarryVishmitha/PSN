@@ -79,8 +79,9 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::put('/api/design/{design}/edit', [AdminController::class, 'editDesign'])->name('editDesign');
     Route::get('/daily-customers', [AdminController::class, 'dailyCustomersView'])->name('dailyCustomers');
     Route::post('/api/add-daily-customer', [AdminController::class, 'addDailyCustomer'])->name('addDailyCustomer');
-    Route::patch('/api/daily-customers/{id}/edit', [AdminController::class, 'editDailyCustomer'])->name('editDailyCustomer');
-    Route::delete('/api/daily-customers/{id}', [AdminController::class, 'deleteDailyCustomer'])->name('deleteDailyCustomer');
+    Route::patch('/api/daily-customers/{customer}/edit', [AdminController::class, 'editDailyCustomer'])->name('editDailyCustomer');
+    Route::delete('/api/daily-customers/{customer}', [AdminController::class, 'deleteDailyCustomer'])->name('deleteDailyCustomer');
+    Route::get('/estimates', [AdminController::class, 'estimateView'])->name('estimates');
 
     // Add more admin routes here
 });

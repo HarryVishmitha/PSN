@@ -18,6 +18,8 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
     const [search, setSearch] = useState(filters.search || '');
     const [perPage, setPerPage] = useState(filters.per_page || 10); // Default to 10
     const [status, setStatus] = useState(filters.status || '');
+    const [loading, setLoading] = useState(false);
+    const [viewCustomer, setViewCustomer] = useState(null);
 
     const applyFilters = () => {
         router.get(
@@ -70,6 +72,7 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
     // Submit the form
     const submitAdd = e => {
         e.preventDefault();
+        setLoading(true);
 
         router.post(route('admin.addDailyCustomer'), addForm, {
             preserveState: true,
@@ -98,8 +101,123 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                     message: 'Please correct the errors below.',
                 });
             },
+            onFinish: () => {
+                setLoading(false);
+            },
+
         });
     };
+
+    const openViewCustomerModal = (customer) => setViewCustomer(customer);
+
+    const [editForm, setEditForm] = useState({
+        full_name: '',
+        phone_number: '',
+        email: '',
+        address: '',
+        notes: '',
+        visit_date: '',
+        working_group_id: '',
+    });
+
+    // console.log('editForm', editForm);
+
+    const [editErrors, setEditErrors] = useState({});
+    const [editloading, seteditLoading] = useState(false); // Loader state
+
+    // Function to open the Edit modal and populate the form with the selected customer's data
+    const openEditModal = (customer) => {
+        setEditForm({
+            id: customer.id,                // ← make sure id is set
+            full_name: customer.full_name,
+            phone_number: customer.phone_number,
+            email: customer.email,
+            address: customer.address,
+            notes: customer.notes,
+            visit_date: new Date(customer.visit_date).toISOString().split('T')[0],
+            working_group_id: customer.working_group_id || '',
+        });
+    };
+    // Handle input changes for the Edit form
+    const handleEditChange = (e) => {
+        setEditForm({ ...editForm, [e.target.name]: e.target.value });
+    };
+
+    // Submit the edit form
+    const submitEdit = e => {
+        e.preventDefault();
+        seteditLoading(true);
+
+        // Build the URL: /api/daily-customers/{id}/edit
+        const url = route('admin.editDailyCustomer', { id: editForm.id });
+
+        router.patch(url, editForm, {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                // close modal, show alert, hide loader
+                document.querySelector('#editCustomerModal .btn-close').click();
+                setAlert({ type: 'success', message: 'Customer updated!' });
+                seteditLoading(false);
+            },
+            onError: errors => {
+                setEditErrors(errors);
+                setAlert({ type: 'danger', message: 'Fix the errors below.' });
+                seteditLoading(false);
+            },
+        });
+    };
+
+    const handlePerPageChange = e => {
+        const newPerPage = e.target.value;
+        setPerPage(newPerPage);
+
+        // trigger your filter with the fresh value
+        router.get(
+            route('admin.dailyCustomers'),
+            {
+                search,
+                per_page: newPerPage || undefined,
+            },
+            { preserveState: true, replace: true }
+        );
+    };
+
+
+    // inside DailyCustomers component:
+
+    const [deleteCustomerId, setDeleteCustomerId] = useState(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+
+    const openDeleteModal = (id) => {
+        setDeleteCustomerId(id);
+    };
+
+    // invoked when user confirms deletion
+    const confirmDelete = () => {
+        setDeleteLoading(true);
+        setAlert(null);
+
+        router.delete(
+            route('admin.deleteDailyCustomer', { customer: deleteCustomerId }),
+            {
+                preserveState: true,
+                preserveScroll: true,
+                onSuccess: () => {
+                    setAlert({ type: 'success', message: 'Customer deleted.' });
+                    // optionally refetch list or remove from local state
+                    document.querySelector('#deleteCustomerModal .btn-close').click();
+                    setDeleteLoading(false);
+                },
+                onError: () => {
+                    setAlert({ type: 'danger', message: 'Delete failed.' });
+                    document.querySelector('#deleteCustomerModal .btn-close').click();
+                    setDeleteLoading(false);
+                },
+            }
+        );
+    };
+
 
 
     return (
@@ -130,7 +248,7 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                             <select
                                 className="form-select form-select-sm w-auto ps-12 py-6 radius-12 h-40-px"
                                 value={perPage}
-                                onChange={e => { setPerPage(e.target.value); applyFilters(); }}
+                                onChange={handlePerPageChange}
                             >
                                 <option value="" disabled>Select Number</option>
                                 {[10, 20, 25, 50, 75, 100].map(n => (
@@ -154,7 +272,7 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                                 </button>
                             </form>
                             {/* — status filter — */}
-                            <select
+                            {/* <select
                                 className="form-select form-select-sm w-auto ps-12 py-6 radius-12 h-40-px"
                                 value={status}
                                 onChange={e => { setStatus(e.target.value); applyFilters(); }}
@@ -162,7 +280,7 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                                 <option value="" disabled>Select Status</option>
                                 <option value="Active">Active</option>
                                 <option value="Inactive">Inactive</option>
-                            </select>
+                            </select> */}
                         </div>
                         <button
                             className="btn btn-primary text-sm btn-sm px-12 py-12 radius-8 d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addCustomerModal"
@@ -209,28 +327,33 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                                                 <td>{cust.working_group ? cust.working_group.name : '—'}</td>
                                                 <td className="text-center">
                                                     <div className="d-flex justify-content-center gap-2">
-                                                        <Link
-                                                            href='#'
+                                                        <button
                                                             className="bg-info-focus text-info-600 w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#viewCustomerModal"
+                                                            onClick={() => openViewCustomerModal(cust)}
                                                         >
                                                             <Icon icon="majesticons:eye-line" className="icon text-xl" />
-                                                        </Link>
-                                                        <Link
-                                                            href='#'
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => openEditModal(cust)}
                                                             className="bg-success-focus text-success-600 w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#editCustomerModal"
                                                         >
                                                             <Icon icon="lucide:edit" className="menu-icon" />
-                                                        </Link>
+                                                        </button>
+
                                                         <button
-                                                            onClick={() => {
-                                                                if (confirm('Are you sure?')) {
-                                                                    router.delete(route('admin.daily-customers.destroy', cust.id));
-                                                                }
-                                                            }}
                                                             className="bg-danger-focus text-danger-600 w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#deleteCustomerModal"
+                                                            onClick={() => openDeleteModal(cust.id)}
                                                         >
                                                             <Icon icon="fluent:delete-24-regular" className="menu-icon" />
                                                         </button>
+
                                                     </div>
                                                 </td>
                                             </tr>
@@ -410,18 +533,244 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                                 </div>
 
                                 <div className="modal-footer d-flex justify-content-end">
-                                    <button
-                                        type="button"
-                                        className="btn btn-secondary"
-                                        data-bs-dismiss="modal"
-                                    >
-                                        Close
-                                    </button>
-                                    <button type="submit" className="btn btn-primary">
-                                        Save Customer
-                                    </button>
+                                    {loading ? (
+                                        <div className="spinner-border text-primary" role="status">
+                                            <span className="visually-hidden">Loading...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary"
+                                                data-bs-dismiss="modal"
+                                            >
+                                                Close
+                                            </button>
+                                            <button type="submit" className="btn btn-primary">
+                                                Save Customer
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    className="modal fade"
+                    id="viewCustomerModal"
+                    tabIndex={-1}
+                    aria-labelledby="viewCustomerModallabel"
+                    aria-hidden="true"
+                >
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header py-16 px-24 border-0">
+                                <h5
+                                    className="modal-title tw-font-semibold tw-text-gray-500"
+                                    id="viewCustomerModallabel"
+                                >
+                                    View Customer
+                                </h5>
+                                <button
+                                    type="button"
+                                    className="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Close"
+                                />
+                            </div>
+
+                            <div className="modal-body p-24">
+                                {viewCustomer && (
+                                    <>
+                                        <h6>Full Name: {viewCustomer.full_name}</h6>
+                                        <p>Email: {viewCustomer.email}</p>
+                                        <p>Phone: {viewCustomer.phone_number}</p>
+                                        <p>Address: {viewCustomer.address}</p>
+                                        <p>Notes: {viewCustomer.notes}</p>
+                                        <p>Visit Date: {new Date(viewCustomer.visit_date).toLocaleDateString()}</p>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Edit Customer Modal */}
+                <div className="modal fade" id="editCustomerModal" tabIndex={-1} aria-labelledby="editCustomerModallabel" aria-hidden="true">
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header py-16 px-24 border-0">
+                                <h5 className="modal-title" id="editCustomerModallabel">Edit Customer</h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+                            </div>
+
+                            {/* Edit form */}
+                            <form onSubmit={submitEdit}>
+                                <div className="modal-body p-24">
+                                    {Object.keys(editErrors).length > 0 && (
+                                        <div className="alert alert-danger mb-4">
+                                            <ul className="mb-0">
+                                                {Object.values(editErrors).map((err, i) => (
+                                                    <li key={i}>{err}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Full Name */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Full Name</label>
+                                        <input
+                                            name="full_name"
+                                            type="text"
+                                            className="form-control"
+                                            value={editForm.full_name}
+                                            onChange={handleEditChange}
+                                        />
+                                    </div>
+
+                                    {/* Phone Number */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Phone Number</label>
+                                        <input
+                                            name="phone_number"
+                                            type="text"
+                                            className="form-control"
+                                            value={editForm.phone_number}
+                                            onChange={handleEditChange}
+                                        />
+                                    </div>
+
+                                    {/* Email */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Email (optional)</label>
+                                        <input
+                                            name="email"
+                                            type="email"
+                                            className="form-control"
+                                            value={editForm.email}
+                                            onChange={handleEditChange}
+                                        />
+                                    </div>
+
+                                    {/* Address */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Address (optional)</label>
+                                        <textarea
+                                            name="address"
+                                            className="form-control"
+                                            rows="2"
+                                            value={editForm.address}
+                                            onChange={handleEditChange}
+                                        />
+                                    </div>
+
+                                    {/* Notes */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Notes (optional)</label>
+                                        <textarea
+                                            name="notes"
+                                            className="form-control"
+                                            rows="2"
+                                            value={editForm.notes}
+                                            onChange={handleEditChange}
+                                        />
+                                    </div>
+
+                                    {/* Visit Date */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Visit Date</label>
+                                        <input
+                                            name="visit_date"
+                                            type="date"
+                                            className="form-control"
+                                            value={editForm.visit_date}
+                                            onChange={handleEditChange}
+                                        />
+                                    </div>
+
+                                    {/* Working Group */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Working Group</label>
+                                        <select
+                                            name="working_group_id"
+                                            className="form-select"
+                                            value={editForm.working_group_id}
+                                            onChange={handleEditChange}
+                                        >
+                                            <option value="">Public</option>
+                                            {workingGroups.map((wg) => (
+                                                <option key={wg.id} value={wg.id}>
+                                                    {wg.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="modal-footer d-flex justify-content-end">
+                                    {editloading ? (
+                                        <div className="spinner-border text-primary" role="status">
+                                            <span className="visually-hidden">Loading...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">
+                                                Close
+                                            </button>
+                                            <button type="submit" className="btn btn-primary">
+                                                Save Changes
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Delete Confirmation Modal */}
+                <div
+                    className="modal fade"
+                    id="deleteCustomerModal"
+                    tabIndex={-1}
+                    aria-labelledby="deleteCustomerModalLabel"
+                    aria-hidden="true"
+                >
+                    <div className="modal-dialog">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h1 className="modal-title fs-5 text-red-500" id="deleteCustomerModalLabel">
+                                    Are you sure?
+                                </h1>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div className="modal-body font-light">
+                                <p>
+                                    Do you really want to delete this customer? This process cannot be undone.
+                                </p>
+                            </div>
+                            <div className="modal-footer">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    data-bs-dismiss="modal"
+                                >
+                                    Close
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-outline-danger"
+                                    onClick={confirmDelete}
+                                    disabled={deleteLoading}
+                                >
+                                    {deleteLoading
+                                        ? <span className="spinner-border spinner-border-sm" role="status"></span>
+                                        : "Delete Customer"}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
