@@ -13,7 +13,7 @@ class EstimateItem extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'estimate_id','product_id','variant_id','subvariant_id','quantity','unit_price','line_total',
+        'estimate_id','product_id','variant_id','subvariant_id','description','quantity','unit_price','line_total',
     ];
 
     public function estimate(): BelongsTo

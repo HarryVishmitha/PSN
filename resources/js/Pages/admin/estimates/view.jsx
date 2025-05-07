@@ -79,7 +79,7 @@ const EstimateView = ({ userDetails, estimates, filters, workingGroups }) => {
                 <option value="pending">Pending</option>
               </select>
               <Link
-                href='#'
+                href={route('admin.addEstimate')}
                 className="btn btn-sm btn-primary-600"
               >
                 <i className="ri-add-line" /> New Estimate

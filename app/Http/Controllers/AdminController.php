@@ -2596,4 +2596,21 @@ class AdminController extends Controller
             'workingGroups' => WorkingGroup::where('status', 'active')->orderBy('name')->get(),
         ]);
     }
+
+    public function addEstimate()
+    {
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'estimate_add',
+            'description' => 'Admin viewed add estimate form',
+            'ip_address'  => request()->ip(),
+        ]);
+
+        $workingGroups = WorkingGroup::where('status', 'active')->with('products')->get();
+
+        return Inertia::render('admin/estimates/addE', [
+            'userDetails'    => Auth::user(),
+            'workingGroups'  => $workingGroups,
+        ]);
+    }
 }

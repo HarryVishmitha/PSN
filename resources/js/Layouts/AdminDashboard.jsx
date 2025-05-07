@@ -376,8 +376,8 @@ const AdminDashboard = ({ children, userDetails }) => {
                                 <ul className='sidebar-submenu'>
                                     <li>
                                         <Link
-                                            href={route('admin.designs')}
-                                            className={url === '/admin/designs' ? 'active-page' : ''}
+                                            href={route('admin.addEstimate')}
+                                            className={url === '/admin/add-estimate' ? 'active-page' : ''}
                                         >
                                             <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
                                             Add New Estimate
