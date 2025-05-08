@@ -1521,7 +1521,8 @@ class AdminController extends Controller
                 $data = $request->validate([
                     'name'             => 'required|string|max:255',
                     'meta_description' => 'nullable|string',
-                    'price'            => 'required|numeric',
+                    'price'            => 'nullable|numeric',
+                    'price_per_sqft'   => 'nullable|numeric',
                     'status'           => 'required|in:published,unpublished',
                 ]);
                 ActivityLog::create([

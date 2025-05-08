@@ -300,7 +300,7 @@ const ProductsView = ({
                         </Link>
                     </div>
 
-                    {/* Table */}
+                    /* Table */
                     <div className="card-body p-24">
                         <div className="table-responsive scroll-sm">
                             <table className="table bordered-table sm-table mb-0">
@@ -359,7 +359,9 @@ const ProductsView = ({
                                                         {product.meta_description}
                                                     </span>
                                                 </td>
-                                                <td>{product.price}</td>
+                                                <td>
+                                                    {product.pricing_method === 'roll' ? product.price_per_sqft : product.price}
+                                                </td>
                                                 <td>{formatTimestamp(product.updated_at)}</td>
                                                 <td className="text-center">
                                                     <span className={`px-24 py-4 radius-4 fw-medium text-sm tw-capitalize ${product.status === 'published' ? 'bg-success-focus text-success-600 border border-success-main' : 'bg-danger-200 text-danger-600 border border-danger-400'}`}>
@@ -516,12 +518,13 @@ const ProductsView = ({
                                                     rows="3"
                                                 />
                                             </div>
+                                            
                                             <div className="mb-4">
                                                 <label className="form-label">Price</label>
                                                 <input
                                                     type="text"
-                                                    name="price"
-                                                    value={quickProduct.price || ''}
+                                                    name={quickProduct.pricing_method === 'roll' ? 'price_per_sqft' : 'price'}
+                                                    value={quickProduct.pricing_method === 'roll' ? quickProduct.price_per_sqft : quickProduct.price || '0'}
                                                     onChange={handleQuickProductChange}
                                                     className="form-control"
                                                 />

@@ -587,6 +587,7 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
             data.append('hasVariants', hasVariants);
             data.append('pricePerSqft', pricePerSqft);
         }
+        data.append('pricePerSqft', pricePerSqft || '0');
         data.append('categories', JSON.stringify(selectedCategories.map(cat => cat.value)));
         // Process images: Ensure the primary image is the first image
         const primaryIndex = uploadedImages.findIndex(img => img.isPrimary);
