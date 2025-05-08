@@ -69,7 +69,7 @@ td a {text-decoration:none; color: inherit;}
   </tr>
   <tr data-element="black-logo" data-label="Logo">
     <td align="center">
-      <img style="width:189px;border:0px;display: inline!important;" src="images/logo.png" width="189" border="0" editable="true" data-icon data-image-edit data-url data-label="Logo" data-image-width alt="logo">
+      <img style="width:189px; border:0px; display:inline;" src="https://shop.printair.lk/assets/images/logo.png" width="189" border="0" alt="logo">
     </td>
   </tr>
   <tr>
