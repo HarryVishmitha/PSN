@@ -90,6 +90,7 @@ class AdminController extends Controller
             'dailyCustomers' => $dailyCustomers
         ]);
     }
+    
 
     public function profile()
     {

@@ -11,6 +11,7 @@ use App\Http\Controllers\Home;
 use App\Http\Middleware\CheckRole;
 use App\Models\Notification;
 use App\Http\Controllers\NotificationsController;
+use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
     return Inertia::render('Home', [
@@ -26,9 +27,11 @@ Route::get('/temp', function () {
 })->name('temp');
 
 Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('user.')->group(function () {
-    Route::get('/dashboard', function () {
-        return Inertia::render('Dashboard');
-    })->name('dashboard');
+    Route::get('/dashboard', [UserController::class, 'index'])->name('dashboard');
+    Route::get('/api/notifications', [NotificationsController::class, 'index'])->name('notifications');
+    Route::post('/api/notifications/{id}/read', [NotificationsController::class, 'markAsRead'])->name('markAsRead');
+    Route::get('/profile', [UserController::class, 'profile'])->name('profile');
+    Route::post('/api/update-profile', [UserController::class, 'updateProfile'])->name('updateProfile');
 });
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
