@@ -446,6 +446,11 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                         <input type='text' name='search' placeholder='Search' />
                                         <Icon icon='ion:search-outline' className='icon' />
                                     </form>
+                                    <div className="flex-grow-1">
+                                        <span className="text-md mb-0 fw-normal text-secondary-light tw-capitalize">
+                                            You're assigned to :
+                                        </span>
+                                    </div>
                                     <div className="position-relative flex-shrink-0 me-12">
                                         <img
                                             src={WG.wg_image || '/images/favicon.png'}
@@ -458,7 +463,7 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <span className="text-md mb-0 fw-normal text-secondary-light tw-capitalize">
-                                            {WG.name}
+                                            {WG.name}; Working Group
                                         </span>
                                     </div>
                                 </div>
