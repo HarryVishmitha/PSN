@@ -8,24 +8,22 @@ import CookiesV from '@/Components/CookieConsent'
 import Alert from "@/Components/Alert"
 import Meta from "@/Components/Metaheads"
 
-const Dashboard = ({ userDetails, WG, wgInactive, wginactivating }) => {
+const Products = ({ userDetails, WG, wginactivating }) => {
     const [loading, setLoading] = useState(false);
     const [alert, setAlert] = useState(null)    // { type, message }
 
     useEffect(() => {
-        if (wgInactive) {
-            setAlert({ type: 'error', message: 'Your account is inactive. Please contact support.' });
-        } else if (wginactivating) {
+        if (wginactivating) {
             setAlert({ type: 'warning', message: 'Your account is being inactivated. Please wait.' });
         }
-    }, [wgInactive, wginactivating]);
+    }, [wginactivating]);
 
     return (
         <>
-            <Head title='User Dashboard' />
-            <Meta title="Dashboard" description="Dashboard" />
-            <UserDashboard userDetails={userDetails} WG={WG} wgInactive={wgInactive} wginactivating={wginactivating}>
-                <Breadcrumb title="Dashboard" />
+            <Head title='Products' />
+            <Meta title="Products" description={`Products for ${WG}`} />
+            <UserDashboard userDetails={userDetails} WG={WG}>
+                <Breadcrumb title="Products" />
                 {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
                 {wginactivating && (
                     <div className="alert alert-warning d-flex align-items-center" role="alert">
@@ -37,11 +35,15 @@ const Dashboard = ({ userDetails, WG, wgInactive, wginactivating }) => {
                 )}
                 <div className="card">
                     <div className="card-body">
-                        <div className="d-flex justify-content-center align-items-center">
-                            <img src="/assets/images/asset/building.png" alt="building" className="img-fluid mb-3 tw-w-96" />
-                            <div className="tw-ml-4 d-flex align-items-center flex-column">
-                                <div className="h5 tw-font-semibold">Welcome to Printair Advertising</div>
-                                <p className='tw-w-2/3 tw-text-center'>It's pleasure to meet you! Always we try to give you better service. Our developers building your dashboard right now. Thank you for your patient!</p>
+                        <div className="row">
+                            <div className="col-sm-2 tw-p-4">
+                                <div className="card border rounded tw-shadow-sm hover:tw-shadow-xl">
+                                    <img src="/assets/images/asset/productImg.jpg" class="card-img-top" alt="Product Image" />
+                                    <div className="card-body">
+                                        <div class="tw-text-xl tw-font-bold tw-tracking-tight text-primary-light">Apple Watch Series 7 GPS, Aluminium Case, Starlight Sport</div>
+                                        
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -51,4 +53,5 @@ const Dashboard = ({ userDetails, WG, wgInactive, wginactivating }) => {
         </>
     );
 }
-export default Dashboard;
+
+export default Products;

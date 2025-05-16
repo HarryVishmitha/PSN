@@ -77,16 +77,64 @@ class UserController extends Controller
             $WG = 'public';
         } else {
             $WGs = WorkingGroup::find(Auth::user()->working_group_id);
+
             if ($WGs == null) {
                 $WG = 'public';
             } else {
                 $WG = $WGs;
+                if ($WG->status == 'inactive') {
+                    $wgInactive = true;
+                    return Inertia::render('user/errors/workingGroups1',[
+                        'userDetails' => Auth::user(),
+                        'WG' => $WG,
+                        'msg' => 'Your working group is currently being deactivated. You can\'t use the system. Please contact your administrator for more information.',
+                    ]);
+                } else if ($WG->status == 'inactivating') {
+                    $wginactivating = true;
+                    // return Inertia::render('user/errors/workingGroups1',[
+                    //     'userDetails' => Auth::user(),
+                    //     'WG' => $WG,
+                    //     'msg' => 'Your working group is currently being deactivating. Your some functions are blocked. Please contact your administrator for more information.',
+                    // ]);
+                }
             }
         }
 
         return Inertia::render('user/dashboard', [
             'userDetails' => Auth::user(),
             'WG' => $WG,
+            'wgInactive' => $wgInactive ?? false,
+            'wginactivating' => $wginactivating ?? false,
+        ]);
+    }
+
+    public function products(){
+        // Check if the user is authenticated
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+        // Check if the user has a working group assigned
+        if (Auth::user()->working_group_id == null) {
+            $WG = 'public';
+        } else {
+            $WGs = WorkingGroup::find(Auth::user()->working_group_id);
+            if ($WGs == null) {
+                $WG = 'public';
+            } else {
+                $WG = $WGs;
+                if ($WG->status == 'inactive') {
+                    return redirect()->route('user.dashboard');
+                }
+                if ($WG->status == 'inactivating') {
+                    $wginactivating = true;
+                }
+            }
+        }
+
+        return Inertia::render('user/products', [
+            'userDetails' => Auth::user(),
+            'WG' => $WG,
+            'wginactivating' => $wginactivating ?? false,
         ]);
     }
 }

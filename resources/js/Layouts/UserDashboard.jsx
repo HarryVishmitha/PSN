@@ -6,6 +6,9 @@ import ThemeToggleButton from "../helper/ThemeToggleButton";
 import Cookies from 'js-cookie';
 import axios from 'axios';
 import 'bootstrap/dist/js/bootstrap.bundle';
+import { use } from 'react';
+import 'bootstrap/dist/js/bootstrap.bundle.min';
+
 
 const UserDashboard = ({ children, userDetails, WG }) => {
     let [sidebarActive, seSidebarActive] = useState(false);
@@ -46,7 +49,7 @@ const UserDashboard = ({ children, userDetails, WG }) => {
             document.documentElement.setAttribute('data-theme', theme);
             if (theme === 'dark') {
                 document.documentElement.classList.add('dark');
-
+                document.documentElement.classList.toggle("dark");
             } else {
                 document.documentElement.classList.remove('dark');
             }
@@ -165,7 +168,6 @@ const UserDashboard = ({ children, userDetails, WG }) => {
         return () => clearInterval(interval);
     }, []);
 
-
     return (
         <>
             <section className={mobileMenu ? "overlay active" : "overlay "}>
@@ -224,149 +226,14 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                             </li>
                             <li className='mb-3'>
                                 <Link
-                                    href='/admin/users'
-                                    className={url === '/admin/users' ? 'active-page' : ''}
+                                    href={route("user.products")}
+                                    className={url === '/user/products' ? 'active-page' : ''}
                                 >
                                     <Icon
-                                        icon='flowbite:users-group-outline'
+                                        icon='icon-park-outline:ad-product'
                                         className='menu-icon'
                                     />
-                                    <span>System Users</span>
-                                </Link>
-                            </li>
-
-                            {/* Role & Access Dropdown */}
-                            <li className='dropdown'>
-                                <Link href={route('admin.users')}>
-                                    <i className='ri-user-settings-line' />
-                                    <span>Role &amp; Access</span>
-                                </Link>
-                                <ul className='sidebar-submenu'>
-                                    <li>
-                                        <Link
-                                            href={route('admin.roles')}
-                                            to='/roles'
-                                            className={url === '/admin/roles' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
-                                            Role &amp; Access
-                                        </Link>
-                                    </li>
-                                    <li>
-                                        <Link
-                                            to='/assign-role'
-                                            href={route('admin.assignRole')}
-                                            className={url === '/admin/assign-role' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
-                                            Assign Role
-                                        </Link>
-                                    </li>
-                                </ul>
-                            </li>
-                            <li className='mb-3'>
-                                <Link
-                                    to='/admin/working-groups'
-                                    href={route('admin.workingGroups')}
-                                    className={url === '/admin/working-groups' ? 'active-page' : ''}
-                                >
-                                    <Icon
-                                        icon='lucide:network'
-                                        className='menu-icon'
-                                    />
-                                    <span>Working Groups</span>
-                                </Link>
-                            </li>
-                            <li className='dropdown'>
-                                <Link href={route('admin.inventory')}>
-                                    <Icon icon='lsicon:inventory-filled' className='menu-icon' />
-                                    <span>Inventory Management</span>
-                                </Link>
-                                <ul className='sidebar-submenu'>
-                                    <li>
-                                        <Link
-                                            href={route('admin.inventoryProviders')}
-                                            className={url === '/admin/manage/inventory/providers' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
-                                            Providers
-                                        </Link>
-                                    </li>
-                                    <li>
-                                        <Link
-                                            href={route('admin.inventory')}
-                                            className={url === '/admin/inventory' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
-                                            Inventory
-                                        </Link>
-                                    </li>
-                                </ul>
-                            </li>
-                            <li className='dropdown'>
-                                <Link href={route('admin.users')}>
-                                    <Icon icon='fluent-mdl2:product-variant' className='menu-icon' />
                                     <span>Products</span>
-                                </Link>
-                                <ul className='sidebar-submenu'>
-                                    <li>
-                                        <Link
-                                            href={route('admin.addProduct')}
-                                            className={url === '/admin/add-new-product' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
-                                            Add new product
-                                        </Link>
-                                    </li>
-                                    <li>
-                                        <Link
-                                            href={route('admin.products')}
-                                            className={url === '/admin/products' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
-                                            All products
-                                        </Link>
-                                    </li>
-                                </ul>
-                            </li>
-                            {/* Designs */}
-                            <li className='dropdown'>
-                                <Link href={route('admin.designs')}>
-                                    <Icon icon='mdi:paint-outline' className='menu-icon' alt='designs' />
-                                    <span>Designs</span>
-                                </Link>
-                                <ul className='sidebar-submenu'>
-                                    <li>
-                                        <Link
-                                            href={route('admin.addDesign')}
-                                            className={url === '/admin/add-design' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
-                                            Add new design
-                                        </Link>
-                                    </li>
-                                    <li>
-                                        <Link
-                                            href={route('admin.designs')}
-                                            className={url === '/admin/designs' ? 'active-page' : ''}
-                                        >
-                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
-                                            All designs
-                                        </Link>
-                                    </li>
-                                </ul>
-                            </li>
-
-                            <li>
-                                <Link
-                                    href={route('admin.dailyCustomers')}
-                                    className={url === '/admin/daily-customers' ? 'active-page' : ''}
-                                >
-                                    <Icon
-                                        icon='fa-solid:walking'
-                                        className='menu-icon'
-                                    />
-                                    <span>Daily Customers</span>
                                 </Link>
                             </li>
                             <li className='dropdown'>
@@ -394,18 +261,6 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                         </Link>
                                     </li>
                                 </ul>
-                            </li>
-                            <li>
-                                <Link
-                                    href='/testimonials'
-                                    className={(navData) => (navData.isActive ? "active-page" : "")}
-                                >
-                                    <Icon
-                                        icon='mage:message-question-mark-round'
-                                        className='menu-icon'
-                                    />
-                                    <span>Testimonials</span>
-                                </Link>
                             </li>
                         </ul>
                     </div>
@@ -447,11 +302,11 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                         <Icon icon='ion:search-outline' className='icon' />
                                     </form>
                                     <div className="flex-grow-1">
-                                        <span className="text-md mb-0 fw-normal text-secondary-light tw-capitalize">
+                                        <span className="text-md mb-0 fw-normal text-secondary-light">
                                             You're assigned to :
                                         </span>
                                     </div>
-                                    <div className="position-relative flex-shrink-0 me-12">
+                                    <div className="position-relative flex-shrink-0">
                                         <img
                                             src={WG.wg_image || '/images/favicon.png'}
                                             alt="Working Group"
@@ -463,7 +318,7 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <span className="text-md mb-0 fw-normal text-secondary-light tw-capitalize">
-                                            {WG.name}; Working Group
+                                            {WG.name}
                                         </span>
                                     </div>
                                 </div>
