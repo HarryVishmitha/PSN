@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { Head, Link, usePage, router } from '@inertiajs/react';
 import axios from 'axios'
-import { Head, router } from '@inertiajs/react'
-import UserDashboard from '../../Layouts/UserDashboard'
+import UserDashboard from '@/Layouts/UserDashboard'
 import Breadcrumb from "@/components/Breadcrumb"
 import { Icon } from "@iconify/react"
 import CookiesV from '@/Components/CookieConsent'
@@ -35,16 +35,25 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                 )}
                 <div className="card">
                     <div className="card-body">
-                        <div className="row">
-                            <div className="col-sm-2 tw-p-4">
-                                <div className="card border rounded tw-shadow-sm hover:tw-shadow-xl">
-                                    <img src="/assets/images/asset/productImg.jpg" class="card-img-top" alt="Product Image" />
+                        <div className="row gy-2 gx-3 liagn-tems-center tw-gap-x-4 tw-gap-2">
+                            {/* Product Tile */}
+                            <div className="col-sm-6 col-md-4 col-lg-2 card border rounded tw-shadow-sm hover:tw-shadow-xl col-auto">
+                                <div className="board12342">
+                                    <img src="/assets/images/asset/productImg.jpg" className="card-img-top" alt="Product Image" />
                                     <div className="card-body">
-                                        <div class="tw-text-xl tw-font-bold tw-tracking-tight text-primary-light">Apple Watch Series 7 GPS, Aluminium Case, Starlight Sport</div>
-                                        
+                                        <Link class="tw-text-xl tw-font-bold tw-tracking-tight text-primary-light tw-mt-3 tw-cursor-pointer">Apple Watch Series 7 GPS, Aluminium Case, Starlight Sport</Link>
+                                        <p className="text-secondary-light tw-text-sm tw-line-clamp-3">
+                                            Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                                        </p>
+                                        <div className="d-flex justify-content-between align-items-center tw-mt-4">
+                                            <div className="tw-text-lg tw-font-bold text-primary-light">$399.00</div>
+                                            <button className="tw-cursor-pointer d-flex align-items-center gap-2 tw-text-blue-400 hover:tw-text-blue-600" onClick={() => router.get('/products/1')}>More Info <Icon icon="pajamas:long-arrow" width="16" height="16" /></button>
+                                        </div>
+
                                     </div>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>

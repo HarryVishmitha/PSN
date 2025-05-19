@@ -3,6 +3,9 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use App\Http\Middleware\ValidateApiOrigin;
+use App\Http\Middleware\EnsureInertiaRequest;
+
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,3 +26,5 @@ return Application::configure(basePath: dirname(__DIR__))
     $app->routeMiddleware([
         'check.role' => \App\Http\Middleware\CheckRole::class,
     ]);
+
+

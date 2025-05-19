@@ -37,10 +37,10 @@ const Dashboard = ({ userDetails, WG, wgInactive, wginactivating }) => {
                 )}
                 <div className="card">
                     <div className="card-body">
-                        <div className="d-flex justify-content-center align-items-center">
+                        <div className="d-flex justify-content-center align-items-center flex-column">
                             <img src="/assets/images/asset/building.png" alt="building" className="img-fluid mb-3 tw-w-96" />
                             <div className="tw-ml-4 d-flex align-items-center flex-column">
-                                <div className="h5 tw-font-semibold">Welcome to Printair Advertising</div>
+                                <div className="h5 tw-font-semibold tw-text-center">Welcome to Printair Advertising</div>
                                 <p className='tw-w-2/3 tw-text-center'>It's pleasure to meet you! Always we try to give you better service. Our developers building your dashboard right now. Thank you for your patient!</p>
                             </div>
                         </div>

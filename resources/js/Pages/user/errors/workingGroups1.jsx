@@ -24,6 +24,8 @@ const WorkingGroups1 = ({ userDetails, msg, WG }) => {
                     </div>
                     <img src="/assets/images/logo-icon.png" alt="logo" className="img-fluid mb-3 tw-w-20 tw-mt-16" />
                     <div className='tw-font-bold tw-text-lg tw-text-gray-500'>Printair Advertising</div>
+                    <div className='tw-text-sm tw-text-gray-500'>+94 76 886 0175 / +94 72 661 1748 / +94 71 358 5692</div>
+                    <div className='tw-text-sm tw-text-gray-500'>contact@printair.lk / printair2@gmail.com</div>
                 </div>
             </div>
         </>

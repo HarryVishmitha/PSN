@@ -33,6 +33,7 @@ Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('use
     Route::get('/profile', [UserController::class, 'profile'])->name('profile');
     Route::post('/api/update-profile', [UserController::class, 'updateProfile'])->name('updateProfile');
     Route::get('/products', [UserController::class, 'products'])->name('products');
+    Route::get('/api/products', [UserController::class, 'jsonProducts'])->name('getProducts');
 });
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
