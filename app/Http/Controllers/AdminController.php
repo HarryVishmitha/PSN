@@ -678,6 +678,8 @@ class AdminController extends Controller
 
         // Build the query with the count of related users.
         $query = WorkingGroup::withCount('users');
+        
+        $query->withCount('products');
 
         if ($status) {
             $query->where('status', $status);

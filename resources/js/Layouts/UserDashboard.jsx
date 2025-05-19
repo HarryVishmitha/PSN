@@ -306,7 +306,7 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                             You're assigned to :
                                         </span>
                                     </div>
-                                    <div className="position-relative flex-shrink-0 tw-hidden md:tw-block">
+                                    <div className="position-relative flex-shrink-0 tw-hidden md:tw-block lg:tw-block">
                                         <img
                                             src={WG.wg_image || '/images/favicon.png'}
                                             alt="Working Group"
@@ -316,9 +316,9 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                             WG
                                         </span>
                                     </div>
-                                    <div className="flex-grow-1 tw-hidden md:tw-block">
-                                        <span className="text-md mb-0 fw-normal text-secondary-light tw-capitalize">
-                                            {WG.name}
+                                    <div className="flex-grow-1 tw-hidden md:tw-block lg:tw-block">
+                                        <span className="text-md mb-0 fw-normal tw-text-gray-500 tw-capitalize">
+                                            {WG.name || 'Public'}
                                         </span>
                                     </div>
                                 </div>

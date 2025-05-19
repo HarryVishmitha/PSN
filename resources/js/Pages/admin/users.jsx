@@ -374,7 +374,7 @@ const Users = ({ users, userDetails, status: selectedStatus, workingGroups }) =>
                                                         onChange={(e) => setSelectedWorkingGroup(e.target.value)}
                                                         className="form-select"
                                                     >
-                                                        <option value="">Public</option>
+                                                        {/* <option value="">Public</option> */}
                                                         {workingGroups.map((group) => (
                                                             <option key={group.id} value={group.id}>
                                                                 {group.name}

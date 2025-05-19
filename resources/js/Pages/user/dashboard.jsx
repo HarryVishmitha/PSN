@@ -40,8 +40,8 @@ const Dashboard = ({ userDetails, WG, wgInactive, wginactivating }) => {
                         <div className="d-flex justify-content-center align-items-center flex-column">
                             <img src="/assets/images/asset/building.png" alt="building" className="img-fluid mb-3 tw-w-96" />
                             <div className="tw-ml-4 d-flex align-items-center flex-column">
-                                <div className="h5 tw-font-semibold tw-text-center">Welcome to Printair Advertising</div>
-                                <p className='tw-w-2/3 tw-text-center'>It's pleasure to meet you! Always we try to give you better service. Our developers building your dashboard right now. Thank you for your patient!</p>
+                                <div className="h5 tw-font-semibold tw-text-center tw-text-black dark:tw-text-white">Welcome to Printair Advertising</div>
+                                <p className='tw-w-2/3 tw-text-center tw-text-gray-500 dark:tw-text-gray-400'>It's pleasure to meet you! Always we try to give you better service. Our developers building your dashboard right now. Thank you for your patient!</p>
                             </div>
                         </div>
                     </div>

@@ -522,7 +522,7 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                                             value={addForm.working_group_id}
                                             onChange={handleAddChange}
                                         >
-                                            <option value="">Public</option>
+                                            {/* <option value="">Public</option> */}
                                             {workingGroups.map(wg => (
                                                 <option key={wg.id} value={wg.id}>
                                                     {wg.name}
@@ -700,7 +700,7 @@ const DailyCustomers = ({ userDetails, customers, filters, workingGroups }) => {
                                             value={editForm.working_group_id}
                                             onChange={handleEditChange}
                                         >
-                                            <option value="">Public</option>
+                                            {/* <option value="">Public</option> */}
                                             {workingGroups.map((wg) => (
                                                 <option key={wg.id} value={wg.id}>
                                                     {wg.name}
