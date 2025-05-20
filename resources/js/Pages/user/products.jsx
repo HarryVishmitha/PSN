@@ -140,7 +140,7 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                     <div className="card-body">
                         <div className="row gy-2 gx-3 liagn-tems-center tw-gap-x-4 tw-gap-2 tw-mb-4">
                             {loading
-                                ? Array.from({ length: 6 }).map((_, i) => (
+                                ? Array.from({ length: 8 }).map((_, i) => (
                                     <div
                                         key={i}
                                         role="status"
@@ -181,12 +181,13 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                                         </div>
                                     )
                                     : products.map(product => (
+                                        console.log(product),
                                         <div
                                             key={product.id}
                                             className="col-sm-6 col-md-4 col-lg-3 card border rounded tw-shadow-sm hover:tw-shadow-xl"
                                         >
                                             <img
-                                                src={product.image_url}
+                                                src={product.images[0].image_url || '/assets/images/asset/productImg.jpg'}
                                                 className="card-img-top"
                                                 alt={product.name}
                                             />
