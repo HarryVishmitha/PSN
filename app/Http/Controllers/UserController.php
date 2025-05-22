@@ -69,6 +69,12 @@ class UserController extends Controller
 
     public function index()
     {
+        ActivityLog::create([
+            'user_id'    => Auth::id(),
+            'action_type' => 'dashboard_access',
+            'description' => 'User accessed dashboard.',
+            'ip_address' => request()->ip(),
+        ]);
         // Check if the user is authenticated
         if (!Auth::check()) {
             return redirect()->route('login');
@@ -111,6 +117,12 @@ class UserController extends Controller
 
     public function products()
     {
+        ActivityLog::create([
+            'user_id'    => Auth::id(),
+            'action_type' => 'products_access',
+            'description' => 'User accessed to product view.',
+            'ip_address' => request()->ip(),
+        ]);
         // Check if the user is authenticated
         if (!Auth::check()) {
             return redirect()->route('login');
@@ -225,6 +237,12 @@ class UserController extends Controller
             $products = $query
                 ->paginate($perPage)
                 ->appends($request->query());
+            ActivityLog::create([
+                'user_id'    => Auth::id(),
+                'action_type' => 'product_data_retrieval',
+                'description' => 'product data retrieval success',
+                'ip_address' => request()->ip(),
+            ]);
 
             // 1️⃣1️⃣ Return paginated JSON (includes data, meta, links)
             return response()->json($products, 200);
@@ -235,6 +253,72 @@ class UserController extends Controller
             return response()->json([
                 'message' => 'Failed to retrieve products due to a server error.'
             ], 500);
+        }
+    }
+
+    public function productView(Product $product, string $name)
+    {
+        try {
+            // 1️⃣ Auth guard
+            if (! Auth::check()) {
+                return redirect()->route('login');
+            }
+            $user = Auth::user();
+
+            // 2️⃣ Determine working group (null ⇒ public = 1)
+            $groupId = $user->working_group_id ?? 1;
+            $wg = WorkingGroup::findOrFail($groupId);
+
+            // 3️⃣ Block if WG inactive
+            if ($wg->status !== 'active') {
+                return redirect()->route('user.dashboard');
+            }
+
+            // 4️⃣ Block if product not published or soft-deleted
+            if ($product->status !== 'published') {
+                abort(404);
+            }
+
+            // 5️⃣ Block if product doesn’t belong to this WG
+            if ($product->working_group_id !== $groupId) {
+                return Inertia::render('user/errors/notAccept', [
+                    'userDetails' => $user,
+                    'WG' => $wg,
+                    'msg' => 'You do not have permission to view this product.',
+                ]);
+            }
+
+            // 6️⃣ Slugify & redirect if name mismatch
+            // $slug = Str::slug($product->name);
+            // if ($slug !== $name) {
+            //     return redirect()->route('productView', [
+            //         'product' => $product->id,
+            //         'name'    => $slug,
+            //     ]);
+            // }
+
+            // 7️⃣ Load any relationships you need
+            $product->load(['categories', 'variants']);
+
+            ActivityLog::create([
+                'user_id'    => Auth::id(),
+                'action_type' => 'product_view',
+                'description' => 'User view product :' . $product->id,
+                'ip_address' => request()->ip(),
+            ]);
+
+            // 8️⃣ Render the Inertia page (adjust the component path as needed)
+            return Inertia::render('user/productView', [
+                'userDetails' => $user,
+                'WG' => $wg,
+                'product'   => $product,
+                'wginactivating' => $wginactivating ?? false,
+            ]);
+        } catch (Exception $e) {
+            Log::error('productView error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            abort(500, 'Server error loading product.');
         }
     }
 }

@@ -181,20 +181,19 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                                         </div>
                                     )
                                     : products.map(product => (
-                                        console.log(product),
                                         <div
                                             key={product.id}
                                             className="col-sm-6 col-md-4 col-lg-3 card border rounded tw-shadow-sm hover:tw-shadow-xl"
                                         >
                                             <img
                                                 src={product.images[0].image_url || '/assets/images/asset/productImg.jpg'}
-                                                className="card-img-top"
+                                                className="card-img-top tw-w-full"
                                                 alt={product.name}
                                             />
                                             <div className="card-body">
                                                 <Link
                                                     className="tw-text-xl tw-font-bold tw-tracking-tight text-primary-light tw-mt-3 tw-cursor-pointer"
-                                                    href={`/products/${product.id}`}
+                                                    href={`/user/${product.id}/product/${product.name.replace(/\s+/g, '-')}`}
                                                 >
                                                     {product.name}
                                                 </Link>
@@ -211,7 +210,7 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                               tw-cursor-pointer d-flex align-items-center gap-2
                               tw-text-blue-400 hover:tw-text-blue-600
                             "
-                                                        onClick={() => router.get(`/products/${product.id}`)}
+                                                        onClick={() => router.get(`/user/${product.id}/product/${product.name.replace(/\s+/g, '-')}`)}
                                                     >
                                                         More Info <Icon icon="pajamas:long-arrow" width="16" height="16" />
                                                     </button>

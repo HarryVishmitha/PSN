@@ -34,6 +34,10 @@ Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('use
     Route::post('/api/update-profile', [UserController::class, 'updateProfile'])->name('updateProfile');
     Route::get('/products', [UserController::class, 'products'])->name('products');
     Route::get('/api/products', [UserController::class, 'jsonProducts'])->name('getProducts');
+    Route::get('/{product}/product/{name}', [userController::class, 'productView'])->name('productView');
+    Route::get('/api/{product}/designs', [UserController::class, 'jsonDesigns'])->name('getDesigns');
+    Route::get('/designs', [UserController::class, 'designs'])->name('designs');
+    Route::get('/api/design/{design}', [UserController::class, 'designView'])->name('designView');
 });
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
