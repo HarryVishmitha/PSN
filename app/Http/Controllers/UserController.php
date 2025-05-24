@@ -270,7 +270,7 @@ class UserController extends Controller
             $wg = WorkingGroup::findOrFail($groupId);
 
             // 3️⃣ Block if WG inactive
-            if ($wg->status !== 'active') {
+            if ($wg->status == 'inactive') {
                 return redirect()->route('user.dashboard');
             }
 

@@ -44,6 +44,7 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                             ? res.data.data
                             : []
                 setProducts(payload)
+                console.log('Products fetched:', payload)
             })
             .catch(err => {
                 console.error(err)
