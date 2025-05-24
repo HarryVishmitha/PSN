@@ -6,9 +6,6 @@ import ThemeToggleButton from "../helper/ThemeToggleButton";
 import Cookies from 'js-cookie';
 import axios from 'axios';
 import 'bootstrap/dist/js/bootstrap.bundle';
-import { use } from 'react';
-import 'bootstrap/dist/js/bootstrap.bundle.min';
-
 
 const UserDashboard = ({ children, userDetails, WG }) => {
     let [sidebarActive, seSidebarActive] = useState(false);
@@ -443,6 +440,7 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                         </div>
                                     </div>
                                     {/* Profile dropdown end */}
+                                    
                                 </div>
                             </div>
                         </div>
