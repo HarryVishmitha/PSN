@@ -200,7 +200,7 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                                                 </Link>
                                                 <div
                                                     className="text-secondary-light tw-text-sm tw-line-clamp-3"
-                                                    dangerouslySetInnerHTML={{ __html: product.description }}
+                                                    dangerouslySetInnerHTML={{ __html: product.meta_description }}
                                                 />
                                                 <div className="d-flex justify-content-between align-items-center tw-mt-4">
                                                     <div className="tw-text-lg tw-font-bold text-primary-light">

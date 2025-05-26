@@ -9,8 +9,10 @@ import Alert from '@/Components/Alert'
 import Meta from '@/Components/Metaheads'
 
 const ProductView = ({ userDetails, WG, product, wginactivating }) => {
+    console.log(product);
     const [loading, setLoading] = useState(true)
     const [alert, setAlert] = useState(null)    // { type, message }
+    const [isOpen, setIsOpen] = useState(false)
 
     const variantGroups = [
         { label: 'Color', name: 'color', options: ['Green', 'Pink', 'Silver', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue'] },
@@ -18,22 +20,28 @@ const ProductView = ({ userDetails, WG, product, wginactivating }) => {
         { label: 'Variant type 3', name: 'variant3', options: ['Green', 'Pink', 'Silver', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue', 'Blue'] },
     ];
 
-    const images = [
-        {
-            light: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-front.svg',
-            dark: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-front-dark.svg',
-        },
-        {
-            light: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-back.svg',
-            dark: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-back-dark.svg',
-        },
-        {
-            light: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-side.svg',
-            dark: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-side-dark.svg',
-        },
-    ];
+    // const images = [
+    //     {
+    //         light: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-front.svg',
+    //         dark: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-front-dark.svg',
+    //     },
+    //     {
+    //         light: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-back.svg',
+    //         dark: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-back-dark.svg',
+    //     },
+    //     {
+    //         light: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-side.svg',
+    //         dark: 'https://flowbite.s3.amazonaws.com/blocks/e-commerce/imac-side-dark.svg',
+    //     },
+    // ];
+
+    // Prepare images array from product.images
+    const images = product.images && product.images.length > 0
+        ? product.images.map(img => img.image_url)
+        : ['/images/default-product.png']
 
     const [selectedIndex, setSelectedIndex] = useState(0);
+
 
     return (
         <>
@@ -65,31 +73,25 @@ const ProductView = ({ userDetails, WG, product, wginactivating }) => {
                         <div className="lg:tw-grid lg:tw-grid-cols-2 lg:tw-gap-8 xl:tw-gap-16 tw-mt-4">
                             {/* image section */}
                             <div className="image-section tw-w-full">
-                                {/* Main image */}
                                 <div className="tw-shrink-0 tw-max-w-md lg:tw-max-w-lg tw-mx-auto">
                                     <img
-                                        className="tw-w-full dark:tw-hidden"
-                                        src={images[selectedIndex].light}
+                                        className="tw-w-full tw-object-contain"
+                                        src={images[selectedIndex]}
                                         alt={`View ${selectedIndex + 1}`}
-                                    />
-                                    <img
-                                        className="tw-w-full tw-hidden dark:tw-block"
-                                        src={images[selectedIndex].dark}
-                                        alt={`Dark view ${selectedIndex + 1}`}
                                     />
                                 </div>
 
                                 {/* Thumbnails */}
                                 <div className="tw-flex tw-justify-center tw-mt-6">
                                     <div className="tw-flex tw-gap-5">
-                                        {images.map((img, idx) => (
+                                        {images.map((imgUrl, idx) => (
                                             <img
                                                 key={idx}
                                                 className={`
                                                     tw-w-16 tw-h-16 tw-object-cover tw-rounded-lg tw-cursor-pointer
                                                     ${selectedIndex === idx ? 'tw-ring-2 tw-ring-blue-600' : ''}
-                                                `}
-                                                src={img.light}
+                                                    `}
+                                                src={imgUrl}
                                                 alt={`Thumbnail ${idx + 1}`}
                                                 onClick={() => setSelectedIndex(idx)}
                                             />
@@ -99,14 +101,19 @@ const ProductView = ({ userDetails, WG, product, wginactivating }) => {
                             </div>
 
                             <div className="details-section">
-                                <div className="tw-text-2xl tw-text-black dark:tw-text-white tw-font-semibold">Product name again here</div>
+                                <div className="tw-text-2xl tw-text-black dark:tw-text-white tw-font-semibold">{product.name}</div>
                                 <div className="tw-text-green-500 d-flex align-items-center tw-text-sm"><span className='tw-me-1'><Icon icon='jam:store' /></span>In Stock</div>
                                 {/* price section */}
                                 <div className="tw-text-black dark:tw-text-white tw-text-xl tw-mt-4">
                                     <span className="tw-text-semibold tw-text-gray-700 dark:tw-text-gray-400 tw-text-sm tw-me-1">LKR.</span>
-                                    <span className="tw-font-semibold tw-text-black dark:tw-text-white">450.00</span>
+                                    <span className="tw-font-semibold tw-text-black dark:tw-text-white">
+                                        {product.pricing_method == "standard" ? product.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null}
+                                        {product.pricing_method == "roll" ? product.price_per_sqft.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null}
+                                        {product.pricing_method == "standard" ? <span className="tw-text-sm tw-text-gray-500 dark:tw-text-gray-400 tw-font-normal tw-ms-2"> per unit</span> : null}
+                                        {product.pricing_method == "roll" ? <span className="tw-text-sm tw-font-normal tw-text-gray-500 dark:tw-text-gray-400 tw-ms-2"> per Sq.Feet</span> : null}
+                                    </span>
                                 </div>
-                            
+
                                 {/* varients section */}
                                 <div className="varients lg:tw-grid lg:tw-grid-cols-2 lg:tw-gap-4 xl:tw-gap-8 tw-mt-4">
                                     {variantGroups.map((group, gi) => (
@@ -166,9 +173,8 @@ const ProductView = ({ userDetails, WG, product, wginactivating }) => {
                                 <div
                                     className="tw-text-gray-500 tw-text-sm dark:tw-text-gray-400 tw-leading-relaxed tw-mt-3"
                                     dangerouslySetInnerHTML={{
-                                        __html: `
-Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
-` }}
+                                        __html: product.description || 'No description available for this product. Contact the shop for more details. Call us - 076 886 0175 or email us - contact@printair.lk'
+                                    }}
                                 />
 
                                 <hr class="my-6 md:my-8 border-gray-200 dark:border-gray-800" />
@@ -176,12 +182,48 @@ Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem
                                 <div className="additional-info tw-text-sm tw-text-gray-600 dark:tw-text-gray-400 tw-mt-3 tw-mb-3">
                                     <div className="categories">
                                         <span className="tw-font-semibold tw-text-xs tw-text-gray-700 dark:tw-text-gray-300 tw-me-2">Categories:</span>
-                                        <span className="tw-text-blue-500 tw-me-2 tw-text-xs">Category 1</span>
-                                        <span className="tw-text-blue-500 tw-me-2 tw-text-xs">Category 2</span>
+                                        {product.categories && product.categories.length > 0 ? (
+                                            product.categories.map((category, index) => (
+                                                <span key={index} className="tw-text-blue-500 tw-me-2 tw-text-xs">{category.name}</span>
+                                            ))
+                                        ) : (
+                                            <span className="tw-text-gray-400 dark:tw-text-gray-600 tw-me-2 tw-text-xs">Category 2</span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        <hr class="my-6 md:my-8 border-gray-200 dark:border-gray-800" />
+
+                        {/* design section */}
+                        <div className="tw-text-xl tw-text-black dark:tw-text-white tw-font-semibold">
+                            Designs
+                        </div>
+                        <p className="tw-text-gray-500 dark:tw-text-gray-400 tw-text-sm tw-mb-4">
+                            Here are some designs related to this product.
+                        </p>
+                        <details
+                            className="dark:tw-border-gray-600 tw-rounded-lg tw-mb-4"
+                            onToggle={e => setIsOpen(e.currentTarget.open)}
+                        >
+                            <summary className="tw-flex tw-justify-between tw-items-center tw-p-4 tw-cursor-pointer tw-text-gray-800 dark:tw-text-gray-200 tw-font-medium tw-bg-emerald-200 dark:tw-bg-emerald-900 tw-rounded-lg">
+                                Group 1
+                                <Icon
+                                    icon={isOpen ? 'mdi:minus' : 'mdi:plus'}
+                                    className="tw-w-5 tw-h-5"
+                                />
+                            </summary>
+                            <div
+                                className="design-section tw-mt-5 lg:tw-grid lg:tw-grid-cols-5 lg:tw-gap-6 xl:tw-gap-6 tw-border tw-border-gray-300 tw-p-3 tw-rounded-lg tw-overflow-hidden tw-transition-all tw-duration-300 tw-ease-in-out">
+                                {/* group 1 */}
+                                {Array.from({ length: 15 }).map((_, index) => (
+                                    <div key={index} className="tw-bg-gray-200 dark:tw-bg-gray-700 tw-rounded-lg tw-p-4 tw-flex tw-items-center tw-justify-center">
+                                        <span className="tw-text-gray-600 dark:tw-text-gray-300">Design {index + 1}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </details>
                     </div>
                 </div>
 

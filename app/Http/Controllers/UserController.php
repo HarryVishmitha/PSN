@@ -298,7 +298,7 @@ class UserController extends Controller
             // }
 
             // 7️⃣ Load any relationships you need
-            $product->load(['categories', 'variants']);
+            $product->load(['categories', 'variants', 'images']);
 
             ActivityLog::create([
                 'user_id'    => Auth::id(),
