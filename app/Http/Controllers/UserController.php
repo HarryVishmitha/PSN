@@ -298,7 +298,7 @@ class UserController extends Controller
             // }
 
             // 7️⃣ Load any relationships you need
-            $product->load(['categories', 'variants', 'images']);
+            $product->load(['categories', 'variants.subvariants', 'images']);
 
             ActivityLog::create([
                 'user_id'    => Auth::id(),
@@ -319,6 +319,74 @@ class UserController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
             abort(500, 'Server error loading product.');
+        }
+    }
+
+    public function jsonDesigns(Product $product)
+    {
+        try {
+            // 1️⃣ Auth guard
+            if (! Auth::check()) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+            $user = Auth::user();
+
+            // 2️⃣ Determine working-group (null ⇒ 1)
+            $groupId = $user->working_group_id ?? 1;
+            $wg = WorkingGroup::find($groupId);
+            if (! $wg || $wg->status === 'inactive') {
+                return response()->json([
+                    'message' => 'Your working group is inactive or does not exist.'
+                ], 403);
+            }
+
+            // 3️⃣ Fetch only active (status = 'active') designs for this product
+            $allDesigns = $product->design()
+                ->where('status', 'active')
+                ->with('designAccesses')         // eager-load pivot entries
+                ->get();
+
+            // 4️⃣ Filter by access_type
+            $visible = $allDesigns->filter(function ($d) use ($user, $groupId) {
+                switch ($d->access_type) {
+                    case 'public':
+                        return true;
+
+                    case 'working_group':
+                        // everyone in the same group sees it
+                        return (int)$d->working_group_id === (int)$groupId;
+
+                    case 'restricted':
+                        // only users in design_access
+                        return $d->designAccesses
+                                 ->contains('user_id', $user->id);
+
+                    default:
+                        return false;
+                }
+            })->values();
+
+            // 5️⃣ Shape payload
+            $payload = $visible->map(function ($d) {
+                return [
+                    'id'         => $d->id,
+                    'name'       => $d->name,
+                    'image_url'  => $d->image_url,
+                    'width'      => $d->width,
+                    'height'     => $d->height,
+                    'accessType' => $d->access_type,
+                ];
+            });
+
+            return response()->json($payload);
+
+        } catch (\Exception $e) {
+            Log::error('jsonProducts error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'message' => 'Failed to retrieve products due to a server error.'
+            ], 500);
         }
     }
 }
