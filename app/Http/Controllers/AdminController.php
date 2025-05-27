@@ -1732,7 +1732,7 @@ class AdminController extends Controller
                     if ($needsGlobalUpdate) {
                         ProductInventory::where('product_id', $product->id)
                             ->whereNull('product_variant_id')
-                            ->delete();
+                            ->forceDelete();
                         ProductInventory::create(array_merge([
                             'product_id' => $product->id,
                             'created_at' => now(),
@@ -1766,8 +1766,8 @@ class AdminController extends Controller
                         }
                         if ($variantsChanged) {
                             // Delete existing variants and inventories.
-                            ProductInventory::where('product_id', $product->id)->delete();
-                            $product->variants()->delete();
+                            ProductInventory::where('product_id', $product->id)->forceDelete();
+                            $product->variants()->forceDelete();
 
                             // Re-create variants and inventories.
                             foreach ($incomingVariants as $variant) {
