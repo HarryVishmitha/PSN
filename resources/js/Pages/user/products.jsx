@@ -26,6 +26,7 @@ const Products = ({ userDetails, WG, wginactivating }) => {
         }
     }, [wginactivating])
 
+    
     // Fetch helper
     const fetchProducts = () => {
         setLoading(true)
@@ -204,7 +205,8 @@ const Products = ({ userDetails, WG, wginactivating }) => {
                                                 />
                                                 <div className="d-flex justify-content-between align-items-center tw-mt-4">
                                                     <div className="tw-text-lg tw-font-bold text-primary-light">
-                                                        LKR {product.price}
+                                                        {console.log(product)}
+                                                        LKR {product.pricing_method === 'roll' ? (product.price_per_sqft) : (product.price)}<span className="tw-text-sm tw-font-normal tw-text-gray-500 dark:tw-text-gray-400 tw-ms-2">{product.pricing_method === 'roll' ? 'per sqft' : 'per item'}</span>  
                                                     </div>
                                                     <button
                                                         className="
