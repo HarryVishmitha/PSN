@@ -344,7 +344,7 @@ const ProductView = ({ userDetails, WG, product, wginactivating }) => {
                                                 <img
                                                     src={design.image_url}
                                                     alt={design.name}
-                                                    className="tw-w-full tw-h-32 tw-object-cover tw-rounded-md"
+                                                    className="tw-w-full tw-rounded-md"
                                                 />
                                                 <div className="tw-mt-2 tw-text-xs tw-text-gray-700 dark:tw-text-gray-300 tw-text-center">
                                                     {design.name}
