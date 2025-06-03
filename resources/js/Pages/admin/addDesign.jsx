@@ -117,13 +117,13 @@ function FilePreview({
                 </div>
             )}
 
-
             {/* Success Icon (once fully uploaded) */}
             {status === 'uploaded' && (
                 <div
                     className="tw-absolute tw-top-1 tw-left-1 tw-bg-green-100 tw-text-green-800 tw-text-xs tw-px-2 tw-py-1 tw-rounded"
                     aria-label="Upload successful"
-                > Uploaded Successfully
+                >
+                    Uploaded Successfully
                     {/* <Icon
                         icon="eva:checkmark-circle-2-outline"
                         className="tw-absolute tw-top-1 tw-left-1 tw-text-green-600 tw-me-4"
@@ -147,9 +147,10 @@ function FilePreview({
                 <div
                     className="tw-absolute tw-top-1 tw-left-1 tw-bg-red-100 tw-text-red-800 tw-text-xs tw-px-2 tw-py-1 tw-rounded"
                     aria-label="Upload failed"
-                > Upload Failed
+                >
+                    Upload Failed
                     {/* <Icon
-                        icon="eva:close-circle-outline"
+                        icon="eva:close-circle-2-outline"
                         className="tw-absolute tw-top-1 tw-left-1 tw-text-red-600 tw-me-4"
                         aria-label="Upload failed"
                     /> Upload Failed */}
@@ -235,35 +236,76 @@ const AddDesign = ({ userDetails, workingGroups }) => {
         // If no files, clear previews
         if (files.length === 0) {
             setPreviews([]);
-            return;
+        } else {
+            // Create an array of the same length
+            const newPreviews = Array(files.length).fill(null);
+            let loadedCount = 0;
+
+            files.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    newPreviews[index] = e.target.result;
+                    loadedCount++;
+                    if (loadedCount === files.length) {
+                        setPreviews(newPreviews);
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
         }
 
-        // Generate dataURL previews
-        const newPreviews = [];
-        files.forEach((file) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                newPreviews.push(e.target.result);
-                if (newPreviews.length === files.length) {
-                    setPreviews(newPreviews);
-                }
-            };
-            reader.readAsDataURL(file);
-        });
+        // Clear the file input so user can re-add the same file name if needed
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
     }, [files]);
+
 
     // -------- Handlers --------
     // Remove a file at index `idx`
     const removeImage = useCallback(
         (idx) => {
+            // 1) Drop from files
             setFiles((prev) => prev.filter((_, i) => i !== idx));
-            setDims((prev) => {
-                const copy = { ...prev };
-                delete copy[idx];
+
+            // 2) Drop from statuses
+            setStatuses((prev) => {
+                const copy = [...prev];
+                copy.splice(idx, 1);
                 return copy;
             });
+
+            // 3) Drop from progress
+            setProgress((prev) => {
+                const copy = [...prev];
+                copy.splice(idx, 1);
+                return copy;
+            });
+
+            // 4) Drop from uploadedUrls
+            setUploadedUrls((prev) => {
+                const copy = [...prev];
+                copy.splice(idx, 1);
+                return copy;
+            });
+
+            // 5) Rebuild dims with shifted keys
+            setDims((prev) => {
+                const newDims = {};
+                Object.keys(prev)
+                    .map((key) => parseInt(key, 10))
+                    .filter((key) => key !== idx)
+                    .sort((a, b) => a - b)
+                    .forEach((oldKey) => {
+                        const newKey = oldKey < idx ? oldKey : oldKey - 1;
+                        newDims[newKey] = prev[oldKey];
+                    });
+                return newDims;
+            });
+
+            // NOTE: Do NOT touch setPreviews here—useEffect will rebuild previews from files.
         },
-        [setFiles, setDims]
+        [setFiles, setStatuses, setProgress, setUploadedUrls, setDims]
     );
 
     // When a preview <img> loads, record its natural dimensions for aspect-ratio
@@ -459,18 +501,13 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                 // Rethrow so handleSubmit can catch it
                 throw err;
             }
-            if (idx === 0 || idx === 2 && chunkNumber === 1) {
-                throw new Error('Simulated network failure');
-            }
         }
 
         return lastResponse;
     }
 
     // Handle form submission and begin chunked uploads sequentially
-    const failedFiles = []; // Collect names of files that failed to upload
     const handleSubmit = useCallback(
-
         async (e) => {
             e.preventDefault();
             setAlert(null);
@@ -487,8 +524,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                 return;
             }
 
-            //reset failedFiles
-            failedFiles.length = [];
+            const failedFiles = [];
 
             // For each file, set status to "uploading", then call uploadFileInChunks
             for (let idx = 0; idx < files.length; idx++) {
@@ -528,7 +564,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                     }
                 } catch (err) {
                     // Mark this file as errored and record its name
-                    setStatuses(prev => {
+                    setStatuses((prev) => {
                         const copy = [...prev];
                         copy[idx] = 'error';
                         return copy;
@@ -543,7 +579,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                     failedFiles.length > 1
                         ? `Uploads failed for: ${failedFiles.join(', ')}.`
                         : `Upload failed for ${failedFiles[0]}.`;
-                setErrors(prev => ({ ...prev, files: message }));
+                setErrors((prev) => ({ ...prev, files: message }));
                 setAlert({ type: 'danger', message });
             } else {
                 setAlert({ type: 'success', message: 'All files uploaded successfully.' });
@@ -670,7 +706,7 @@ const AddDesign = ({ userDetails, workingGroups }) => {
                             {/* Dimensions */}
                             <div className="mb-3">
                                 <label htmlFor="width" className="form-label">
-                                    Dimensions (px)
+                                    Dimensions (inches)
                                 </label>
                                 <div className="input-group">
                                     <input
@@ -721,8 +757,8 @@ const AddDesign = ({ userDetails, workingGroups }) => {
 
                             <div
                                 className={`upload-image-wrapper d-flex align-items-center tw-gap-3 tw-mt-4 tw-p-3 tw-border-2 tw-rounded ${dragging
-                                    ? 'tw-bg-blue-50 tw-border-blue-400'
-                                    : 'tw-bg-neutral-50 tw-border-dashed tw-border-gray-300'
+                                        ? 'tw-bg-blue-50 tw-border-blue-400'
+                                        : 'tw-bg-neutral-50 tw-border-dashed tw-border-gray-300'
                                     }`}
                                 onDragEnter={onDragEnter}
                                 onDragOver={onDragOver}
