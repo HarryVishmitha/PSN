@@ -1,495 +1,713 @@
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { Head, router, Link } from '@inertiajs/react';
+// resources/js/Pages/Admin/AddE.jsx
+import React, { useState } from 'react';
+import { Head, router } from '@inertiajs/react';
 import AdminDashboard from '@/Layouts/AdminDashboard';
-import Breadcrumb from "@/components/Breadcrumb";
-import { Icon } from "@iconify/react";
+import Breadcrumb from '@/components/Breadcrumb';
+import { Icon } from '@iconify/react';
 import CookiesV from '@/Components/CookieConsent';
-import Alert from "@/Components/Alert";
-import Meta from "@/Components/Metaheads";
-import hljs from "highlight.js";
-import ReactQuill from "react-quill-new";
-import 'react-quill-new/dist/quill.snow.css';
+import Meta from '@/Components/Metaheads';
 
-const AddE = ({ userDetails, workingGroups }) => {
-    const today = new Date().toISOString().split('T')[0];
-    const [alert, setAlert] = useState(null);
-    const [errors, setErrors] = useState({});
-    const [loading, setLoading] = useState(false);
+const AddE = ({ userDetails, workingGroups, estimate = null }) => {
+  // If `estimate` is passed in via Inertia props when editing an existing estimate,
+  // we prefill; otherwise we start with blank/new.
+  const todayISO = new Date().toISOString().split('T')[0]; // "2025-06-03"
+  const defaultForm = {
+    id: estimate?.id || null,
+    estimate_number: estimate?.estimate_number || '',
+    working_group_id: estimate?.working_group_id || '',
+    // --- Client + dates + notes ---
+    client_name: estimate?.client_name || '',
+    client_address: estimate?.client_address || '',
+    client_phone: estimate?.client_phone || '',
+    issue_date: estimate?.issue_date || todayISO,
+    due_date: estimate?.due_date || todayISO,
+    notes: estimate?.notes || '',
+    // --- Line items (array of { description, qty, unit, unit_price }) ---
+    items:
+      estimate?.items.map((it) => ({
+        description: it.description,
+        qty: it.qty,
+        unit: it.unit,
+        unit_price: it.unit_price,
+        tempId: Math.random().toString(36).substring(2, 8), // for React key
+      })) || [
+        {
+          description: '',
+          qty: 1,
+          unit: '',
+          unit_price: 0,
+          tempId: Math.random().toString(36).substring(2, 8),
+        },
+      ],
+  };
 
-    const [form, setForm] = useState({
-        estimate_number: '',
-        working_group_id: '',
-        client_name: '',
-        client_address: '',
-        client_phone: '',
-        issue_date: today,
-        due_date: today,
-        notes: '',
-        items: [
-            { description: '', qty: 1, unit: '', unit_price: 0 }
-        ]
+  const [form, setForm] = useState(defaultForm);
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  // Track which field is “currently in edit mode.”
+  // editingField can be one of:
+  // 'issue_date', 'due_date', 'client_name', 'client_address', 'client_phone',
+  // or `item-<index>-description`, `item-<index>-qty`, `item-<index>-unit`, `item-<index>-unit_price`.
+  const [editingField, setEditingField] = useState(null);
+
+  // Helpers: Format an ISO date string ("YYYY-MM-DD") → "DD/MM/YYYY"
+  const formatDateForDisplay = (iso) => {
+    if (!iso) return '';
+    const [year, month, day] = iso.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
+  // When editing, we want to write back into `form`; e.g. change form.issue_date, etc.
+  const startEditing = (fieldKey) => {
+    setEditingField(fieldKey);
+  };
+
+  const stopEditing = () => {
+    setEditingField(null);
+  };
+
+  // Top‐level field change (client_name, dates, etc.)
+  const handleTopLevelChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Line‐item cell change: idx = index in form.items, field = 'description' | 'qty' | 'unit' | 'unit_price'
+  const handleItemChange = (idx, field, value) => {
+    setForm((prev) => {
+      const items = [...prev.items];
+      items[idx] = {
+        ...items[idx],
+        [field]: field === 'qty' || field === 'unit_price' ? parseFloat(value) || 0 : value,
+      };
+      return { ...prev, items };
     });
+  };
 
-    // Add new line item
-    const addItem = () => {
-        setForm(prev => ({
-            ...prev,
-            items: [...prev.items, { description: '', qty: 1, unit: '', unit_price: 0 }]
-        }));
-    };
+  // Add a new empty line‐item
+  const addItem = () => {
+    setForm((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        { description: '', qty: 1, unit: '', unit_price: 0, tempId: Math.random().toString(36).substring(2, 8) },
+      ],
+    }));
+  };
 
-    // Remove a line item
-    const removeItem = (idx) => {
-        setForm(prev => ({
-            ...prev,
-            items: prev.items.filter((_, i) => i !== idx)
-        }));
-    };
+  // Remove line‐item at index `idx`
+  const removeItem = (idx) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== idx),
+    }));
+    // If we were editing something in that row, turn it off:
+    setEditingField(null);
+  };
 
-    // Handle change on top-level fields
-    const handleChange = (e) => {
-        setForm({ ...form, [e.target.name]: e.target.value });
-    };
+  // Compute subtotal, discount=0, tax=0, total
+  const subtotal = form.items.reduce(
+    (sum, item) => sum + item.qty * item.unit_price,
+    0
+  );
+  const discount = 0;
+  const tax = 0;
+  const total = subtotal - discount + tax;
 
-    // Handle change in a specific item
-    const handleItemChange = (idx, e) => {
-        const { name, value } = e.target;
-        setForm(prev => {
-            const items = [...prev.items];
-            items[idx][name] = name === 'qty' || name === 'unit_price' ? parseFloat(value) : value;
-            return { ...prev, items };
-        });
-    };
+  // When Save is clicked
+  const submit = (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrors({});
 
-    // Compute totals
-    const subtotal = form.items.reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
-    const discount = 0;
-    const tax = 0;
-    const total = subtotal - discount + tax;
+    // Decide whether to POST (create) or PUT (update)
+    if (form.id) {
+      // Update existing
+      router.put(
+        route('admin.estimates.update', form.id),
+        {
+          ...form,
+          items: form.items.map(({ tempId, ...keep }) => keep),
+        },
+        {
+          preserveScroll: true,
+          onSuccess: (page) => {
+            setLoading(false);
+            // Optionally show a flash or reset editing
+            setEditingField(null);
+          },
+          onError: (errs) => {
+            setLoading(false);
+            setErrors(errs);
+          },
+        }
+      );
+    } else {
+      // Create new
+      router.post(
+        route('admin.estimates.store'),
+        {
+          ...form,
+          items: form.items.map(({ tempId, ...keep }) => keep),
+        },
+        {
+          preserveScroll: true,
+          onSuccess: (page) => {
+            setLoading(false);
+            // Clear the form for a fresh new estimate:
+            setForm(defaultForm);
+            setEditingField(null);
+          },
+          onError: (errs) => {
+            setLoading(false);
+            setErrors(errs);
+          },
+        }
+      );
+    }
+  };
 
-    // Submit handler
-    const submit = (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setErrors({});
+  return (
+    <>
+      <Head title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
+      <Meta
+        title={form.id ? 'Edit Estimate - Admin Dashboard' : 'Add Estimate - Admin Dashboard'}
+        description="Inline‐edit Estimate"
+      />
 
-        router.post(route('admin.estimates.store'), form, {
-            preserveState: true,
-            preserveScroll: true,
-            onSuccess: () => {
-                setAlert({ type: 'success', message: 'Estimate created successfully!' });
-                setForm({
-                    estimate_number: '', working_group_id: '', client_name: '', client_address: '',
-                    client_phone: '', issue_date: today, due_date: today, notes: '',
-                    items: [{ description: '', qty: 1, unit: '', unit_price: 0 }]
-                });
-            },
-            onError: errs => {
-                setErrors(errs);
-                setAlert({ type: 'danger', message: 'Please fix the errors below.' });
-            },
-            onFinish: () => setLoading(false)
-        });
-    };
+      <AdminDashboard userDetails={userDetails}>
+        <Breadcrumb title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
 
-    return (
-        <>
-            <Head title="Add New Estimate - Admin Dashboard" />
-            <Meta title="Add New Estimate - Admin Dashboard" description="Add New Estimate" />
+        <div className="card">
+          <div className="card-header">
+            <div className="d-flex flex-wrap align-items-center justify-content-end gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1"
+                onClick={submit}
+                disabled={loading}
+              >
+                <Icon icon="simple-line-icons:check" className="text-xl" />
+                {loading ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
 
-            <AdminDashboard userDetails={userDetails}>
-                <Breadcrumb title="Add New Estimate" />
-                {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
-                <div className="card h-100 p-0 radius-12">
-                    <div className="card-header border-bottom bg-base py-16 px-24 d-flex align-items-center flex-wrap gap-3 justify-content-between">
-                        {errors && Object.keys(errors).length > 0 && (
-                            <div
-                                className="alert alert-danger bg-danger-100 mb-3 text-danger-600 border-danger-600 border-start-width-4-px border-top-0 border-end-0 border-bottom-0 px-24 py-13 mb-0 fw-semibold text-lg radius-4 d-flex align-items-center justify-content-between"
-                                role="alert"
-                            >
-                                <ol>
-                                    {Object.values(errors).map((error, index) => (
-                                        <li key={index}>{error}</li>
-                                    ))}
-                                </ol>
-                            </div>
-                        )}
-                        <div className="mb-0 tw-font-semibold tw-text-2xl">Add New Estimate</div>
+          <div className="card-body py-40">
+            {/* Errors Banner */}
+            {Object.keys(errors).length > 0 && (
+              <div className="alert alert-danger mb-4">
+                <ul className="mb-0">
+                  {Object.values(errors).map((errMsg, idx) => (
+                    <li key={idx}>{errMsg}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="row justify-content-center" id="invoice">
+              <div className="col-lg-8">
+                <div className="shadow-4 border radius-8">
+                  {/* Header (Estimate #, Dates, Company Info) */}
+                  <div className="p-20 border-bottom">
+                    <div className="row justify-content-between g-3">
+                      {/* Left: Estimate #, Issue & Due */}
+                      <div className="col-sm-4">
+                        <h3 className="text-xl">
+                          {form.estimate_number
+                            ? `Estimate #${form.estimate_number}`
+                            : 'Estimate #—'}
+                        </h3>
+
+                        {/* Issue Date */}
+                        <p className="mb-1 text-sm d-flex align-items-center">
+                          Date Issued:&nbsp;
+                          {editingField === 'issue_date' ? (
+                            <input
+                              name="issue_date"
+                              type="date"
+                              className="form-control form-control-sm w-auto"
+                              value={form.issue_date}
+                              onChange={handleTopLevelChange}
+                              onBlur={stopEditing}
+                              autoFocus
+                            />
+                          ) : (
+                            <>
+                              <span className="editable text-decoration-underline">
+                                {formatDateForDisplay(form.issue_date)}
+                              </span>
+                              <span
+                                className="text-success-main ms-1"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => startEditing('issue_date')}
+                              >
+                                <Icon icon="mage:edit" />
+                              </span>
+                            </>
+                          )}
+                        </p>
+
+                        {/* Due Date */}
+                        <p className="mb-0 text-sm d-flex align-items-center">
+                          Date Due:&nbsp;
+                          {editingField === 'due_date' ? (
+                            <input
+                              name="due_date"
+                              type="date"
+                              className="form-control form-control-sm w-auto"
+                              value={form.due_date}
+                              onChange={handleTopLevelChange}
+                              onBlur={stopEditing}
+                              autoFocus
+                            />
+                          ) : (
+                            <>
+                              <span className="editable text-decoration-underline">
+                                {formatDateForDisplay(form.due_date)}
+                              </span>
+                              <span
+                                className="text-success-main ms-1"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => startEditing('due_date')}
+                              >
+                                <Icon icon="mage:edit" />
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Right: Company Logo & Contact */}
+                      <div className="col-sm-4 text-end">
+                        <img
+                          src="/images/printairlogo.png"
+                          alt="Printair Logo"
+                          className="mb-8"
+                          style={{ maxHeight: '60px' }}
+                        />
+                        <p className="mb-1 text-sm">
+                          No. 67/D/1, Uggashena Road, Walpola, Ragama, Sri Lanka
+                        </p>
+                        <p className="mb-0 text-sm">
+                          contact@printair.lk, &nbsp;+94 76 886 0175
+                        </p>
+                      </div>
                     </div>
-                    <div className="card-body p-24">
+                  </div>
 
-                        <div className="row">
-                            <div className="col-sm-7 p-5">
+                  {/* Body: “Issues For” + “Order Info” + Line Items + Totals */}
+                  <div className="py-28 px-20">
+                    <div className="d-flex flex-wrap justify-content-between align-items-end gap-3">
+                      <div>
+                        <h6 className="text-md">Issues For:</h6>
+                        <table className="text-sm text-secondary-light">
+                          <tbody>
+                            {/* Client Name */}
+                            <tr>
+                              <td>Name</td>
+                              <td className="ps-8 d-flex align-items-center">
+                                {editingField === 'client_name' ? (
+                                  <input
+                                    name="client_name"
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    value={form.client_name}
+                                    onChange={handleTopLevelChange}
+                                    onBlur={stopEditing}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="editable text-decoration-underline">
+                                      {form.client_name || '—'}
+                                    </span>
+                                    <span
+                                      className="text-success-main ms-1"
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => startEditing('client_name')}
+                                    >
+                                      <Icon icon="mage:edit" />
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
 
-                                <form onSubmit={submit}>
+                            {/* Client Address */}
+                            <tr>
+                              <td>Address</td>
+                              <td className="ps-8 d-flex align-items-center">
+                                {editingField === 'client_address' ? (
+                                  <textarea
+                                    name="client_address"
+                                    className="form-control form-control-sm"
+                                    rows={2}
+                                    value={form.client_address}
+                                    onChange={handleTopLevelChange}
+                                    onBlur={stopEditing}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="editable text-decoration-underline">
+                                      {form.client_address || '—'}
+                                    </span>
+                                    <span
+                                      className="text-success-main ms-1"
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => startEditing('client_address')}
+                                    >
+                                      <Icon icon="mage:edit" />
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">Estimate #</label>
-                                        <input
-                                            name="estimate_number"
-                                            type="text"
-                                            className="form-control"
-                                            value={form.estimate_number}
-                                            onChange={handleChange}
-                                        />
-                                        {errors.estimate_number && <div className="text-danger mt-1">{errors.estimate_number}</div>}
+                            {/* Client Phone */}
+                            <tr>
+                              <td>Phone number</td>
+                              <td className="ps-8 d-flex align-items-center">
+                                {editingField === 'client_phone' ? (
+                                  <input
+                                    name="client_phone"
+                                    type="tel"
+                                    className="form-control form-control-sm"
+                                    value={form.client_phone}
+                                    onChange={handleTopLevelChange}
+                                    onBlur={stopEditing}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="editable text-decoration-underline">
+                                      {form.client_phone || '—'}
+                                    </span>
+                                    <span
+                                      className="text-success-main ms-1"
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => startEditing('client_phone')}
+                                    >
+                                      <Icon icon="mage:edit" />
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Right side “Order Info” (Issus Date, Order ID, Shipment ID) */}
+                      <div>
+                        <table className="text-sm text-secondary-light">
+                          <tbody>
+                            <tr>
+                              <td>Issus Date</td>
+                              <td className="ps-8">
+                                {formatDateForDisplay(form.issue_date)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>Order ID</td>
+                              <td className="ps-8">
+                                #{form.estimate_number || '—'}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>Shipment ID</td>
+                              <td className="ps-8">
+                                {estimate?.shipment_id
+                                  ? `#${estimate.shipment_id}`
+                                  : '—'}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Line Items Table */}
+                    <div className="mt-24">
+                      <div className="table-responsive scroll-sm">
+                        <table
+                          className="table bordered-table text-sm"
+                          id="invoice-table"
+                        >
+                          <thead>
+                            <tr>
+                              <th scope="col" className="text-sm">
+                                SL.
+                              </th>
+                              <th scope="col" className="text-sm">
+                                Items
+                              </th>
+                              <th scope="col" className="text-sm">
+                                Qty
+                              </th>
+                              <th scope="col" className="text-sm">
+                                Units
+                              </th>
+                              <th scope="col" className="text-sm">
+                                Unit Price
+                              </th>
+                              <th scope="col" className="text-sm">
+                                Price
+                              </th>
+                              <th scope="col" className="text-center text-sm">
+                                Action
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {form.items.map((item, idx) => (
+                              <tr key={item.tempId}>
+                                {/* SL # */}
+                                <td>{idx + 1}</td>
+
+                                {/* Description (inline editable) */}
+                                <td>
+                                  {editingField === `item-${idx}-description` ? (
+                                    <input
+                                      type="text"
+                                      className="form-control form-control-sm"
+                                      value={item.description}
+                                      onChange={(e) =>
+                                        handleItemChange(idx, 'description', e.target.value)
+                                      }
+                                      onBlur={stopEditing}
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <div className="d-flex align-items-center">
+                                      <span className="editable text-decoration-underline">
+                                        {item.description || '—'}
+                                      </span>
+                                      <span
+                                        className="text-success-main ms-1"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() =>
+                                          startEditing(`item-${idx}-description`)
+                                        }
+                                      >
+                                        <Icon icon="mage:edit" />
+                                      </span>
                                     </div>
+                                  )}
+                                </td>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">Working Group</label>
-                                        <select
-                                            name="working_group_id"
-                                            className="form-select"
-                                            value={form.working_group_id}
-                                            onChange={handleChange}
-                                        >
-                                            <option value="">Select Group</option>
-                                            {workingGroups.map(wg => <option key={wg.id} value={wg.id}>{wg.name}</option>)}
-                                        </select>
-                                        {errors.working_group_id && <div className="text-danger mt-1">{errors.working_group_id}</div>}
+                                {/* Qty */}
+                                <td>
+                                  {editingField === `item-${idx}-qty` ? (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      className="form-control form-control-sm"
+                                      value={item.qty}
+                                      onChange={(e) =>
+                                        handleItemChange(idx, 'qty', e.target.value)
+                                      }
+                                      onBlur={stopEditing}
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <div className="d-flex align-items-center">
+                                      <span className="editable text-decoration-underline">
+                                        {item.qty}
+                                      </span>
+                                      <span
+                                        className="text-success-main ms-1"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() => startEditing(`item-${idx}-qty`)}
+                                      >
+                                        <Icon icon="mage:edit" />
+                                      </span>
                                     </div>
+                                  )}
+                                </td>
 
-                                    <div className="row">
-                                        <div className="col-sm-6 mb-3">
-                                            <label className="form-label">Issue Date</label>
-                                            <input
-                                                name="issue_date"
-                                                type="date"
-                                                className="form-control"
-                                                value={form.issue_date}
-                                                onChange={handleChange}
-                                            />
-                                        </div>
-                                        <div className="col-sm-6 mb-3">
-                                            <label className="form-label">Due Date</label>
-                                            <input
-                                                name="due_date"
-                                                type="date"
-                                                className="form-control"
-                                                value={form.due_date}
-                                                onChange={handleChange}
-                                            />
-                                        </div>
+                                {/* Unit */}
+                                <td>
+                                  {editingField === `item-${idx}-unit` ? (
+                                    <input
+                                      type="text"
+                                      className="form-control form-control-sm"
+                                      value={item.unit}
+                                      onChange={(e) =>
+                                        handleItemChange(idx, 'unit', e.target.value)
+                                      }
+                                      onBlur={stopEditing}
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <div className="d-flex align-items-center">
+                                      <span className="editable text-decoration-underline">
+                                        {item.unit || '—'}
+                                      </span>
+                                      <span
+                                        className="text-success-main ms-1"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() => startEditing(`item-${idx}-unit`)}
+                                      >
+                                        <Icon icon="mage:edit" />
+                                      </span>
                                     </div>
+                                  )}
+                                </td>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">Client Name</label>
-                                        <input name="client_name" type="text" className="form-control" value={form.client_name} onChange={handleChange} />
+                                {/* Unit Price */}
+                                <td>
+                                  {editingField === `item-${idx}-unit_price` ? (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      className="form-control form-control-sm"
+                                      value={item.unit_price}
+                                      onChange={(e) =>
+                                        handleItemChange(idx, 'unit_price', e.target.value)
+                                      }
+                                      onBlur={stopEditing}
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <div className="d-flex align-items-center">
+                                      <span className="editable text-decoration-underline">
+                                        {item.unit_price.toFixed(2)}
+                                      </span>
+                                      <span
+                                        className="text-success-main ms-1"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() =>
+                                          startEditing(`item-${idx}-unit_price`)
+                                        }
+                                      >
+                                        <Icon icon="mage:edit" />
+                                      </span>
                                     </div>
-                                    <div className="mb-3">
-                                        <label className="form-label">Client Address</label>
-                                        <textarea name="client_address" className="form-control" rows={2} value={form.client_address} onChange={handleChange} />
-                                    </div>
-                                    <div className="mb-3">
-                                        <label className="form-label">Client Phone</label>
-                                        <div className="input-group">
-                                            <span className="input-group-text">
-                                                <Icon icon="ic:baseline-phone" />
-                                            </span>
-                                            <input name="client_phone" type="tel" className="form-control" value={form.client_phone} onChange={handleChange} />
-                                        </div>
-                                    </div>
+                                  )}
+                                </td>
 
-                                    <h5 className="mt-4">Line Items</h5>
-                                    <div className="table-responsive">
-                                        <table className="table bordered-table text-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th>SL.</th><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Price</th><th className="text-center">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {form.items.map((item, i) => (
-                                                    <tr key={i}>
-                                                        <td>{i + 1}</td>
-                                                        <td><input name="description" className="form-control" value={item.description} onChange={e => handleItemChange(i, e)} /></td>
-                                                        <td><input name="qty" type="number" className="form-control" value={item.qty} onChange={e => handleItemChange(i, e)} /></td>
-                                                        <td><input name="unit" className="form-control" value={item.unit} onChange={e => handleItemChange(i, e)} /></td>
-                                                        <td><input name="unit_price" type="number" className="form-control" value={item.unit_price} onChange={e => handleItemChange(i, e)} /></td>
-                                                        <td>${(item.qty * item.unit_price).toFixed(2)}</td>
-                                                        <td className="text-center">
-                                                            <button type="button" className="remove-row" onClick={() => removeItem(i)}>
-                                                                <Icon icon="ic:twotone-close" className="text-danger-main text-xl" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <button type="button" className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1 mt-2" onClick={addItem}>
-                                        <Icon icon="simple-line-icons:plus" className="text-xl" /> Add New
-                                    </button>
+                                {/* Price = qty × unit_price (read‐only) */}
+                                <td>${(item.qty * item.unit_price).toFixed(2)}</td>
 
-                                    <div className="mb-3 mt-4">
-                                        <label className="form-label">Notes (optional)</label>
-                                        <ReactQuill value={form.notes} onChange={val => setForm(prev => ({ ...prev, notes: val }))} />
-                                    </div>
+                                {/* Remove‐row button */}
+                                <td className="text-center">
+                                  <button
+                                    type="button"
+                                    className="remove-row btn p-0"
+                                    onClick={() => removeItem(idx)}
+                                  >
+                                    <Icon
+                                      icon="ic:twotone-close"
+                                      className="text-danger-main text-xl"
+                                    />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                                    <div className="mt-4">
-                                        {loading ? (
-                                            <button type="button" className="btn btn-primary" disabled>
-                                                Saving...
-                                            </button>
-                                        ) : (
-                                            <button type="submit" className="btn btn-primary">Save Estimate</button>
-                                        )}
-                                    </div>
+                      {/* “Add New” line */}
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1"
+                          onClick={addItem}
+                        >
+                          <Icon
+                            icon="simple-line-icons:plus"
+                            className="text-xl"
+                          />
+                          Add New
+                        </button>
+                      </div>
 
-                                </form>
-
-                            </div>
-
-                            {/* display estimate */}
-                            <div className="col-sm-5">
-
-                                <div className="row justify-content-center" id="invoice">
-                                    <div className="m-3">
-                                        <div className="shadow-4 border radius-8">
-                                            <div className="p-20 border-bottom">
-                                                <div className="row justify-content-between g-3">
-                                                    <div className="col-sm-4">
-                                                        <h3 className="text-xl tw-font-bold">Estimate #349245</h3>
-                                                        <p className="mb-1 text-sm">
-                                                            Date Issued:{" "}
-                                                            <span className="asp12df">
-                                                                25/08/2020
-                                                            </span>{" "}
-                                                             
-                                                        </p>
-                                                        <p className="mb-0 text-sm">
-                                                            Date Due:{" "}
-                                                            <span className="asp12df">
-                                                                29/08/2020
-                                                            </span>{" "}
-                                                             
-                                                        </p>
-                                                    </div>
-                                                    <div className="col-sm-4">
-                                                        <img
-                                                            src="/images/printairlogo.png"
-                                                            alt="image_icon"
-                                                            className="mb-8"
-                                                        />
-                                                        <p className="mb-1 text-sm">
-                                                            <span className="tw-inline-flex tw-items-center">
-                                                                <Icon
-                                                                    icon="mdi:location"
-                                                                    className="tw-flex-shrink-0 tw-mr-1 tw-align-middle"
-                                                                />
-                                                                <span className="tw-align-middle">No. 67/D/1, Uggashena Road, Walpola, Ragama, Sri Lanka</span>
-                                                            </span>
-                                                        </p>
-                                                        <p className="mb-0 text-sm">
-                                                        <span className="tw-inline-flex tw-items-center">
-                                                                <Icon
-                                                                    icon="lets-icons:e-mail"
-                                                                    className="tw-flex-shrink-0 tw-mr-1 tw-align-middle"
-                                                                />
-                                                                <span className="tw-align-middle">contact@printair.lk</span>
-                                                            </span>
-                                                            <br />
-                                                            <span className="tw-inline-flex tw-items-center">
-                                                                <Icon
-                                                                    icon="ic:baseline-phone"
-                                                                    className="tw-flex-shrink-0 tw-mr-1 tw-align-middle"
-                                                                />
-                                                                <span className="tw-align-middle">+94 76 886 0175</span>
-                                                            </span>
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="py-28 px-20">
-                                                <div className="d-flex flex-wrap justify-content-between align-items-end gap-3">
-                                                    <div>
-                                                        <h6 className="text-md tw-font-semibold">Issus For:</h6>
-                                                        <table className="text-sm text-secondary-light">
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td>Name</td>
-                                                                    <td className="ps-8">
-                                                                        :{" "}
-                                                                        <span className="asp12df">
-                                                                            Will Marthas
-                                                                        </span>
-                                                                        
-                                                                    </td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td>Address</td>
-                                                                    <td className="ps-8">
-                                                                        :{" "}
-                                                                        <span className="asp12df">
-                                                                            4517 Washington Ave.USA
-                                                                        </span>{" "}
-                                                                         
-                                                                    </td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td>Phone number</td>
-                                                                    <td className="ps-8">
-                                                                        :{" "}
-                                                                        <span className="asp12df">
-                                                                            +1 543 2198
-                                                                        </span>{" "}
-                                                                         
-                                                                    </td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <div>
-                                                        <table className="text-sm text-secondary-light">
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td>Issus Date</td>
-                                                                    <td className="ps-8">:25 Jan 2024</td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td>P.O. #</td>
-                                                                    <td className="ps-8">:#653214</td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td>Shipment ID</td>
-                                                                    <td className="ps-8">:#965215</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-24">
-                                                    <div className="table-responsive scroll-sm">
-                                                        <table className="tw-w-full tw-border-collapse tw-text-sm tw-mb-3" id="invoice-table">
-                                                            <thead className="tw-bg-red-500">
-                                                                <tr>
-                                                                    <th className="tw-border  tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">SL.</th>
-                                                                    <th className="tw-border tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">Items</th>
-                                                                    <th className="tw-border tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">Description</th>
-                                                                    <th className="tw-border tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">Qty</th>
-                                                                    <th className="tw-border tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">Units</th>
-                                                                    <th className="tw-border tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">Unit Price</th>
-                                                                    <th className="tw-border tw-border-gray-200 tw-px-3 tw-py-2 tw-text-white tw-font-semibold">Price</th>
-                                                                    
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                <tr className="tw-even:bg-gray-50 tw-hover:bg-gray-100">
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">01</td>
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">Apple’s Shoes</td>
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">Description</td>
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">5</td>
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">PC</td>
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">LKR 200</td>
-                                                                    <td className="tw-border tw-border-gray-200 tw-px-3 tw-py-2">LKR 1,000.00</td>
-                                                                    
-                                                                </tr>
-                                                                
-                                                            </tbody>
-                                                        </table>
-
-                                                    </div>
-                                                    <div>
-                                                        <button
-                                                            type="button"
-                                                            id="addRow"
-                                                            className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1"
-                                                        >
-                                                            <Icon
-                                                                icon="simple-line-icons:plus"
-                                                                className="text-xl"
-                                                            />
-                                                            Add New
-                                                        </button>
-                                                    </div>
-                                                    <div className="d-flex flex-wrap justify-content-between gap-3 mt-24">
-                                                        <div>
-                                                            <p className="text-sm mb-0">
-                                                                <span className="text-primary-light fw-semibold">
-                                                                    Sales By:
-                                                                </span>{" "}
-                                                                Jammal
-                                                            </p>
-                                                            <p className="text-sm mb-0">Thanks for your business</p>
-                                                            <div className="mb-0">
-                                                                <div className="tw-font-semibold tw-text-sm tw-text-black">Notes</div>
-                                                                <p className='tw-text-sm tw-max-w-96'>Notes goes here with payment terms for the customer.</p>
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <table className="text-sm">
-                                                                <tbody>
-                                                                    <tr>
-                                                                        <td className="pe-64">Subtotal:</td>
-                                                                        <td className="pe-16">
-                                                                            <span className="text-primary-light fw-semibold">
-                                                                                LKR 4000.00
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                    <tr>
-                                                                        <td className="pe-64">Discount:</td>
-                                                                        <td className="pe-16">
-                                                                            <span className="text-primary-light fw-semibold">
-                                                                                LKR 0.00
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                    <tr>
-                                                                        <td className="pe-64 border-bottom pb-4">Tax:</td>
-                                                                        <td className="pe-16 border-bottom pb-4">
-                                                                            <span className="text-primary-light fw-semibold">
-                                                                                LKR 0.00
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                    <tr>
-                                                                        <td className="pe-64 pt-4">
-                                                                            <span className="text-primary-light fw-semibold">
-                                                                                Total:
-                                                                            </span>
-                                                                        </td>
-                                                                        <td className="pe-16 pt-4">
-                                                                            <span className="text-primary-light fw-semibold">
-                                                                                LKR 1690.00
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-64">
-                                                    
-                                                    <p className="text-center text-secondary-light text-sm fw-semibold">
-                                                        Thank you for your purchase!
-                                                    </p>
-                                                </div>
-                                                <div className="d-flex flex-wrap justify-content-between align-items-end mt-64">
-                                                    <div className="text-sm border-top d-inline-block px-12">
-                                                        Signature of Customer
-                                                    </div>
-                                                    <div className="text-sm border-top d-inline-block px-12">
-                                                        Signature of Authorized
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-
-                            </div>
+                      {/* Totals */}
+                      <div className="d-flex flex-wrap justify-content-between gap-3 mt-24">
+                        <div>
+                          <p className="text-sm mb-0">
+                            <span className="text-primary-light fw-semibold">
+                              Sales By:
+                            </span>{' '}
+                            {userDetails.name || '—'}
+                          </p>
+                          <p className="text-sm mb-0">Thanks for your business</p>
                         </div>
 
-                    </div>
-                </div>
-            </AdminDashboard>
-            <CookiesV />
-        </>
-    );
-}
+                        <div>
+                          <table className="text-sm">
+                            <tbody>
+                              <tr>
+                                <td className="pe-64">Subtotal:</td>
+                                <td className="pe-16">
+                                  <span className="text-primary-light fw-semibold">
+                                    ${subtotal.toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="pe-64">Discount:</td>
+                                <td className="pe-16">
+                                  <span className="text-primary-light fw-semibold">
+                                    ${discount.toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="pe-64 border-bottom pb-4">Tax:</td>
+                                <td className="pe-16 border-bottom pb-4">
+                                  <span className="text-primary-light fw-semibold">
+                                    {tax.toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="pe-64 pt-4">
+                                  <span className="text-primary-light fw-semibold">
+                                    Total:
+                                  </span>
+                                </td>
+                                <td className="pe-16 pt-4">
+                                  <span className="text-primary-light fw-semibold">
+                                    ${total.toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
 
-export default AddE
+                      {/* Footer (Signatures) */}
+                      <div className="mt-64">
+                        <p className="text-center text-secondary-light text-sm fw-semibold">
+                          Thank you for your purchase!
+                        </p>
+                      </div>
+                      <div className="d-flex flex-wrap justify-content-between align-items-end mt-64">
+                        <div className="text-sm border-top d-inline-block px-12">
+                          Signature of Customer
+                        </div>
+                        <div className="text-sm border-top d-inline-block px-12">
+                          Signature of Authorized
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </AdminDashboard>
+
+      <CookiesV />
+    </>
+  );
+};
+
+export default AddE;

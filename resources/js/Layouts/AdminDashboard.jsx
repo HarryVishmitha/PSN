@@ -368,10 +368,11 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     <span>Daily Customers</span>
                                 </Link>
                             </li>
-                            <li className='dropdown'>
+
+                            <li className='dropdown mt-3'>
                                 <Link href={route('admin.estimates')}>
                                     <Icon icon='ph:invoice' className='menu-icon' alt='designs' />
-                                    <span>Estimates</span>
+                                    <span>Quotations</span>
                                 </Link>
                                 <ul className='sidebar-submenu'>
                                     <li>
@@ -380,7 +381,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                                             className={url === '/admin/add-estimate' ? 'active-page' : ''}
                                         >
                                             <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
-                                            Add New Estimate
+                                            Add New Quotations
                                         </Link>
                                     </li>
                                     <li>
@@ -389,7 +390,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                                             className={url === '/admin/estimates' ? 'active-page' : ''}
                                         >
                                             <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
-                                            All Estimates
+                                            All Quotations
                                         </Link>
                                     </li>
                                 </ul>
