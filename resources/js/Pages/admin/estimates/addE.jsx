@@ -7,13 +7,16 @@ import { Icon } from '@iconify/react';
 import CookiesV from '@/Components/CookieConsent';
 import Meta from '@/Components/Metaheads';
 
-const AddE = ({ userDetails, workingGroups, estimate = null }) => {
+const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }) => {
   // If `estimate` is passed in via Inertia props when editing an existing estimate,
   // we prefill; otherwise we start with blank/new.
+  const raw = estimate?.estimate_number || newEstimateNumber || '00000000';
+  const datePart = raw.slice(0, 8);
+  const suffix = raw.slice(8);
   const todayISO = new Date().toISOString().split('T')[0]; // "2025-06-03"
   const defaultForm = {
     id: estimate?.id || null,
-    estimate_number: estimate?.estimate_number || '',
+    estimate_number: `EST-${datePart}-${suffix}` || '',
     working_group_id: estimate?.working_group_id || '',
     // --- Client + dates + notes ---
     client_name: estimate?.client_name || '',
@@ -207,21 +210,27 @@ const AddE = ({ userDetails, workingGroups, estimate = null }) => {
             )}
 
             <div className="row justify-content-center" id="invoice">
-              <div className="col-lg-8">
+              <div className="col tw-max-w-[8.3in]">
                 <div className="shadow-4 border radius-8">
                   {/* Header (Estimate #, Dates, Company Info) */}
                   <div className="p-20 border-bottom">
                     <div className="row justify-content-between g-3">
                       {/* Left: Estimate #, Issue & Due */}
-                      <div className="col-sm-4">
+                      <div className="col-sm-6">
                         <h3 className="text-xl">
                           {form.estimate_number
-                            ? `Estimate #${form.estimate_number}`
+                            ? (
+                              <>
+
+                                <h4 className='tw-font-bold'>Estimate</h4>
+                                <div className='tw-font-semibold tw-text-md'>#{form.estimate_number}</div>
+                              </>
+                            )
                             : 'Estimate #—'}
                         </h3>
 
                         {/* Issue Date */}
-                        <p className="mb-1 text-sm d-flex align-items-center">
+                        <p className="mb-1 text-sm d-flex align-items-center tw-mt-3">
                           Date Issued:&nbsp;
                           {editingField === 'issue_date' ? (
                             <input
@@ -280,18 +289,23 @@ const AddE = ({ userDetails, workingGroups, estimate = null }) => {
                       </div>
 
                       {/* Right: Company Logo & Contact */}
-                      <div className="col-sm-4 text-end">
-                        <img
-                          src="/images/printairlogo.png"
-                          alt="Printair Logo"
-                          className="mb-8"
-                          style={{ maxHeight: '60px' }}
-                        />
-                        <p className="mb-1 text-sm">
-                          No. 67/D/1, Uggashena Road, Walpola, Ragama, Sri Lanka
+                      <div className="col-sm-6 d-flex flex-column align-items-end justify-content-end text-end">
+                        <div>
+                          <img
+                            src="/images/printairlogo.png"
+                            alt="Printair Logo"
+                            className="tw-mb-3"
+                            style={{ maxHeight: '95px' }}
+                          />
+                        </div>
+                        <p className="tw-mb-1 tw-text-sm">
+                          No. 67/D/1, Uggashena Road,
+                          <br />Walpola, Ragama, Sri Lanka
                         </p>
-                        <p className="mb-0 text-sm">
-                          contact@printair.lk, &nbsp;+94 76 886 0175
+                        <p className="tw-mb-0 tw-text-sm">
+                          contact@printair.lk
+                          <br />
+                          &nbsp;+94 76 886 0175
                         </p>
                       </div>
                     </div>
@@ -405,22 +419,30 @@ const AddE = ({ userDetails, workingGroups, estimate = null }) => {
                         <table className="text-sm text-secondary-light">
                           <tbody>
                             <tr>
-                              <td>Issus Date</td>
+                              <td className='tw-text-end'>Issus Date :</td>
                               <td className="ps-8">
                                 {formatDateForDisplay(form.issue_date)}
                               </td>
                             </tr>
                             <tr>
-                              <td>Order ID</td>
+                              <td className='tw-text-end'>Order ID :</td>
                               <td className="ps-8">
-                                #{form.estimate_number || '—'}
+                                {form.estimate_number || '—'}
                               </td>
                             </tr>
                             <tr>
-                              <td>Shipment ID</td>
+                              <td className='tw-text-end'>P.O. Number :</td>
+                              <td className="ps-8">
+                                {estimate?.poNumber
+                                  ? `${estimate.poNumber}`
+                                  : '—'}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className='tw-text-end'>Shipment ID :</td>
                               <td className="ps-8">
                                 {estimate?.shipment_id
-                                  ? `#${estimate.shipment_id}`
+                                  ? `${estimate.shipment_id}`
                                   : '—'}
                               </td>
                             </tr>

@@ -26,6 +26,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Design;
+use App\Models\Estimate;
 use Google\Service\Drive\Permission as Google_Service_Drive_Permission;
 use Google\Service\Drive as GoogleServiceDrive;
 use Google\Client as GoogleClient;
@@ -90,7 +91,7 @@ class AdminController extends Controller
             'dailyCustomers' => $dailyCustomers
         ]);
     }
-    
+
 
     public function profile()
     {
@@ -678,7 +679,7 @@ class AdminController extends Controller
 
         // Build the query with the count of related users.
         $query = WorkingGroup::withCount('users');
-        
+
         $query->withCount('products');
 
         if ($status) {
@@ -2610,11 +2611,25 @@ class AdminController extends Controller
             'ip_address'  => request()->ip(),
         ]);
 
-        $workingGroups = WorkingGroup::where('status', 'active')->with('products')->get();
-
+        // 2) Fetch all active working groups (with their products, if needed)
+        $workingGroups = WorkingGroup::where('status', 'active')
+            ->with('products')
+            ->get();
+        
+        if (Estimate::count() === 0) {
+            // If no estimates exist, start suffix from 1600
+            $suffix = 1600;
+        } else {
+            //otherwise, get the last added estimate id and get suffix as it's last four digits
+            $lastEstimate = Estimate::latest()->first();
+            $suffix = (int) substr($lastEstimate->reference, -4) + 1;
+        }
+        $newEstimateNumber = date('Ymd') . $suffix;
+        
         return Inertia::render('admin/estimates/addE', [
             'userDetails'    => Auth::user(),
             'workingGroups'  => $workingGroups,
+            'newEstimateNumber' => $newEstimateNumber,
         ]);
     }
 }
