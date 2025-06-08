@@ -352,7 +352,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             {/* Client Address */}
                             <tr>
                               <td>Address</td>
-                              <td className="ps-8 d-flex align-items-center">
+                              <td className="ps-8 d-flex align-items-center tw-max-w-[300px]">
                                 {editingField === 'client_address' ? (
                                   <textarea
                                     name="client_address"
