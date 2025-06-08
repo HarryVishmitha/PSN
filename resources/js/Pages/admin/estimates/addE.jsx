@@ -433,9 +433,30 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             <tr>
                               <td className='tw-text-end'>P.O. Number :</td>
                               <td className="ps-8">
-                                {estimate?.poNumber
-                                  ? `${estimate.poNumber}`
-                                  : '—'}
+                                {editingField === 'po_number' ? (
+                                  <input
+                                    name="po_number"
+                                    type="text"
+                                    className="form-control form-control-sm w-auto"
+                                    value={form.po_number || ''}
+                                    onChange={handleTopLevelChange}
+                                    onBlur={stopEditing}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="editable text-decoration-underline">
+                                      {form.po_number || '—'}
+                                    </span>
+                                    <span
+                                      className='text-success-main ms-1'
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => startEditing('po_number')}
+                                    >
+                                      <Icon icon="mage:edit" />
+                                    </span>
+                                  </>
+                                )}
                               </td>
                             </tr>
                             <tr>
