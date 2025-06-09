@@ -357,36 +357,36 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                             </td>
                                                         </tr>
 
-                                                        {/* Client Address */}
-                                                        <tr>
-                                                            <td>Address</td>
-                                                            <td className="ps-8 d-flex align-items-center">
-                                                                {editingField === 'client_address' ? (
-                                                                    <textarea
-                                                                        name="client_address"
-                                                                        className="form-control form-control-sm"
-                                                                        rows={2}
-                                                                        value={form.client_address}
-                                                                        onChange={handleTopLevelChange}
-                                                                        onBlur={stopEditing}
-                                                                        autoFocus
-                                                                    />
-                                                                ) : (
-                                                                    <>
-                                                                        <span className="editable text-decoration-underline">
-                                                                            {form.client_address || '—'}
-                                                                        </span>
-                                                                        <span
-                                                                            className="text-success-main ms-1"
-                                                                            style={{ cursor: 'pointer' }}
-                                                                            onClick={() => startEditing('client_address')}
-                                                                        >
-                                                                            <Icon icon="mage:edit" />
-                                                                        </span>
-                                                                    </>
-                                                                )}
-                                                            </td>
-                                                        </tr>
+                            {/* Client Address */}
+                            <tr>
+                              <td>Address</td>
+                              <td className="ps-8 d-flex align-items-center tw-max-w-[300px]">
+                                {editingField === 'client_address' ? (
+                                  <textarea
+                                    name="client_address"
+                                    className="form-control form-control-sm"
+                                    rows={2}
+                                    value={form.client_address}
+                                    onChange={handleTopLevelChange}
+                                    onBlur={stopEditing}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="editable text-decoration-underline">
+                                      {form.client_address || '—'}
+                                    </span>
+                                    <span
+                                      className="text-success-main ms-1"
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => startEditing('client_address')}
+                                    >
+                                      <Icon icon="mage:edit" />
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
 
                                                         {/* Client Phone */}
                                                         <tr>
@@ -422,42 +422,63 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                 </table>
                                             </div>
 
-                                            {/* Right side “Order Info” (Issus Date, Order ID, Shipment ID) */}
-                                            <div>
-                                                <table className="text-sm text-secondary-light">
-                                                    <tbody>
-                                                        <tr>
-                                                            <td className='tw-text-end'>Issus Date :</td>
-                                                            <td className="ps-8">
-                                                                {formatDateForDisplay(form.issue_date)}
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className='tw-text-end'>Order ID :</td>
-                                                            <td className="ps-8">
-                                                                {form.estimate_number || '—'}
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className='tw-text-end'>P.O. Number :</td>
-                                                            <td className="ps-8">
-                                                                {estimate?.poNumber
-                                                                    ? `${estimate.poNumber}`
-                                                                    : '—'}
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className='tw-text-end'>Shipment ID :</td>
-                                                            <td className="ps-8">
-                                                                {estimate?.shipment_id
-                                                                    ? `${estimate.shipment_id}`
-                                                                    : '—'}
-                                                            </td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
+                      {/* Right side “Order Info” (Issus Date, Order ID, Shipment ID) */}
+                      <div>
+                        <table className="text-sm text-secondary-light">
+                          <tbody>
+                            <tr>
+                              <td className='tw-text-end'>Issus Date :</td>
+                              <td className="ps-8">
+                                {formatDateForDisplay(form.issue_date)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className='tw-text-end'>Order ID :</td>
+                              <td className="ps-8">
+                                {form.estimate_number || '—'}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className='tw-text-end'>P.O. Number :</td>
+                              <td className="ps-8">
+                                {editingField === 'po_number' ? (
+                                  <input
+                                    name="po_number"
+                                    type="text"
+                                    className="form-control form-control-sm w-auto"
+                                    value={form.po_number || ''}
+                                    onChange={handleTopLevelChange}
+                                    onBlur={stopEditing}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="editable text-decoration-underline">
+                                      {form.po_number || '—'}
+                                    </span>
+                                    <span
+                                      className='text-success-main ms-1'
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={() => startEditing('po_number')}
+                                    >
+                                      <Icon icon="mage:edit" />
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className='tw-text-end'>Shipment ID :</td>
+                              <td className="ps-8">
+                                {estimate?.shipment_id
+                                  ? `${estimate.shipment_id}`
+                                  : '—'}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
                                         {/* Line Items Table */}
                                         <div className="mt-24">
