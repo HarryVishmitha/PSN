@@ -2615,7 +2615,7 @@ class AdminController extends Controller
         $workingGroups = WorkingGroup::where('status', 'active')
             ->with('products')
             ->get();
-        
+
         if (Estimate::count() === 0) {
             // If no estimates exist, start suffix from 1600
             $suffix = 1600;
@@ -2626,10 +2626,12 @@ class AdminController extends Controller
         }
         $newEstimateNumber = date('Ymd') . $suffix;
         
+
         return Inertia::render('admin/estimates/addE', [
             'userDetails'    => Auth::user(),
             'workingGroups'  => $workingGroups,
             'newEstimateNumber' => $newEstimateNumber,
         ]);
+
     }
 }
