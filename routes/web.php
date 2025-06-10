@@ -92,6 +92,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::delete('/api/daily-customers/{customer}', [AdminController::class, 'deleteDailyCustomer'])->name('deleteDailyCustomer');
     Route::get('/estimates', [AdminController::class, 'estimateView'])->name('estimates');
     Route::get('/add-estimate', [AdminController::class, 'addEstimate'])->name('addEstimate');
+    Route::get('/api/{wgId}/get-est-data', [AdminController::class, 'getdataEst'])->name('getdataEst');
 
     // Add more admin routes here
 });

@@ -27,4 +27,9 @@ class WorkingGroup extends Model
     {
         return $this->hasMany(Product::class, 'working_group_id')->where('status', 'published')->whereNull('deleted_at')->orderBy('name');
     }
+
+    public function dailyCustomers()
+    {
+        
+    }
 }

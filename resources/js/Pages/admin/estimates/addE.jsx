@@ -1,19 +1,23 @@
 // resources/js/Pages/Admin/AddE.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AdminDashboard from '@/Layouts/AdminDashboard';
 import Breadcrumb from '@/components/Breadcrumb';
 import { Icon } from '@iconify/react';
 import CookiesV from '@/Components/CookieConsent';
 import Meta from '@/Components/Metaheads';
+import Alert from '@/Components/Alert';
+import axios from 'axios';
 
 const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }) => {
+    const [alert, setAlert] = useState(null);
     // If `estimate` is passed in via Inertia props when editing an existing estimate,
     // we prefill; otherwise we start with blank/new.
     const raw = estimate?.estimate_number || newEstimateNumber || '00000000';
     const datePart = raw.slice(0, 8);
     const suffix = raw.slice(8);
-    const todayISO = new Date().toISOString().split('T')[0]; // "2025-06-03"
+    const todayISO = new Date().toISOString().split('T')[0];
+    const dueDate = new Date(new Date(todayISO).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const defaultForm = {
         id: estimate?.id || null,
         estimate_number: `EST-${datePart}-${suffix}` || '',
@@ -23,8 +27,10 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         client_address: estimate?.client_address || '',
         client_phone: estimate?.client_phone || '',
         issue_date: estimate?.issue_date || todayISO,
-        due_date: estimate?.due_date || todayISO,
+        due_date: estimate?.due_date || dueDate,
         notes: estimate?.notes || '',
+        po_number: estimate?.po_number || '',
+        shipment_id: estimate?.shipment_id || '',
         // --- Line items (array of { description, qty, unit, unit_price }) ---
         items:
             estimate?.items.map((it) => ({
@@ -47,12 +53,51 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const [form, setForm] = useState(defaultForm);
     const [errors, setErrors] = useState({});
     const [loading, setLoading] = useState(false);
+    const [wgLoading, setWgLoading] = useState(false);
+    const [wgUsers, setWgUsers] = useState([]);
+    const [wgProducts, setWgProducts] = useState([]);
+    const [wgDailyCustomers, setWgDailyCustomers] = useState([]);
+    const isBlocked = !form.working_group_id;
+    const [searchTermwgUser, setSearchTermwgUser] = useState('');
 
-    // Track which field is “currently in edit mode.”
-    // editingField can be one of:
-    // 'issue_date', 'due_date', 'client_name', 'client_address', 'client_phone',
-    // or `item-<index>-description`, `item-<index>-qty`, `item-<index>-unit`, `item-<index>-unit_price`.
+
     const [editingField, setEditingField] = useState(null);
+
+    const fetchWorkingGroupDetails = async (wgId) => {
+        if (!wgId) {
+            setWgUsers([]);
+            setWgProducts([]);
+            setWgDailyCustomers([]);
+            return;
+        }
+        setErrors((prev) => {
+            const { fetch_wg, ...rest } = prev;
+            return rest; // Remove fetch_wg error if it exists
+        });
+        setWgLoading(true);
+        try {
+            const { data } = await axios.get(route('admin.getdataEst', wgId));
+            setWgUsers(data.users || []);
+            setWgProducts(data.products || []);
+            setWgDailyCustomers(data.dailyCustomers || []);
+            console.log('WG data fetched successfully:', data);
+        } catch (e) {
+            const msg = e.response?.data?.message || e.message || 'Unknown error';
+            console.error('WG fetch error', e);
+            setAlert({ type: 'danger', message: 'Failed to fetch working group details.' });
+            setErrors(prev => ({
+                ...prev,
+                fetch_wg: 'Error happen while fetching WG data. Backend says :' + msg,
+            }));
+        } finally {
+            setWgLoading(false);
+        }
+    };
+
+    // When the select changes, fetch details
+    useEffect(() => {
+        fetchWorkingGroupDetails(form.working_group_id);
+    }, [form.working_group_id]);
 
     // Helpers: Format an ISO date string ("YYYY-MM-DD") → "DD/MM/YYYY"
     const formatDateForDisplay = (iso) => {
@@ -171,6 +216,33 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         }
     };
 
+    useEffect(() => {
+        if (isBlocked) {
+            setAlert({ type: 'danger', message: 'Please select a working group first.' });
+            setErrors({ working_group_id: 'Working group is required.' });
+        } else {
+            setAlert(null);
+            setErrors((prev) => {
+                const { working_group_id, ...rest } = prev;
+                return rest; // Remove working_group_id error if it exists
+            });
+        }
+    }, [form.working_group_id]);
+
+    // new helper inside your component
+    const selectClient = (client) => {
+        setForm(prev => ({
+            ...prev,
+            client_name: client.name,
+            client_phone: client.phone || '',
+            client_address: client.address || '',
+            // if you added client_email to defaultForm:
+            client_email: client.email || '',
+        }));
+        // setAlert({ type: 'success', message: `${client.name} selected as client.` });
+    };
+
+
     return (
         <>
             <Head title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
@@ -181,26 +253,116 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
             <AdminDashboard userDetails={userDetails}>
                 <Breadcrumb title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
+                {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
 
-                <div className="card">
+                <div className="card position-relative tw-rounded">
                     <div className="card-header">
-                        <div className="d-flex flex-wrap align-items-center justify-content-end gap-2">
-                            <button
-                                type="button"
-                                className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1"
-                                onClick={submit}
-                                disabled={loading}
-                            >
-                                <Icon icon="simple-line-icons:check" className="text-xl" />
-                                {loading ? 'Saving...' : 'Save'}
-                            </button>
+                        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                            {/* Working Group Selector */}
+                            <div className="mb-3 mt-2">
+                                {/* <label htmlFor="working_group_id" className="form-label fw-semibold">
+                                    Working Group
+                                </label> */}
+                                <select
+                                    name="working_group_id"
+                                    id="working_group_id"
+                                    className="form-select"
+                                    value={form.working_group_id}
+                                    onChange={handleTopLevelChange}
+                                >
+                                    <option value="">-- Select Working Group --</option>
+                                    {workingGroups.map(group => (
+                                        <option key={group.id} value={group.id}>
+                                            {group.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary radius-8 d-inline-flex align-items-center gap-1 me-3"
+                                    onClick={submit}
+                                    disabled={loading || isBlocked}
+                                    title="Save without publishing"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    data-bs-custom-class="tooltip-custom"
+                                    data-bs-title="Save without publishing"
+                                    data-bs-trigger="hover"
+                                    data-bs-delay='{"show": 500, "hide": 100}'
+                                    data-bs-animation="true"
+                                    data-bs-container="body"
+                                    data-bs-boundary="window"
+                                    data-bs-offset="0, 10"
+                                    data-bs-html="true"
+                                    data-bs-dismiss="tooltip"
+                                    data-bs-target="#tooltip-save"
+                                >
+                                    <Icon icon="simple-line-icons:check" className="text-xl" />
+                                    {loading ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-primary-600 radius-8 d-inline-flex align-items-center gap-1 me-3"
+                                    onClick={submit}
+                                    disabled={loading || isBlocked}
+                                    title="Save and publishing"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    data-bs-custom-class="tooltip-custom"
+                                    data-bs-title="Save and publishing"
+                                    data-bs-trigger="hover"
+                                    data-bs-delay='{"show": 500, "hide": 100}'
+                                    data-bs-animation="true"
+                                    data-bs-container="body"
+                                    data-bs-boundary="window"
+                                    data-bs-offset="0, 10"
+                                    data-bs-html="true"
+                                    data-bs-dismiss="tooltip"
+                                    data-bs-target="#tooltip-save"
+                                >
+                                    <Icon icon="simple-line-icons:check" className="text-xl" />
+                                    {loading ? 'Saving...' : 'Save & Publish'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-primary-600 radius-8 d-inline-flex align-items-center gap-1 me-3"
+                                    onClick={submit}
+                                    disabled={loading || isBlocked}
+                                    title="Print this estimate"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    data-bs-custom-class="tooltip-custom"
+                                    data-bs-title="Print this estimate"
+                                    data-bs-trigger="hover"
+                                    data-bs-delay='{"show": 500, "hide": 100}'
+                                    data-bs-animation="true"
+                                    data-bs-container="body"
+                                    data-bs-boundary="window"
+                                    data-bs-offset="0, 10"
+                                    data-bs-html="true"
+                                    data-bs-dismiss="tooltip"
+                                    data-bs-target="#tooltip-save"
+                                >
+                                    <Icon icon="simple-line-icons:check" className="text-xl" />
+                                    {loading ? 'Printing...' : 'Print'}
+                                </button>
+                            </div>
+
                         </div>
                     </div>
 
                     <div className="card-body py-40">
+                        {wgLoading && (
+                            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center tw-bg-gray-800 tw-bg-opacity-75">
+                                <Icon icon="ic:baseline-autorenew" className="tw-text-3xl tw-animate-spin tw-mb-3 tw-text-gray-200" />
+                                <span className='tw-text-white'>Getting details of working group…</span>
+                            </div>
+                        )}
                         {/* Errors Banner */}
                         {Object.keys(errors).length > 0 && (
-                            <div className="alert alert-danger mb-4">
+                            <div className="alert alert-danger bg-danger-100 text-danger-600 border-danger-600 border-start-width-4-px border-top-0 border-end-0 border-bottom-0 px-24 py-13 mb-0 fw-semibold text-lg radius-4 d-flex align-items-center justify-content-between">
                                 <ul className="mb-0">
                                     {Object.values(errors).map((errMsg, idx) => (
                                         <li key={idx}>{errMsg}</li>
@@ -209,7 +371,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             </div>
                         )}
 
-                        <div className="row justify-content-center" id="invoice">
+                        <div className="row justify-content-center tw-mt-4" id="invoice">
                             <div className="col tw-max-w-[8.3in]">
                                 <div className="shadow-4 border radius-8">
                                     {/* Header (Estimate #, Dates, Company Info) */}
@@ -330,12 +492,54 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                         <tr>
                                                             <td>Name</td>
                                                             <td className="ps-8 d-flex align-items-center">
-                                                                {editingField === 'client_name' ? (
+                                                                {form.client_name || '—'}
+                                                            </td>
+                                                        </tr>
+
+                                                        {/* Client Address */}
+                                                        <tr>
+                                                            <td>Address</td>
+                                                            <td className="ps-8 d-flex align-items-center tw-max-w-[300px]">
+                                                                {form.client_address || '—'}
+                                                            </td>
+                                                        </tr>
+
+                                                        {/* Client Phone */}
+                                                        <tr>
+                                                            <td>Phone number</td>
+                                                            <td className="ps-8 d-flex align-items-center">
+                                                                {form.client_phone || '—'}
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            {/* Right side “Order Info” (Issus Date, Order ID, Shipment ID) */}
+                                            <div>
+                                                <table className="text-sm text-secondary-light">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td className='tw-text-end'>Issus Date :</td>
+                                                            <td className="ps-8">
+                                                                {formatDateForDisplay(form.issue_date)}
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className='tw-text-end'>Order ID :</td>
+                                                            <td className="ps-8">
+                                                                {form.estimate_number || '—'}
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className='tw-text-end'>P.O. Number :</td>
+                                                            <td className="ps-8">
+                                                                {editingField === 'po_number' ? (
                                                                     <input
-                                                                        name="client_name"
+                                                                        name="po_number"
                                                                         type="text"
-                                                                        className="form-control form-control-sm"
-                                                                        value={form.client_name}
+                                                                        className="form-control form-control-sm w-auto"
+                                                                        value={form.po_number || ''}
                                                                         onChange={handleTopLevelChange}
                                                                         onBlur={stopEditing}
                                                                         autoFocus
@@ -343,12 +547,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                                 ) : (
                                                                     <>
                                                                         <span className="editable text-decoration-underline">
-                                                                            {form.client_name || '—'}
+                                                                            {form.po_number || '—'}
                                                                         </span>
                                                                         <span
-                                                                            className="text-success-main ms-1"
+                                                                            className='text-success-main ms-1'
                                                                             style={{ cursor: 'pointer' }}
-                                                                            onClick={() => startEditing('client_name')}
+                                                                            onClick={() => startEditing('po_number')}
                                                                         >
                                                                             <Icon icon="mage:edit" />
                                                                         </span>
@@ -356,48 +560,15 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                                 )}
                                                             </td>
                                                         </tr>
-
-                            {/* Client Address */}
-                            <tr>
-                              <td>Address</td>
-                              <td className="ps-8 d-flex align-items-center tw-max-w-[300px]">
-                                {editingField === 'client_address' ? (
-                                  <textarea
-                                    name="client_address"
-                                    className="form-control form-control-sm"
-                                    rows={2}
-                                    value={form.client_address}
-                                    onChange={handleTopLevelChange}
-                                    onBlur={stopEditing}
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <>
-                                    <span className="editable text-decoration-underline">
-                                      {form.client_address || '—'}
-                                    </span>
-                                    <span
-                                      className="text-success-main ms-1"
-                                      style={{ cursor: 'pointer' }}
-                                      onClick={() => startEditing('client_address')}
-                                    >
-                                      <Icon icon="mage:edit" />
-                                    </span>
-                                  </>
-                                )}
-                              </td>
-                            </tr>
-
-                                                        {/* Client Phone */}
                                                         <tr>
-                                                            <td>Phone number</td>
-                                                            <td className="ps-8 d-flex align-items-center">
-                                                                {editingField === 'client_phone' ? (
+                                                            <td className='tw-text-end'>Shipment ID :</td>
+                                                            <td className="ps-8">
+                                                                {editingField === 'shipment_id' ? (
                                                                     <input
-                                                                        name="client_phone"
-                                                                        type="tel"
-                                                                        className="form-control form-control-sm"
-                                                                        value={form.client_phone}
+                                                                        name="shipment_id"
+                                                                        type="text"
+                                                                        className="form-control form-control-sm w-auto"
+                                                                        value={form.shipment_id || ''}
                                                                         onChange={handleTopLevelChange}
                                                                         onBlur={stopEditing}
                                                                         autoFocus
@@ -405,12 +576,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                                 ) : (
                                                                     <>
                                                                         <span className="editable text-decoration-underline">
-                                                                            {form.client_phone || '—'}
+                                                                            {form.shipment_id || '—'}
                                                                         </span>
                                                                         <span
-                                                                            className="text-success-main ms-1"
+                                                                            className='text-success-main ms-1'
                                                                             style={{ cursor: 'pointer' }}
-                                                                            onClick={() => startEditing('client_phone')}
+                                                                            onClick={() => startEditing('shipment_id')}
                                                                         >
                                                                             <Icon icon="mage:edit" />
                                                                         </span>
@@ -421,64 +592,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                     </tbody>
                                                 </table>
                                             </div>
-
-                      {/* Right side “Order Info” (Issus Date, Order ID, Shipment ID) */}
-                      <div>
-                        <table className="text-sm text-secondary-light">
-                          <tbody>
-                            <tr>
-                              <td className='tw-text-end'>Issus Date :</td>
-                              <td className="ps-8">
-                                {formatDateForDisplay(form.issue_date)}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className='tw-text-end'>Order ID :</td>
-                              <td className="ps-8">
-                                {form.estimate_number || '—'}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className='tw-text-end'>P.O. Number :</td>
-                              <td className="ps-8">
-                                {editingField === 'po_number' ? (
-                                  <input
-                                    name="po_number"
-                                    type="text"
-                                    className="form-control form-control-sm w-auto"
-                                    value={form.po_number || ''}
-                                    onChange={handleTopLevelChange}
-                                    onBlur={stopEditing}
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <>
-                                    <span className="editable text-decoration-underline">
-                                      {form.po_number || '—'}
-                                    </span>
-                                    <span
-                                      className='text-success-main ms-1'
-                                      style={{ cursor: 'pointer' }}
-                                      onClick={() => startEditing('po_number')}
-                                    >
-                                      <Icon icon="mage:edit" />
-                                    </span>
-                                  </>
-                                )}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className='tw-text-end'>Shipment ID :</td>
-                              <td className="ps-8">
-                                {estimate?.shipment_id
-                                  ? `${estimate.shipment_id}`
-                                  : '—'}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                                        </div>
 
                                         {/* Line Items Table */}
                                         <div className="mt-24">
@@ -765,18 +879,76 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                     <div className="modal-dialog modal-lg modal-dialog-centered">
                         <div className="modal-content radius-16 bg-base">
                             <div className="modal-header py-16 px-24 border-0">
-                                <h5
-                                    className="modal-title tw-font-semibold tw-text-gray-500"
+                                <h6
+                                    className="modal-title tw-font-semibold tw-text-gray-700 dark:tw-text-gray-400"
                                     id="ClientModalLabel"
                                 >
-                                    Add New Customer
-                                </h5>
+                                    Assign a Client for the Estimate
+                                </h6>
                                 <button
                                     type="button"
                                     className="btn-close"
                                     data-bs-dismiss="modal"
                                     aria-label="Close"
                                 />
+                            </div>
+                            <div className="modal-body p-4 overflow-auto tw-min-h-80" style={{ maxHeight: '60vh' }}>
+                                <hr className='tw-mb-3' />
+                                {/* — Search input — */}
+                                <div className="mb-4 tw-px-12">
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        placeholder="Search users"
+                                        value={searchTermwgUser}
+                                        onChange={(e) => setSearchTermwgUser(e.target.value)}
+                                    />
+                                </div>
+
+                                {/* — Before typing: prompt — */}
+                                {searchTermwgUser.trim() === '' ? (
+                                    <p className="tw-text-center tw-text-gray-500 tw-italic tw-mt-12">Search users by Name, Email or Phone Number</p>
+                                ) : (
+                                    /* — After typing: filtered results — */
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {[
+                                            ...wgUsers.map(u => ({ ...u, type: 'system' })),
+                                            ...wgDailyCustomers.map(c => ({ ...c, type: 'daily' })),
+                                        ]
+                                            .filter(user => {
+                                                const term = searchTermwgUser.toLowerCase();
+                                                // Safely grab name & email (fallback to empty string)
+                                                const name = (user.name || user.full_name || '').toLowerCase();
+                                                const [localPart = '', domainPart = ''] = (user.email || '').toLowerCase().split('@');
+                                                if (term.includes('@')) {
+                                                    return (user.email || '').toLowerCase().includes(term);
+                                                }
+                                                const phoneNumber = (user.phone_number || '').toLowerCase();
+                                                return name.includes(term) || localPart.includes(term) || phoneNumber.includes(term);
+                                            })
+                                            .map(user => (
+                                                <div
+                                                    key={`${user.type}-${user.id}`}
+                                                    className="flex items-center p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                                                    onClick={() => selectClient(user)}
+                                                    data-bs-dismiss="modal"
+                                                >
+                                                    <div className="ml-3 flex-1">
+                                                        <p className="font-semibold">{user.name || user.full_name || NaN}</p>
+                                                        <p className="text-sm text-gray-500">{user.email}</p>
+                                                    </div>
+                                                    <span
+                                                        className={`text-xs font-medium px-2 py-1 rounded ${user.type === 'daily'
+                                                            ? 'bg-blue-100 text-blue-800'
+                                                            : 'bg-green-100 text-green-800'
+                                                            }`}
+                                                    >
+                                                        {user.type === 'daily' ? 'Daily Customer' : 'System User'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

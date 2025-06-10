@@ -2613,7 +2613,7 @@ class AdminController extends Controller
 
         // 2) Fetch all active working groups (with their products, if needed)
         $workingGroups = WorkingGroup::where('status', 'active')
-            ->with('products')
+            // ->with('products')
             ->get();
 
         if (Estimate::count() === 0) {
@@ -2625,13 +2625,67 @@ class AdminController extends Controller
             $suffix = (int) substr($lastEstimate->reference, -4) + 1;
         }
         $newEstimateNumber = date('Ymd') . $suffix;
-        
+
+        // $activeUsers =  User::where('status', 'active')
+        //     ->whereHas('role', function ($q) {
+        //         $q->where('name', '!=', 'admin');
+        //     })
+        //     ->orderBy('name')
+        //     ->get();
+
+        // $dailyCustomers = DailyCustomer::all();
+
+
+
 
         return Inertia::render('admin/estimates/addE', [
             'userDetails'    => Auth::user(),
             'workingGroups'  => $workingGroups,
             'newEstimateNumber' => $newEstimateNumber,
+            // 'users'          => $activeUsers,
+            // 'dailyCustomers' => $dailyCustomers,
         ]);
-
     }
+
+    public function getdataEst($wgId)
+    {
+        try {
+
+            $users = User::where('working_group_id', $wgId)
+                ->where('status', 'active')
+                ->whereHas('role', fn($q) => $q->where('name', '!=', 'admin'))
+                ->orderBy('name')
+                ->get();
+
+            $dailyCustomers = DailyCustomer::where('working_group_id', $wgId)
+                ->orderBy('visit_date', 'desc')
+                ->get();
+
+            $products = Product::where('working_group_id', $wgId)
+                ->orderBy('name')
+                ->get();
+
+            return response()->json([
+                'status'   => 'success',
+                'users'    => $users,
+                'dailyCustomers' => $dailyCustomers,
+                'products' => $products,
+            ], 200);
+
+        } catch (\Exception $e) {
+
+            Log::error('Unexpected error in getdataEst', [
+                'wg_id'   => $wgId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'An unexpected error occurred. Please try again later.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function storeEst() {}
 }
