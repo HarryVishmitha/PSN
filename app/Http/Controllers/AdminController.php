@@ -2671,7 +2671,6 @@ class AdminController extends Controller
                 'dailyCustomers' => $dailyCustomers,
                 'products' => $products,
             ], 200);
-
         } catch (\Exception $e) {
 
             Log::error('Unexpected error in getdataEst', [
@@ -2688,4 +2687,58 @@ class AdminController extends Controller
     }
 
     public function storeEst() {}
+
+    public function JSonaddDailyCustomer(Request $request)
+    {
+        $data = $request->validate([
+            'full_name'        => 'required|string|max:255',
+            'email'            => 'nullable|email|max:255',
+            'phone_number'     => 'nullable|string|max:20',
+            'visit_date'       => 'required|date',
+            'working_group_id' => 'nullable|exists:working_groups,id',
+            'notes'            => 'nullable|string|max:1000',
+            'address'          => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $customer = DailyCustomer::create($data);
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'daily_customer_add',
+                'description' => 'Admin added walk-in customer ID ' . $customer->id,
+                'ip_address'  => $request->ip(),
+            ]);
+            $customer->load('workingGroup');
+
+            // If the request expects JSON (axios/ajax), return your customer.
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success'  => true,
+                    'customer' => $customer,
+                    'message'  => 'Customer added successfully.',
+                ], 201);
+            }
+
+            // Otherwise, do your normal redirect + flash
+            return redirect()->back()
+                ->with('success', 'Walk-in customer added.');
+        } catch (\Throwable $e) {
+            Log::error('Error adding walk-in customer', [
+                'error'   => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
+                'payload' => $data,
+            ]);
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to add walk-in customer.',
+                ], 500);
+            }
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to add walk-in customer.');
+        }
+    }
 }

@@ -233,14 +233,85 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const selectClient = (client) => {
         setForm(prev => ({
             ...prev,
-            client_name: client.name,
-            client_phone: client.phone || '',
+            client_name: client.full_name,
+            client_phone: client.phone_number || '',
             client_address: client.address || '',
             // if you added client_email to defaultForm:
             client_email: client.email || '',
         }));
-        // setAlert({ type: 'success', message: `${client.name} selected as client.` });
     };
+
+
+
+    // — “Add Daily Customer” form state —
+    const emptyAddForm = {
+        full_name: '',
+        phone_number: '',
+        email: '',
+        address: '',
+        notes: '',
+        visit_date: new Date().toISOString().split('T')[0],
+        working_group_id: form.working_group_id || '',  // default to selected WG
+    };
+    const [addForm, setAddForm] = useState(emptyAddForm);
+    const [addErrors, setAddErrors] = useState({});
+    const [addLoading, setAddLoading] = useState(false);
+
+    // Reset addForm & errors whenever WG select changes or modal opens
+    useEffect(() => {
+        setAddForm(prev => ({ ...emptyAddForm, working_group_id: form.working_group_id }));
+        setAddErrors({});
+    }, [form.working_group_id]);
+
+    // Track input changes
+    const handleAddChange = e => {
+        setAddForm(f => ({ ...f, [e.target.name]: e.target.value }));
+    };
+
+    // Submit “Add Daily Customer”
+    const submitAdd = async e => {
+        e.preventDefault();
+        setAddLoading(true);
+        setAddErrors({});
+        try {
+            const resp = await axios.post(route('admin.jsonDailyCustomers'), addForm);
+            // 1️⃣ unwrap your customer
+            //    - if you returned { customer: {...} }
+            //    - or a Resource { data: {...} }
+            //    - or bare {...}
+            let payload = resp.data.customer ?? resp.data.data ?? resp.data;
+            const customer = payload.customer ?? payload;
+
+            console.log(resp + ' mo ' + customer);
+
+            // 2️⃣ refresh your WG lists & append
+            await fetchWorkingGroupDetails(form.working_group_id);
+            // setWgDailyCustomers(dc => [...dc, customer]);
+
+            // 3️⃣ select them in the quote form
+            selectClient({ ...customer, type: 'daily' });
+            // make sure your selectClient reads client.full_name
+
+            document.querySelector('#addCustomerModal .btn-close').click();
+
+            // 5️⃣ flash their actual name
+            const name = customer.full_name || customer.name;
+            setAlert({ type: 'success', message: `${name} added & selected.` });
+        } catch (err) {
+            // Handle validation errors
+            if (err.response?.data?.errors) {
+                setAddErrors(err.response.data.errors);
+                setAlert({ type: 'danger', message: 'Please fix the errors below.' });
+                console.log('Add Daily Customer errors:', err.response.data.errors);
+            } else {
+                setAlert({ type: 'danger', message: err.message || 'Unknown error' });
+                console.error('Add Daily Customer error:', err);
+            }
+        } finally {
+            setAddLoading(false);
+        }
+    };
+
 
 
     return (
@@ -894,8 +965,9 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             </div>
                             <div className="modal-body p-4 overflow-auto tw-min-h-80" style={{ maxHeight: '60vh' }}>
                                 <hr className='tw-mb-3' />
+                                
                                 {/* — Search input — */}
-                                <div className="mb-4 tw-px-12">
+                                <div className="tw-mb-8 tw-px-12">
                                     <input
                                         type="text"
                                         className="form-control"
@@ -907,7 +979,9 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
                                 {/* — Before typing: prompt — */}
                                 {searchTermwgUser.trim() === '' ? (
-                                    <p className="tw-text-center tw-text-gray-500 tw-italic tw-mt-12">Search users by Name, Email or Phone Number</p>
+                                    <div className=''>
+                                        <div className="tw-text-center tw-text-gray-500 tw-italic tw-mt-12">Search users by Name, Email or Phone Number <span className='tw-font-semibold'>OR</span> <br /> Add new daily customer</div>
+                                    </div>
                                 ) : (
                                     /* — After typing: filtered results — */
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -929,18 +1003,19 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                             .map(user => (
                                                 <div
                                                     key={`${user.type}-${user.id}`}
-                                                    className="flex items-center p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                                                    className="flex items-center tw-mx-12 tw-p-3 tw-border tw-rounded-lg hover:tw-bg-blue-200 hover:dark:tw-bg-gray-800 tw-cursor-pointer tw-mb-3"
                                                     onClick={() => selectClient(user)}
                                                     data-bs-dismiss="modal"
                                                 >
-                                                    <div className="ml-3 flex-1">
-                                                        <p className="font-semibold">{user.name || user.full_name || NaN}</p>
-                                                        <p className="text-sm text-gray-500">{user.email}</p>
+                                                    <div className="tw-ml-3 tw-flex-1">
+                                                        <p className="tw-font-semibold tw-text-white dark:tw-text-white">{user.name || user.full_name || NaN}</p>
+                                                        <p className="tw-text-sm tw-text-gray-500">{user.email}</p>
+                                                        <p className="tw-text-sm tw-text-gray-500">{user.phone_number}</p>
                                                     </div>
                                                     <span
-                                                        className={`text-xs font-medium px-2 py-1 rounded ${user.type === 'daily'
-                                                            ? 'bg-blue-100 text-blue-800'
-                                                            : 'bg-green-100 text-green-800'
+                                                        className={`tw-text-xs tw-font-medium tw-px-2 tw-py-1 tw-ml-3 tw-rounded ${user.type === 'daily'
+                                                            ? 'tw-bg-blue-100 tw-text-blue-800'
+                                                            : 'tw-bg-green-100 tw-text-green-800'
                                                             }`}
                                                     >
                                                         {user.type === 'daily' ? 'Daily Customer' : 'System User'}
@@ -950,9 +1025,164 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                     </div>
                                 )}
                             </div>
+                            <div className='model-footer p-8 border-top'>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary float-end d-flex align-items-center"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addCustomerModal"
+                                >
+                                    <Icon icon="ic:baseline-add-circle" className='tw-me-2' /> Add New Daily Customer & Use
+                                </button>
+
+                            </div>
                         </div>
                     </div>
                 </div>
+
+
+                {/* — Add Daily Customer Modal — */}
+                <div
+                    className="modal fade"
+                    id="addCustomerModal"
+                    tabIndex={-1}
+                    aria-labelledby="addCustomerModalLabel"
+                    aria-hidden="true"
+                >
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header tw-py-3 tw-px-4">
+                                <h5 className="modal-title" id="addCustomerModalLabel">
+                                    Add New Daily Customer
+                                </h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" />
+                            </div>
+                            <form onSubmit={submitAdd}>
+                                <div className="modal-body tw-p-4">
+                                    {Object.keys(addErrors).length > 0 && (
+                                        <div className="alert alert-danger mb-3">
+                                            <ul className="mb-0">
+                                                {Object.values(addErrors).map((err, i) => (
+                                                    <li key={i}>{err}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Full Name */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Full Name</label>
+                                        <input
+                                            name="full_name"
+                                            type="text"
+                                            className="form-control"
+                                            value={addForm.full_name}
+                                            onChange={handleAddChange}
+                                        />
+                                    </div>
+
+                                    {/* Phone */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Phone Number</label>
+                                        <input
+                                            name="phone_number"
+                                            type="text"
+                                            className="form-control"
+                                            value={addForm.phone_number}
+                                            onChange={handleAddChange}
+                                        />
+                                    </div>
+
+                                    {/* Email */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Email (optional)</label>
+                                        <input
+                                            name="email"
+                                            type="email"
+                                            className="form-control"
+                                            value={addForm.email}
+                                            onChange={handleAddChange}
+                                        />
+                                    </div>
+
+                                    {/* Address */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Address (optional)</label>
+                                        <textarea
+                                            name="address"
+                                            className="form-control"
+                                            rows="2"
+                                            value={addForm.address}
+                                            onChange={handleAddChange}
+                                        />
+                                    </div>
+
+                                    {/* Notes */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Notes (optional)</label>
+                                        <textarea
+                                            name="notes"
+                                            className="form-control"
+                                            rows="2"
+                                            value={addForm.notes}
+                                            onChange={handleAddChange}
+                                        />
+                                    </div>
+
+                                    {/* Visit Date */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Visit Date</label>
+                                        <input
+                                            name="visit_date"
+                                            type="date"
+                                            className="form-control"
+                                            value={addForm.visit_date}
+                                            onChange={handleAddChange}
+                                        />
+                                    </div>
+
+                                    {/* Working Group (pre-selected) */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Working Group</label>
+                                        <select
+                                            name="working_group_id"
+                                            className="form-select"
+                                            value={addForm.working_group_id}
+                                            onChange={handleAddChange}
+                                        >
+                                            <option value="">— Select WG —</option>
+                                            {workingGroups.map(wg => (
+                                                <option key={wg.id} value={wg.id}>
+                                                    {wg.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="modal-footer">
+                                    {addLoading ? (
+                                        <div className="spinner-border text-primary" role="status" />
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary"
+                                                data-bs-dismiss="modal"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="btn btn-primary">
+                                                Save Customer
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
             </AdminDashboard>
 
             <CookiesV />
