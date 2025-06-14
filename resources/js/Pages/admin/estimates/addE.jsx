@@ -59,6 +59,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const [wgDailyCustomers, setWgDailyCustomers] = useState([]);
     const isBlocked = !form.working_group_id;
     const [searchTermwgUser, setSearchTermwgUser] = useState('');
+    const [productTab, setProductTab] = useState('standard')
+
 
 
     const [editingField, setEditingField] = useState(null);
@@ -563,7 +565,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                         <tr>
                                                             <td>Name</td>
                                                             <td className="ps-8 d-flex align-items-center">
-                                                                {form.client_name || '—'}
+                                                                : {form.client_name || '—'}
                                                             </td>
                                                         </tr>
 
@@ -571,7 +573,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                         <tr>
                                                             <td>Address</td>
                                                             <td className="ps-8 d-flex align-items-center tw-max-w-[300px]">
-                                                                {form.client_address || '—'}
+                                                                : {form.client_address || '—'}
                                                             </td>
                                                         </tr>
 
@@ -579,7 +581,14 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                         <tr>
                                                             <td>Phone number</td>
                                                             <td className="ps-8 d-flex align-items-center">
-                                                                {form.client_phone || '—'}
+                                                                : {form.client_phone || '—'}
+                                                            </td>
+                                                        </tr>
+
+                                                        <tr>
+                                                            <td>Email</td>
+                                                            <td className="ps-8 d-flex align-items-center">
+                                                                : {form.client_email || '—'}
                                                             </td>
                                                         </tr>
                                                     </tbody>
@@ -852,7 +861,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                 <button
                                                     type="button"
                                                     className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1"
-                                                    onClick={addItem}
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#ProductModal"
                                                 >
                                                     <Icon
                                                         icon="simple-line-icons:plus"
@@ -965,7 +975,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             </div>
                             <div className="modal-body p-4 overflow-auto tw-min-h-80" style={{ maxHeight: '60vh' }}>
                                 <hr className='tw-mb-3' />
-                                
+
                                 {/* — Search input — */}
                                 <div className="tw-mb-8 tw-px-12">
                                     <input
@@ -1008,7 +1018,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                     data-bs-dismiss="modal"
                                                 >
                                                     <div className="tw-ml-3 tw-flex-1">
-                                                        <p className="tw-font-semibold tw-text-white dark:tw-text-white">{user.name || user.full_name || NaN}</p>
+                                                        <p className="tw-font-semibold tw-text-black dark:tw-text-white">{user.name || user.full_name || NaN}</p>
                                                         <p className="tw-text-sm tw-text-gray-500">{user.email}</p>
                                                         <p className="tw-text-sm tw-text-gray-500">{user.phone_number}</p>
                                                     </div>
@@ -1183,7 +1193,141 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                     </div>
                 </div>
 
-            </AdminDashboard>
+                {/* — Product Selection Modal — */}
+                <div
+                    className="modal fade"
+                    id="ProductModal"
+                    tabIndex={-1}
+                    aria-labelledby="ProductModalLabel"
+                    aria-hidden="true"
+                >
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header py-3 px-4 border-0">
+                                <h5 className="modal-title" id="ProductModalLabel">
+                                    Select a Product
+                                </h5>
+                                <button
+                                    type="button"
+                                    className="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Close"
+                                />
+                            </div>
+
+                            {/* — Tabs — */}
+                            <div className="px-4">
+                                <nav className="flex border-b">
+                                    <ul
+                                        className="nav bordered-tab border border-top-0 border-start-0 border-end-0 d-inline-flex nav-pills mb-16"
+                                        id="pills-tab"
+                                        role="tablist"
+                                    >
+                                        <li className="nav-item" role="presentation">
+                                            <button
+                                                className="nav-link px-16 py-10 active"
+                                                id="pills-home-tab"
+                                                data-bs-toggle="pill"
+                                                data-bs-target="#pills-standard"
+                                                type="button"
+                                                role="tab"
+                                                aria-controls="pills-home"
+                                                aria-selected="true"
+                                            >
+                                                Standard Pricing
+                                            </button>
+                                        </li>
+                                        <li className="nav-item" role="presentation">
+                                            <button
+                                                className="nav-link px-16 py-10"
+                                                id="pills-profile-tab"
+                                                data-bs-toggle="pill"
+                                                data-bs-target="#pills-roll"
+                                                type="button"
+                                                role="tab"
+                                                aria-controls="pills-profile"
+                                                aria-selected="false"
+                                            >
+                                                Roll-Based Pricing
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </div>
+
+                            {/* — Body: product grid — */}
+                            <div
+                                className="modal-body p-4 overflow-auto"
+                                style={{ maxHeight: '50vh' }}
+                            >
+                                <div className="tab-content" id="pills-tabContent">
+
+                                    <div
+                                        className="tab-pane fade show active"
+                                        id="pills-standard"
+                                        role="tabpanel"
+                                        aria-labelledby="pills-standard-tab"
+                                        tabIndex={0}
+                                    >
+                                        <div>
+                                            <h6 className="text-lg mb-8">Title</h6>
+                                            <p className="text-secondary-light mb-16">
+                                                Lorem Ipsum&nbsp;is simply dummy text of the printing and
+                                                typesetting industry. Lorem Ipsum has been the industry's
+                                                standard dummy text ever since the 1500s, when an unknown
+                                                printer took a galley of type and scrambled it to make a type
+                                                specimen book. It has survived not{" "}
+                                            </p>
+                                            <p className="text-secondary-light mb-0">
+                                                It was popularised in the 1960s with the release of Letraset
+                                                sheets containing Lorem Ipsum passages, and more recently with
+                                                desktop
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        className="tab-pane fade show"
+                                        id="pills-roll"
+                                        role="tabpanel"
+                                        aria-labelledby="pills-roll-tab"
+                                        tabIndex={0}
+                                    >
+                                        <div>
+                                            <h6 className="text-lg mb-8">Title</h6>
+                                            <p className="text-secondary-light mb-16">
+                                                Lorem Ipsum&nbsp;is simply dummy text of the printing and
+                                                typesetting industry. Lorem Ipsum has been the industry's
+                                                standard dummy text ever sincek90000000 the 1500s, when an unknown
+                                                printer took a galley of type and scrambled it to make a type
+                                                specimen book. It has survived not{" "}
+                                            </p>
+                                            <p className="text-secondary-light mb-0">
+                                                It was popularised in the 1960s with the release of Letraset
+                                                sheets containing Lorem Ipsum passages, and more recently with
+                                                desktop
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            <div className="modal-footer d-flex justify-content-end">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    data-bs-dismiss="modal"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div >
+                </div >
+
+
+            </AdminDashboard >
 
             <CookiesV />
         </>
