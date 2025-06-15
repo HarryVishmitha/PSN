@@ -2661,15 +2661,22 @@ class AdminController extends Controller
                 ->orderBy('visit_date', 'desc')
                 ->get();
 
-            $products = Product::where('working_group_id', $wgId)
+            $products = Product::with(['categories', 'variants.subvariants', 'images'])
+                ->where('working_group_id', $wgId)
                 ->orderBy('name')
                 ->get();
+
+            $rolls = Roll::orderBy('roll_type')
+                ->orderBy('roll_size')
+                ->get();
+
 
             return response()->json([
                 'status'   => 'success',
                 'users'    => $users,
                 'dailyCustomers' => $dailyCustomers,
                 'products' => $products,
+                'rolls'    => $rolls,
             ], 200);
         } catch (\Exception $e) {
 

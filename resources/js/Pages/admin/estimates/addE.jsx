@@ -1,5 +1,5 @@
 // resources/js/Pages/Admin/AddE.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AdminDashboard from '@/Layouts/AdminDashboard';
 import Breadcrumb from '@/components/Breadcrumb';
@@ -57,9 +57,14 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const [wgUsers, setWgUsers] = useState([]);
     const [wgProducts, setWgProducts] = useState([]);
     const [wgDailyCustomers, setWgDailyCustomers] = useState([]);
+    const [rolls, setRolls] = useState([]);
     const isBlocked = !form.working_group_id;
     const [searchTermwgUser, setSearchTermwgUser] = useState('');
     const [productTab, setProductTab] = useState('standard')
+    const [productSearch, setProductSearch] = useState('');
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [pricingTab, setPricingTab] = useState('standard'); // or 'roll'
+
 
 
 
@@ -70,6 +75,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             setWgUsers([]);
             setWgProducts([]);
             setWgDailyCustomers([]);
+            setRolls([]);
             return;
         }
         setErrors((prev) => {
@@ -82,6 +88,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             setWgUsers(data.users || []);
             setWgProducts(data.products || []);
             setWgDailyCustomers(data.dailyCustomers || []);
+            setRolls(data.rolls || []);
             console.log('WG data fetched successfully:', data);
         } catch (e) {
             const msg = e.response?.data?.message || e.message || 'Unknown error';
@@ -313,6 +320,55 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             setAddLoading(false);
         }
     };
+
+    // --- Variants logic from ProductView ---
+    const groupedVariants = useMemo(() => {
+        if (!selectedProduct?.variants) return [];
+        return selectedProduct.variants.reduce((acc, v) => {
+            let group = acc.find(g => g.name === v.variant_name);
+            if (!group) {
+                group = { name: v.variant_name, label: v.variant_name, options: [] };
+                acc.push(group);
+            }
+            // map subvariants
+            const subs = (v.subvariants || []).map(sv => ({
+                value: sv.subvariant_value,
+                priceAdjustment: parseFloat(sv.price_adjustment) || 0,
+            }));
+            group.options.push({
+                value: v.variant_value,
+                priceAdjustment: parseFloat(v.price_adjustment) || 0,
+                subvariants: subs,
+                subLabel: subs.length ? v.subvariants[0].subvariant_name : '',
+            });
+            return acc;
+        }, []);
+    }, [selectedProduct]);
+
+    // track which variant/subvariant is chosen
+    const [selectedVariants, setSelectedVariants] = useState({});
+
+    // recompute price = base + adjustments
+    const computedPrice = useMemo(() => {
+        if (!selectedProduct) return 0;
+        const base = parseFloat(
+            selectedProduct.pricing_method === 'roll'
+                ? selectedProduct.price_per_sqft
+                : selectedProduct.price
+        ) || 0;
+        return groupedVariants.reduce((sum, group) => {
+            const sel = selectedVariants[group.name];
+            if (!sel) return sum;
+            const opt = group.options.find(o => o.value === sel);
+            let total = sum + (opt?.priceAdjustment || 0);
+            const subSel = selectedVariants[`${group.name}-sub`];
+            if (subSel && opt) {
+                const subOpt = opt.subvariants.find(s => s.value === subSel);
+                total += (subOpt?.priceAdjustment || 0);
+            }
+            return total;
+        }, base);
+    }, [groupedVariants, selectedVariants, selectedProduct]);
 
 
 
@@ -1194,137 +1250,346 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                 </div>
 
                 {/* — Product Selection Modal — */}
-                <div
-                    className="modal fade"
-                    id="ProductModal"
-                    tabIndex={-1}
-                    aria-labelledby="ProductModalLabel"
-                    aria-hidden="true"
-                >
+                <div className="modal fade" id="ProductModal" tabIndex={-1} aria-hidden="true">
                     <div className="modal-dialog modal-lg modal-dialog-centered">
                         <div className="modal-content radius-16 bg-base">
-                            <div className="modal-header py-3 px-4 border-0">
-                                <h5 className="modal-title" id="ProductModalLabel">
-                                    Select a Product
-                                </h5>
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    data-bs-dismiss="modal"
-                                    aria-label="Close"
+
+                            {/* Header */}
+                            <div className="modal-header tw-py-3 tw-px-4 tw-border-0">
+                                <h5 className="modal-title">Select a Product</h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" />
+                            </div>
+
+                            {/* Search bar */}
+                            <div className="tw-px-4 tw-pb-2">
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Search products…"
+                                    value={productSearch}
+                                    onChange={e => {
+                                        setProductSearch(e.target.value);
+                                        // if user starts typing, show grid again
+                                    }}
                                 />
                             </div>
 
-                            {/* — Tabs — */}
-                            <div className="px-4">
-                                <nav className="flex border-b">
-                                    <ul
-                                        className="nav bordered-tab border border-top-0 border-start-0 border-end-0 d-inline-flex nav-pills mb-16"
-                                        id="pills-tab"
-                                        role="tablist"
-                                    >
-                                        <li className="nav-item" role="presentation">
-                                            <button
-                                                className="nav-link px-16 py-10 active"
-                                                id="pills-home-tab"
-                                                data-bs-toggle="pill"
-                                                data-bs-target="#pills-standard"
-                                                type="button"
-                                                role="tab"
-                                                aria-controls="pills-home"
-                                                aria-selected="true"
-                                            >
-                                                Standard Pricing
-                                            </button>
-                                        </li>
-                                        <li className="nav-item" role="presentation">
-                                            <button
-                                                className="nav-link px-16 py-10"
-                                                id="pills-profile-tab"
-                                                data-bs-toggle="pill"
-                                                data-bs-target="#pills-roll"
-                                                type="button"
-                                                role="tab"
-                                                aria-controls="pills-profile"
-                                                aria-selected="false"
-                                            >
-                                                Roll-Based Pricing
-                                            </button>
-                                        </li>
-                                    </ul>
-                                </nav>
-                            </div>
-
-                            {/* — Body: product grid — */}
-                            <div
-                                className="modal-body p-4 overflow-auto"
-                                style={{ maxHeight: '50vh' }}
-                            >
-                                <div className="tab-content" id="pills-tabContent">
-
-                                    <div
-                                        className="tab-pane fade show active"
-                                        id="pills-standard"
-                                        role="tabpanel"
-                                        aria-labelledby="pills-standard-tab"
-                                        tabIndex={0}
-                                    >
-                                        <div>
-                                            <h6 className="text-lg mb-8">Title</h6>
-                                            <p className="text-secondary-light mb-16">
-                                                Lorem Ipsum&nbsp;is simply dummy text of the printing and
-                                                typesetting industry. Lorem Ipsum has been the industry's
-                                                standard dummy text ever since the 1500s, when an unknown
-                                                printer took a galley of type and scrambled it to make a type
-                                                specimen book. It has survived not{" "}
+                            {/* Products grid */}
+                            {(
+                                !selectedProduct ||                // no product chosen yet
+                                productSearch.trim() !== ''        // OR user is searching
+                            ) && (
+                                    <div className="modal-body tw-px-4 tw-pt-0" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+                                        {wgProducts.filter(p =>
+                                            p.name.toLowerCase().includes(productSearch.toLowerCase())
+                                        ).length === 0 ? (
+                                            <p className="text-center text-gray-500 py-8">
+                                                No products match “{productSearch}.”
                                             </p>
-                                            <p className="text-secondary-light mb-0">
-                                                It was popularised in the 1960s with the release of Letraset
-                                                sheets containing Lorem Ipsum passages, and more recently with
-                                                desktop
-                                            </p>
-                                        </div>
+                                        ) : (
+                                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-4">
+                                                {wgProducts
+                                                    .filter(p =>
+                                                        p.name.toLowerCase().includes(productSearch.toLowerCase())
+                                                    )
+                                                    .map(p => (
+                                                        <div
+                                                            key={p.id}
+                                                            className={`tw-p-3 tw-border tw-rounded tw-cursor-pointer ${selectedProduct?.id === p.id
+                                                                ? 'tw-border-blue-500 tw-bg-blue-50'
+                                                                : 'hover:tw-shadow'
+                                                                }`}
+                                                            onClick={() => {
+                                                                setSelectedProduct(p);
+                                                                setProductSearch('');
+                                                            }}
+                                                        >
+                                                            {p.images[0] && (
+                                                                <img
+                                                                    src={p.images[0].image_url}
+                                                                    alt={p.name}
+                                                                    className="tw-mb-2 tw-w-full tw-h-24 tw-object-cover tw-rounded"
+                                                                />
+                                                            )}
+                                                            <h6 className="tw-font-semibold">{p.name}</h6>
+                                                            <p className="tw-text-sm tw-text-gray-600">
+                                                                {p.categories.map(c => c.name).join(', ')}
+                                                            </p>
+                                                            <p className="tw-mt-1">{p.unit_of_measure}</p>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        )}
                                     </div>
+                                )}
 
-                                    <div
-                                        className="tab-pane fade show"
-                                        id="pills-roll"
-                                        role="tabpanel"
-                                        aria-labelledby="pills-roll-tab"
-                                        tabIndex={0}
-                                    >
-                                        <div>
-                                            <h6 className="text-lg mb-8">Title</h6>
-                                            <p className="text-secondary-light mb-16">
-                                                Lorem Ipsum&nbsp;is simply dummy text of the printing and
-                                                typesetting industry. Lorem Ipsum has been the industry's
-                                                standard dummy text ever sincek90000000 the 1500s, when an unknown
-                                                printer took a galley of type and scrambled it to make a type
-                                                specimen book. It has survived not{" "}
-                                            </p>
-                                            <p className="text-secondary-light mb-0">
-                                                It was popularised in the 1960s with the release of Letraset
-                                                sheets containing Lorem Ipsum passages, and more recently with
-                                                desktop
-                                            </p>
+                            {/* Pricing pane (only when a product is chosen AND search is empty) */}
+                            {selectedProduct && productSearch.trim() === '' && (
+                                <>
+                                    <div className="tw-border-t" />
+                                    <div className="tw-px-4 tw-pt-4">
+                                        <nav className="tw-flex tw-border-b">
+                                            <ul
+                                                className="nav bordered-tab border border-top-0 border-start-0 border-end-0 d-inline-flex nav-pills mb-16"
+                                                id="pills-tab"
+                                                role="tablist"
+                                            >
+                                                <li className="nav-item" role="presentation">
+                                                    <button
+                                                        className={`nav-link px-16 py-10 ${selectedProduct.pricing_method === 'standard' ? 'active' : ''}`}
+                                                        id="pills-home-tab"
+                                                        data-bs-toggle="pill"
+                                                        data-bs-target="#pills-standard"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="pills-home"
+                                                        aria-selected="true"
+                                                    >
+                                                        Standard Pricing
+                                                    </button>
+                                                </li>
+                                                <li className="nav-item" role="presentation">
+                                                    <button
+                                                        className={`nav-link px-16 py-10 ${selectedProduct.pricing_method === 'roll' ? 'active' : ''}`}
+                                                        id="pills-profile-tab"
+                                                        data-bs-toggle="pill"
+                                                        data-bs-target="#pills-roll"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="pills-profile"
+                                                        aria-selected="false"
+                                                    >
+                                                        Roll-Based Pricing
+                                                    </button>
+                                                </li>
+                                            </ul>
+                                        </nav>
+                                        <div className="tab-content" id="pills-tabContent">
+
+                                            <div
+                                                className={`tab-pane fade show ${selectedProduct.pricing_method === 'standard' ? 'active' : ''}`}
+                                                id="pills-standard"
+                                                role="tabpanel"
+                                                aria-labelledby="pills-standard-tab"
+                                                tabIndex={0}
+                                            >
+                                                Selected Product Details
+                                                <div className="productName tw-mt-3 tw-font-semibold tw-text-black tw-text-xl dark:tw-text-white">{selectedProduct.name}</div>
+                                                <div
+                                                    className="tw-text-gray-500 tw-text-sm dark:tw-text-gray-400 tw-leading-relaxed tw-mt-3"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html:
+                                                            selectedProduct.meta_description ||
+                                                            'No description available.',
+                                                    }}
+                                                />
+                                                {/* Base Price */}
+                                                <div className="mb-3">
+                                                    <label className="form-label">Unit Price</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        className="form-control"
+                                                        value={computedPrice.toFixed(2)}
+                                                        onChange={e => {
+                                                            // if you want base-only edits, parse out adjustments...
+                                                        }}
+                                                    />
+                                                </div>
+
+                                                {/* Variant selectors */}
+                                                {groupedVariants.map(group => {
+                                                    const sel = selectedVariants[group.name];
+                                                    const opt = group.options.find(o => o.value === sel);
+                                                    return (
+                                                        <div key={group.name} className="mb-4">
+                                                            <div className="tw-font-semibold mb-2">{group.label}</div>
+                                                            <div className="tw-flex tw-flex-wrap tw-gap-2 tw-mb-2">
+                                                                {group.options.map(o => (
+                                                                    <button
+                                                                        key={o.value}
+                                                                        type="button"
+                                                                        className={`tw-px-4 tw-py-1 border tw-rounded ${sel === o.value
+                                                                                ? 'tw-bg-blue-600 tw-text-white'
+                                                                                : 'tw-border-gray-400 tw-text-gray-800'
+                                                                            }`}
+                                                                        onClick={() => {
+                                                                            setSelectedVariants(prev => ({
+                                                                                ...prev,
+                                                                                [group.name]: prev[group.name] === o.value ? undefined : o.value,
+                                                                            }));
+                                                                        }}
+                                                                    >
+                                                                        {o.value} {o.priceAdjustment > 0 ? `(+${o.priceAdjustment})` : ''}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            {/* subvariants */}
+                                                            {opt?.subvariants.length > 0 && (
+                                                                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                                                    <div className="tw-font-medium tw-mb-1">{opt.subLabel}</div>
+                                                                    {opt.subvariants.map(sv => (
+                                                                        <button
+                                                                            key={sv.value}
+                                                                            type="button"
+                                                                            className={`tw-px-4 tw-py-1 border tw-rounded ${selectedVariants[`${group.name}-sub`] === sv.value
+                                                                                    ? 'tw-bg-blue-600 tw-text-white'
+                                                                                    : 'tw-border-gray-400 tw-text-gray-800'
+                                                                                }`}
+                                                                            onClick={() =>
+                                                                                setSelectedVariants(prev => ({
+                                                                                    ...prev,
+                                                                                    [`${group.name}-sub`]:
+                                                                                        prev[`${group.name}-sub`] === sv.value ? undefined : sv.value,
+                                                                                }))
+                                                                            }
+                                                                        >
+                                                                            {sv.value} {sv.priceAdjustment > 0 ? `(+${sv.priceAdjustment})` : ''}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                {/* Quantity */}
+                                                <div className="mb-3">
+                                                    <label className="form-label">Quantity</label>
+                                                    <input type="number" className="form-control" defaultValue={1} />
+                                                </div>
+
+                                                {/* Description */}
+                                                <div className="mb-3">
+                                                    <label className="form-label">Description</label>
+                                                    <textarea
+                                                        className="form-control"
+                                                        rows="3"
+                                                        defaultValue={selectedProduct.meta_description || ''}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                className={`tab-pane fade show ${selectedProduct.pricing_method === 'roll' ? 'active' : ''}`}
+                                                id="pills-roll"
+                                                role="tabpanel"
+                                                aria-labelledby="pills-roll-tab"
+                                                tabIndex={0}
+                                            >
+                                                Selected Product Details
+                                                <div className="productName tw-mt-3 tw-font-semibold tw-text-black tw-text-xl dark:tw-text-white">{selectedProduct.name}</div>
+                                                <div
+                                                    className="tw-text-gray-500 tw-text-sm dark:tw-text-gray-400 tw-leading-relaxed tw-mt-3"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html:
+                                                            selectedProduct.meta_description ||
+                                                            'No description available.',
+                                                    }}
+                                                />
+
+                                                <div className="mb-3">
+                                                    <label className="form-label">Price per Sq.Ft</label>
+                                                    <input
+                                                        type="number"
+                                                        value={selectedProduct.price_per_sqft}
+                                                        className='form-control'
+                                                    />
+                                                </div>
+                                                <div className="mb-3">
+                                                    <select className="form-select">
+                                                        {/* show availabe rolls here */}
+                                                    </select>
+
+                                                </div>
+                                                <div className="mb-3">
+                                                    <label className="form-label">Price per Offcut Sq.Ft</label>
+                                                    <input
+                                                        type="number"
+                                                        value=''
+                                                        className='form-control'
+                                                    />
+                                                </div>
+                                                <div className="mb-3">
+                                                    <label htmlFor="rollWidth" className="form-label">Fixed Width (in)</label>
+                                                    <input type="number" step="0.01" id="rollWidth" name="rollWidth" className={`form-control `} />
+
+                                                </div>
+                                                <div className="mb-3">
+                                                    <label htmlFor="rollHeight" className="form-label">Height (in)</label>
+                                                    <input type="number" step="0.01" id="rollHeight" name="rollHeight" className={`form-control `} />
+
+                                                </div>
+                                                <div className="mb-3">
+                                                    <label className="form-label">Quantity</label>
+                                                    <input
+                                                        type="number"
+                                                        value='0'
+                                                        className='form-control'
+                                                    />
+                                                </div>
+                                                <div className="mb-3">
+                                                    <label className="form-label">Description</label>
+                                                    <textarea
+                                                        className='form-control'
+                                                        rows="3"
+                                                        value={selectedProduct.meta_description || ''}
+                                                    >
+                                                    </textarea>
+                                                </div>
+                                            </div>
+
                                         </div>
+
                                     </div>
+                                </>
+                            )}
 
-                                </div>
-                            </div>
-
-                            <div className="modal-footer d-flex justify-content-end">
+                            {/* Footer */}
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">
+                                    Cancel
+                                </button>
                                 <button
                                     type="button"
-                                    className="btn btn-secondary"
-                                    data-bs-dismiss="modal"
+                                    className="btn btn-primary"
+                                    disabled={!selectedProduct}
+                                    onClick={() => {
+                                        // append to your estimate form
+                                        const price =
+                                            selectedProduct.pricing_method === 'standard'
+                                                ? parseFloat(selectedProduct.price)
+                                                : parseFloat(selectedProduct.price_per_sqft || 0);
+
+                                        setForm(f => ({
+                                            ...f,
+                                            items: [
+                                                ...f.items,
+                                                {
+                                                    description: selectedProduct.name,
+                                                    qty: 1,
+                                                    unit: selectedProduct.unit_of_measure,
+                                                    unit_price: price,
+                                                    tempId: Math.random().toString(36).substr(2, 8),
+                                                },
+                                            ],
+                                        }));
+
+                                        // close modal
+                                        const modalEl = document.getElementById('ProductModal');
+                                        bootstrap.Modal.getInstance(modalEl).hide();
+
+                                        // clear selection for next time
+                                        setSelectedProduct(null);
+                                        setProductSearch('');
+                                    }}
                                 >
-                                    Cancel
+                                    Add to Quote
                                 </button>
                             </div>
                         </div>
-                    </div >
-                </div >
+                    </div>
+                </div>
 
 
             </AdminDashboard >
