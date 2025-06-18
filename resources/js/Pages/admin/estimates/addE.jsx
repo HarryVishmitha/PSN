@@ -372,18 +372,18 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     selectedVariants: {},
 
     // → roll-pricing fields
-    rollSizeInches: 0,
-    pricePerOffcutSqFt: 0,
-    fixedWidthIn: 0,
-    heightIn: 0,
+    rollSizeInches: '',
+    pricePerOffcutSqFt: '',
+    fixedWidthIn: '',
+    heightIn: '',
   });
   useEffect(() => {
     setModalForm({
       unitPrice: computedPrice,
-      quantity: '1',
+      quantity: '',
       description: selectedProduct?.meta_description || '',
       selectedVariants: {},
-      rollSizeInches: 0,
+      rollSizeInches: '',
       pricePerOffcutSqFt: '',
       fixedWidthIn: '',
       heightIn: '',
@@ -1362,7 +1362,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                           .map(p => (
                             <div
                               key={p.id}
-                              className={`tw-p-3 tw-border tw-rounded tw-cursor-pointer ${selectedProduct?.id === p.id
+                              className={`tw-p-3 tw-border card border tw-rounded tw-cursor-pointer col ${selectedProduct?.id === p.id
                                 ? 'tw-border-blue-500 tw-bg-blue-50'
                                 : 'hover:tw-shadow'
                                 }`}
@@ -1645,7 +1645,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             onChange={e =>
                               setModalForm(m => ({
                                 ...m,
-                                pricePerOffcutSqFt: parseFloat(e.target.value) || 0
+                                pricePerOffcutSqFt: parseFloat(e.target.value)
                               }))
                             }
                           />
@@ -1662,7 +1662,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             onChange={e =>
                               setModalForm(m => ({
                                 ...m,
-                                fixedWidthIn: parseFloat(e.target.value) || 0
+                                fixedWidthIn: parseFloat(e.target.value)
                               }))
                             }
                           />
@@ -1679,7 +1679,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             onChange={e =>
                               setModalForm(m => ({
                                 ...m,
-                                heightIn: parseFloat(e.target.value) || 0
+                                heightIn: parseFloat(e.target.value)
                               }))
                             }
                           />
@@ -1771,6 +1771,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
                     // clear selection for next time
                     setSelectedProduct(null);
+                    setSelectedRollId(null);
                     setProductSearch('');
                   }}
                 >
@@ -1858,6 +1859,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
                     // 5) close/reset
                     document.querySelector('#ProductModal .btn-close').click();
+                    setSelectedRollId(null);
                     setSelectedProduct(null);
                     setProductSearch('');
                   }}
