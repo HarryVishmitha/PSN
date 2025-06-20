@@ -13,7 +13,7 @@ class Estimate extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'customer_type','customer_id','working_group_id','status',
+        'estimate_number','customer_type','customer_id','working_group_id','status',
         'valid_from','valid_to','po_number','billing_address_id',
         'subtotal_amount','discount_amount','tax_amount','total_amount',
         'created_by','published_at',

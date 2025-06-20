@@ -27,6 +27,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Design;
 use App\Models\Estimate;
+use App\Models\Address;
 use Google\Service\Drive\Permission as Google_Service_Drive_Permission;
 use Google\Service\Drive as GoogleServiceDrive;
 use Google\Client as GoogleClient;
@@ -2746,6 +2747,150 @@ class AdminController extends Controller
             return redirect()->back()
                 ->withInput()
                 ->with('error', 'Failed to add walk-in customer.');
+        }
+    }
+
+    public function storeEstimate(Request $request)
+    {
+        // 1️⃣ Validate the shape of the incoming JSON
+        $data = $request->validate([
+            'estimate_number'        => 'required|string',
+            'working_group_id'       => 'required|integer',
+            'client_id'              => 'required|integer',
+            'client_name'            => 'required|string',
+            'client_address'         => 'nullable|string',
+            'client_phone'           => 'nullable|string',
+            'client_email'           => 'nullable|email',
+            'client_type'            => 'required|in:system,daily',
+            'issue_date'             => 'required|date',
+            'due_date'               => 'required|date',
+            'notes'                  => 'nullable|string',
+            'po_number'              => 'nullable|string',
+            'shipment_id'            => 'nullable|string',
+            'discount_amount'        => 'nullable|numeric|min:0',
+            'tax_amount'             => 'nullable|numeric|min:0',
+            'action'                 => 'required|in:draft,publish,download,print,expire',
+            'items'                  => 'required|array|min:1',
+            'items.*.product_id'    => 'required|integer|exists:products,id',
+            'items.*.description'    => 'required|string',
+            'items.*.qty'            => 'required|numeric|min:0',
+            'items.*.unit'           => 'required|string',
+            'items.*.unit_price'     => 'required|numeric|min:0',
+            'items.*.roll_id'              => 'nullable|integer',
+            'items.*.is_roll'              => 'boolean',
+            'items.*.cut_width_in'         => 'nullable|numeric|min:0',
+            'items.*.cut_height_in'        => 'nullable|numeric|min:0',
+            'items.*.offcut_price_per_sqft' => 'nullable|numeric|min:0',
+            'items.*.size'                 => 'nullable|string',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            // 2️⃣ Optionally create billing address
+            $billingAddressId = null;
+            if (!empty($data['client_address'])) {
+                $billing = Address::create([
+                    'addressable_type' => Estimate::class,
+                    'addressable_id'   => 0, // patch later
+                    'type'             => 'billing',
+                    'line1'            => $data['client_address'],
+                ]);
+                $billingAddressId = $billing->id;
+            }
+
+            // 3️⃣ Create the estimate record
+            $estimate = Estimate::create([
+                'estimate_number'      => $data['estimate_number'],
+                'working_group_id'   => $data['working_group_id'],
+                'customer_type'      => $data['client_type'] === 'system'
+                    ? \App\Models\User::class
+                    : \App\Models\DailyCustomer::class,
+                'customer_id'        => $data['client_id'],
+                'status'             => $data['action'] === 'publish' ? 'published' : 'draft',
+                'valid_from'         => $data['issue_date'],
+                'valid_to'           => $data['due_date'],
+                'po_number'          => $data['po_number'] ?? null,
+                'billing_address_id' => $billingAddressId,
+                'notes'              => $data['notes'] ?? null,
+                'subtotal_amount'    => 0,
+                'discount_amount'    => $data['discount_amount'] ?? 0,
+                'tax_amount'         => $data['tax_amount'] ?? 0,
+                'total_amount'       => 0,
+                'created_by'         => Auth::id(),
+                'published_at'       => $data['action'] === 'publish' ? now() : null,
+            ]);
+
+            // 4️⃣ If we created an address, patch its addressable_id
+            if ($billingAddressId) {
+                Address::where('id', $billingAddressId)
+                    ->update(['addressable_id' => $estimate->id]);
+            }
+
+            // 5️⃣ Save each line-item, tracking a running subtotal
+            $runningSubtotal = 0;
+            foreach ($data['items'] as $item) {
+                $lineTotal = $item['qty'] * $item['unit_price'];
+                $runningSubtotal += $lineTotal;
+
+                $estimate->items()->create([
+                    'product_id'     => $item['product_id'],
+                    'description'           => $item['description'],
+                    'quantity'              => $item['qty'],
+                    'unit_price'            => $item['unit_price'],
+                    'line_total'            => $lineTotal,
+                    'roll_id'               => $item['roll_id'] ?? null,
+                    'is_roll'               => $item['is_roll'] ?? false,
+                    'cut_width_in'          => $item['cut_width_in'] ?? null,
+                    'cut_height_in'         => $item['cut_height_in'] ?? null,
+                    'offcut_price_per_sqft' => $item['offcut_price_per_sqft'] ?? null,
+                ]);
+            }
+
+            // 6️⃣ Compute grand total using passed discount/tax
+            $discount = $data['discount_amount'] ?? 0;
+            $tax      = $data['tax_amount'] ?? 0;
+            $total    = $runningSubtotal - $discount + $tax;
+
+            $estimate->update([
+                'subtotal_amount' => $runningSubtotal,
+                'discount_amount' => $discount,
+                'tax_amount'      => $tax,
+                'total_amount'    => $total,
+            ]);
+
+            DB::commit();
+
+            // 7️⃣ Stubbed download link
+            $downloadUrl = null;
+            if ($data['action'] === 'download') {
+                $downloadUrl = route('admin.estimates.download', $estimate);
+            }
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'estimate_added',
+                'description' => 'Admin added estimate to the system :' + $data['estimate_number'],
+                'ip_address'  => $request->ip(),
+            ]);
+
+            return response()->json([
+                'msgtype'      => 'success',
+                'message'      => 'Estimate saved successfully.',
+                'download_url' => $downloadUrl,
+                'estimate_id'  => $estimate->id,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('storeEstimate failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'msgtype' => 'error',
+                'message' => 'Failed to save estimate. Please try again.',
+            ], 500);
         }
     }
 }

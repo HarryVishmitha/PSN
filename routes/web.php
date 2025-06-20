@@ -94,6 +94,9 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/add-estimate', [AdminController::class, 'addEstimate'])->name('addEstimate');
     Route::get('/api/{wgId}/get-est-data', [AdminController::class, 'getdataEst'])->name('getdataEst');
     Route::post('/api/add-daily-customer/json', [AdminController::class, 'JSonaddDailyCustomer'])->name('jsonDailyCustomers');
+    Route::post('/api/add/estimates', [AdminController::class, 'storeEstimate'])->name('estimates.store');
+    Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
+
 
     // Add more admin routes here
 });
@@ -104,8 +107,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 })->middleware('verified');
 
-Route::group(['prefix'=>'api', 'as' => 'api.'], function () {
+Route::group(['prefix' => 'api', 'as' => 'api.'], function () {
     Route::get('/random-image', [ApisPublic::class, 'randomImage'])->name('random-image');
 });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

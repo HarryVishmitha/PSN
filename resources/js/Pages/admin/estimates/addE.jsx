@@ -24,8 +24,10 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         working_group_id: estimate?.working_group_id || '',
         // --- Client + dates + notes ---
         client_name: estimate?.client_name || '',
+        client_id: estimate?.customer_id || null,
         client_address: estimate?.client_address || '',
         client_phone: estimate?.client_phone || '',
+        client_type: estimate?.client_type || '',
         issue_date: estimate?.issue_date || todayISO,
         due_date: estimate?.due_date || dueDate,
         notes: estimate?.notes || '',
@@ -166,58 +168,117 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const tax = 0;
     const total = subtotal - discount + tax;
 
-    // When Save is clicked
-    const submit = (e) => {
-        e.preventDefault();
+    const handleSubmit = async (action) => {
+        // 1️⃣ Basic validations
+        if (!form.working_group_id) {
+            setAlert({ type: 'danger', message: 'Please select a working group first.' });
+            return;
+        }
+        if (!form.client_name) {
+            setAlert({ type: 'danger', message: 'Please assign a client before saving.' });
+            return;
+        }
+        if (form.items.length < 1) {
+            setAlert({ type: 'danger', message: 'You must add at least one line item.' });
+            return;
+        }
+
+        // 2️⃣ Build payload
+        const payload = {
+            ...form,
+            action, // "draft" | "publish" | "download" | "print"
+            items: form.items.map(({ tempId, ...keep }) => keep),
+        };
+
         setLoading(true);
         setErrors({});
 
-        // Decide whether to POST (create) or PUT (update)
-        if (form.id) {
-            // Update existing
-            router.put(
-                route('admin.estimates.update', form.id),
-                {
-                    ...form,
-                    items: form.items.map(({ tempId, ...keep }) => keep),
-                },
-                {
-                    preserveScroll: true,
-                    onSuccess: (page) => {
-                        setLoading(false);
-                        // Optionally show a flash or reset editing
-                        setEditingField(null);
-                    },
-                    onError: (errs) => {
-                        setLoading(false);
-                        setErrors(errs);
-                    },
-                }
-            );
-        } else {
-            // Create new
-            router.post(
-                route('admin.estimates.store'),
-                {
-                    ...form,
-                    items: form.items.map(({ tempId, ...keep }) => keep),
-                },
-                {
-                    preserveScroll: true,
-                    onSuccess: (page) => {
-                        setLoading(false);
-                        // Clear the form for a fresh new estimate:
-                        setForm(defaultForm);
-                        setEditingField(null);
-                    },
-                    onError: (errs) => {
-                        setLoading(false);
-                        setErrors(errs);
-                    },
-                }
-            );
+        try {
+            // 3️⃣ Decide URL & method
+            const url = route('admin.estimates.store');
+            const response = await axios.post(url, payload);
+
+            // 4️⃣ Handle post‐save behavior
+            setLoading(false);
+            console.log('Estimate save response:', response.data);
+            setAlert({ type: response.data.msgtype, message: response.data.message });
+
+            const delay = ms => new Promise(res => setTimeout(res, ms));
+            await delay(4000); // <-- wait 3.5s
+
+            if (action === 'download') {
+                // maybe backend returns a file URL:
+                window.location = response.data.download_url;
+            } else if (action === 'print') {
+                window.print();
+            } else {
+                // for draft/publish just clear or redirect:
+                setForm(defaultForm);
+            }
+
+        } catch (err) {
+            setLoading(false);
+            if (err.response?.data?.errors) {
+                setErrors(err.response.data.errors);
+                setAlert({ type: 'danger', message: 'Please fix the errors below.' });
+            } else {
+                setAlert({ type: 'danger', message: err.message || 'Unknown error' });
+            }
         }
     };
+
+    // // When Save is clicked
+    // const submit = (e) => {
+    //     e.preventDefault();
+    //     setLoading(true);
+    //     setErrors({});
+
+    //     // Decide whether to POST (create) or PUT (update)
+    //     if (form.id) {
+    //         // Update existing
+    //         router.put(
+    //             route('admin.estimates.update', form.id),
+    //             {
+    //                 ...form,
+    //                 items: form.items.map(({ tempId, ...keep }) => keep),
+    //             },
+    //             {
+    //                 preserveScroll: true,
+    //                 onSuccess: (page) => {
+    //                     setLoading(false);
+    //                     // Optionally show a flash or reset editing
+    //                     setEditingField(null);
+    //                 },
+    //                 onError: (errs) => {
+    //                     setLoading(false);
+    //                     setErrors(errs);
+    //                 },
+    //             }
+    //         );
+    //     } else {
+    //         // Create new
+    //         router.post(
+    //             route('admin.estimates.store'),
+    //             {
+    //                 ...form,
+    //                 items: form.items.map(({ tempId, ...keep }) => keep),
+    //             },
+    //             {
+    //                 preserveScroll: true,
+    //                 onSuccess: (page) => {
+    //                     setLoading(false);
+    //                     // Clear the form for a fresh new estimate:
+    //                     setForm(defaultForm);
+    //                     setEditingField(null);
+    //                 },
+    //                 onError: (errs) => {
+    //                     setLoading(false);
+    //                     setErrors(errs);
+    //                 },
+    //             }
+    //         );
+    //     }
+    // };
 
     useEffect(() => {
         if (isBlocked) {
@@ -236,15 +297,19 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const selectClient = (client) => {
         setForm(prev => ({
             ...prev,
+            client_id: client.id,
             client_name: client.full_name || client.name || '',
             client_phone: client.phone_number || client.phone_number || '',
             client_address: client.address || '',
             // if you added client_email to defaultForm:
             client_email: client.email || '',
+            client_type: client.type || 'daily',
         }));
     };
 
-
+    useEffect(() => {
+        console.log('form.client_type changed:', form.client_type);
+    }, [form.client_type]);
 
     // — “Add Daily Customer” form state —
     const emptyAddForm = {
@@ -436,7 +501,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                     <button
                                         type="button"
                                         className="btn btn-sm btn-secondary radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => submit(/* you can pass a flag here: draft = true */)}
+                                        onClick={() => handleSubmit('draft')}
+                                        disabled={loading}
                                     >
                                         <Icon icon="mdi:content-save-outline" className="text-xl" />
                                         Save Draft
@@ -446,7 +512,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                     <button
                                         type="button"
                                         className="btn btn-sm btn-primary radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={submit}
+                                        onClick={() => handleSubmit('publish')}
+                                        disabled={loading}
                                     >
                                         <Icon icon="mdi:cloud-upload-outline" className="text-xl" />
                                         Save & Publish
@@ -456,10 +523,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                     <button
                                         type="button"
                                         className="btn btn-sm btn-info radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => {
-                                            submit();
-                                            /* then trigger download logic */
-                                        }}
+                                        onClick={() => handleSubmit('download')}
+                                        disabled={loading}
                                     >
                                         <Icon icon="mdi:download-outline" className="text-xl" />
                                         Save & Download
@@ -469,10 +534,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                     <button
                                         type="button"
                                         className="btn btn-sm btn-warning radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => {
-                                            submit();
-                                            /* then window.print() or your print handler */
-                                        }}
+                                        onClick={() => handleSubmit('print')}
+                                        disabled={loading}
                                     >
                                         <Icon icon="solar:printer-outline" className="text-xl" />
                                         Save & Print
@@ -1851,7 +1914,13 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                             // only for roll:
                                             isRoll,
                                             ...(isRoll && { size: sizeLabel }),
-                                            tempId: Math.random().toString(36).substr(2, 8),
+                                            roll_id: isRoll ? selectedRoll.id : null,
+                                            is_roll: isRoll,
+                                            cut_width_in: isRoll ? modalForm.fixedWidthIn : null,
+                                            cut_height_in: isRoll ? modalForm.heightIn : null,
+                                            offcut_price_per_sqft: isRoll ? modalForm.pricePerOffcutSqFt : null,
+                                            size: isRoll ? sizeLabel : undefined,
+                                            tempId: Math.random().toString(36).slice(2, 8),
                                         };
 
                                         // 4) push into your form

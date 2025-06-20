@@ -13,7 +13,20 @@ class EstimateItem extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'estimate_id','product_id','variant_id','subvariant_id','description','quantity','unit_price','line_total',
+        'estimate_id',
+        'product_id',
+        'variant_id',
+        'subvariant_id',
+        'description',
+        'quantity',
+        'unit_price',
+        'line_total',
+        // new roll-cut fields:
+        'roll_id',
+        'is_roll',
+        'cut_width_in',
+        'cut_height_in',
+        'offcut_price_per_sqft',
     ];
 
     public function estimate(): BelongsTo
@@ -34,5 +47,9 @@ class EstimateItem extends Model
     public function subvariant(): BelongsTo
     {
         return $this->belongsTo(ProductSubvariant::class, 'subvariant_id');
+    }
+    public function roll(): BelongsTo
+    {
+        return $this->belongsTo(Roll::class);
     }
 }
