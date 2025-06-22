@@ -35,6 +35,10 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         shipment_id: estimate?.shipment_id || '',
         // --- Line items (array of { description, qty, unit, unit_price }) ---
         items: estimate?.items.map(it => ({
+            tempId: Math.random().toString(36).slice(2, 8),
+            product_id: it.product_id,          // ← add this
+            variant_id: it.variant_id || null, // if you care about variants
+            subvariant_id: it.subvariant_id || null,
             description: it.description,
             qty: it.qty,
             unit: it.unit,
@@ -42,7 +46,6 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             product_name: it.product_name || it.product?.name || '',
             base_price: it.base_price || it.unit_price,
             variants: it.variants || [],
-            tempId: Math.random().toString(36).slice(2, 8),
         })) || [ /* your empty row */],
     };
 
@@ -65,6 +68,20 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
 
     const [editingField, setEditingField] = useState(null);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [showPdfModal, setShowPdfModal] = useState(false);
+
+    const openPdfModal = (url, { autoPrint = false } = {}) => {
+        setPdfUrl(url);
+        setShowPdfModal(true);
+        if (autoPrint) {
+            setTimeout(() => {
+                window.frames['pdf-preview'].focus();
+                window.frames['pdf-preview'].print();
+            }, 300);
+        }
+    };
+
 
     const fetchWorkingGroupDetails = async (wgId) => {
         if (!wgId) {
@@ -207,13 +224,18 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             await delay(4000); // <-- wait 3.5s
 
             if (action === 'download') {
-                // maybe backend returns a file URL:
-                window.location = response.data.download_url;
+                return openPdfModal(data.download_url);
             } else if (action === 'print') {
-                window.print();
+                return openPdfModal(data.download_url, { autoPrint: true });
             } else {
                 // for draft/publish just clear or redirect:
                 setForm(defaultForm);
+                if (response.data.estimate_number) {
+                    setForm(prev => ({
+                        ...prev,
+                        estimate_number: response.data.nextEstimateNumber
+                    }));
+                }
             }
 
         } catch (err) {
@@ -227,58 +249,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         }
     };
 
-    // // When Save is clicked
-    // const submit = (e) => {
-    //     e.preventDefault();
-    //     setLoading(true);
-    //     setErrors({});
 
-    //     // Decide whether to POST (create) or PUT (update)
-    //     if (form.id) {
-    //         // Update existing
-    //         router.put(
-    //             route('admin.estimates.update', form.id),
-    //             {
-    //                 ...form,
-    //                 items: form.items.map(({ tempId, ...keep }) => keep),
-    //             },
-    //             {
-    //                 preserveScroll: true,
-    //                 onSuccess: (page) => {
-    //                     setLoading(false);
-    //                     // Optionally show a flash or reset editing
-    //                     setEditingField(null);
-    //                 },
-    //                 onError: (errs) => {
-    //                     setLoading(false);
-    //                     setErrors(errs);
-    //                 },
-    //             }
-    //         );
-    //     } else {
-    //         // Create new
-    //         router.post(
-    //             route('admin.estimates.store'),
-    //             {
-    //                 ...form,
-    //                 items: form.items.map(({ tempId, ...keep }) => keep),
-    //             },
-    //             {
-    //                 preserveScroll: true,
-    //                 onSuccess: (page) => {
-    //                     setLoading(false);
-    //                     // Clear the form for a fresh new estimate:
-    //                     setForm(defaultForm);
-    //                     setEditingField(null);
-    //                 },
-    //                 onError: (errs) => {
-    //                     setLoading(false);
-    //                     setErrors(errs);
-    //                 },
-    //             }
-    //         );
-    //     }
-    // };
 
     useEffect(() => {
         if (isBlocked) {
@@ -1897,9 +1868,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                             calculatedUnitPrice = printPrice
                                             sizeLabel = `${modalForm.fixedWidthIn}" × ${modalForm.heightIn}"`;
                                         }
-
+                                        const chosenVariant = variants[0] || {};
                                         // 3) assemble the new item
                                         const newItem = {
+                                            product_id: selectedProduct.id,           // ← make this mandatory
+                                            variant_id: chosenVariant.variant_id || null,
+                                            subvariant_id: chosenVariant.subvariant_id || null,
                                             description: modalForm.description,
                                             qty: modalForm.quantity,
                                             unit: selectedProduct.unit_of_measure,
@@ -1921,6 +1895,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                             offcut_price_per_sqft: isRoll ? modalForm.pricePerOffcutSqFt : null,
                                             size: isRoll ? sizeLabel : undefined,
                                             tempId: Math.random().toString(36).slice(2, 8),
+                                            line_total: calculatedUnitPrice * modalForm.quantity,
                                         };
 
                                         // 4) push into your form
@@ -1942,6 +1917,30 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                         </div>
                     </div>
                 </div>
+
+                {showPdfModal && (
+                    <div className="modal-backdrop">
+                        <div className="pdf-modal">
+                            <header>
+                                <h5>Estimate Preview</h5>
+                                <button onClick={() => setShowPdfModal(false)}>✕</button>
+                            </header>
+                            <iframe
+                                name="pdf-preview"
+                                src={pdfUrl}
+                                style={{ width: '100%', height: '80vh', border: 0 }}
+                            />
+                            <footer>
+                                <a href={pdfUrl} download className="btn">Download</a>
+                                <button onClick={() => {
+                                    window.frames['pdf-preview'].focus();
+                                    window.frames['pdf-preview'].print();
+                                }}>Print</button>
+                                <button onClick={() => setShowPdfModal(false)}>Close</button>
+                            </footer>
+                        </div>
+                    </div>
+                )}
 
 
             </AdminDashboard >

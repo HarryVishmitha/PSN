@@ -49,6 +49,8 @@ use Pion\Laravel\ChunkUpload\Handler\HandlerInterface;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Encoders\AutoEncoder;
+use App\Services\EstimatePdfService;
+
 
 
 class AdminController extends Controller
@@ -2612,41 +2614,33 @@ class AdminController extends Controller
             'ip_address'  => request()->ip(),
         ]);
 
-        // 2) Fetch all active working groups (with their products, if needed)
-        $workingGroups = WorkingGroup::where('status', 'active')
-            // ->with('products')
-            ->get();
+        $workingGroups = WorkingGroup::where('status', 'active')->get();
 
-        if (Estimate::count() === 0) {
-            // If no estimates exist, start suffix from 1600
-            $suffix = 1600;
-        } else {
-            //otherwise, get the last added estimate id and get suffix as it's last four digits
-            $lastEstimate = Estimate::latest()->first();
-            $suffix = (int) substr($lastEstimate->reference, -4) + 1;
-        }
-        $newEstimateNumber = date('Ymd') . $suffix;
+        // 1) Find the maximum numeric “suffix” across any estimate_number
+        //    - If estimate_number is "EST-20250622-1600", SUBSTRING_INDEX(..., '-', -1) => "1600"
+        //    - If it was just "1599" (no dashes), SUBSTRING_INDEX(..., '-', -1) => "1599"
+        $maxSuffix = Estimate::query()
+            ->selectRaw("MAX(CAST(SUBSTRING_INDEX(estimate_number, '-', -1) AS UNSIGNED)) as max_suffix")
+            ->value('max_suffix');
 
-        // $activeUsers =  User::where('status', 'active')
-        //     ->whereHas('role', function ($q) {
-        //         $q->where('name', '!=', 'admin');
-        //     })
-        //     ->orderBy('name')
-        //     ->get();
+        // 2) Decide where to start
+        //    If you already have numbers up through 1600, $maxSuffix will be 1600 and we want next = 1601.
+        //    If you have zero estimates, start at 1600.
+        $nextSuffix = $maxSuffix
+            ? $maxSuffix + 1
+            : 1600;
 
-        // $dailyCustomers = DailyCustomer::all();
-
-
-
+        // 3) Build your EST-YYYYMMDD-<suffix> string
+        $datePart = now()->format('Ymd');
+        $newEstimateNumber = sprintf('%s%d', $datePart, $nextSuffix);
 
         return Inertia::render('admin/estimates/addE', [
-            'userDetails'    => Auth::user(),
-            'workingGroups'  => $workingGroups,
+            'userDetails'       => Auth::user(),
+            'workingGroups'     => $workingGroups,
             'newEstimateNumber' => $newEstimateNumber,
-            // 'users'          => $activeUsers,
-            // 'dailyCustomers' => $dailyCustomers,
         ]);
     }
+
 
     public function getdataEst($wgId)
     {
@@ -2782,6 +2776,9 @@ class AdminController extends Controller
             'items.*.cut_height_in'        => 'nullable|numeric|min:0',
             'items.*.offcut_price_per_sqft' => 'nullable|numeric|min:0',
             'items.*.size'                 => 'nullable|string',
+            'items.*.product_id'    => 'required|integer|exists:products,id',
+            'items.*.variant_id'    => 'nullable|integer|exists:product_variants,id',
+            'items.*.subvariant_id' => 'nullable|integer|exists:product_subvariants,id',
         ]);
 
         DB::beginTransaction();
@@ -2789,17 +2786,18 @@ class AdminController extends Controller
         try {
             // 2️⃣ Optionally create billing address
             $billingAddressId = null;
-            if (!empty($data['client_address'])) {
-                $billing = Address::create([
-                    'addressable_type' => Estimate::class,
-                    'addressable_id'   => 0, // patch later
-                    'type'             => 'billing',
-                    'line1'            => $data['client_address'],
-                ]);
-                $billingAddressId = $billing->id;
-            }
+            // if (!empty($data['client_address'])) {
+            //     $billing = Address::create([
+            //         'addressable_type' => Estimate::class,
+            //         'addressable_id'   => 0, // patch later
+            //         'type'             => 'billing',
+            //         'line1'            => $data['client_address'],
+            //     ]);
+            //     $billingAddressId = $billing->id;
+            // }
 
             // 3️⃣ Create the estimate record
+            $isPublished = in_array($data['action'], ['publish', 'download', 'print']);
             $estimate = Estimate::create([
                 'estimate_number'      => $data['estimate_number'],
                 'working_group_id'   => $data['working_group_id'],
@@ -2807,7 +2805,7 @@ class AdminController extends Controller
                     ? \App\Models\User::class
                     : \App\Models\DailyCustomer::class,
                 'customer_id'        => $data['client_id'],
-                'status'             => $data['action'] === 'publish' ? 'published' : 'draft',
+                'status'             => $isPublished ? 'published' : 'draft',
                 'valid_from'         => $data['issue_date'],
                 'valid_to'           => $data['due_date'],
                 'po_number'          => $data['po_number'] ?? null,
@@ -2818,7 +2816,7 @@ class AdminController extends Controller
                 'tax_amount'         => $data['tax_amount'] ?? 0,
                 'total_amount'       => 0,
                 'created_by'         => Auth::id(),
-                'published_at'       => $data['action'] === 'publish' ? now() : null,
+                'published_at'       => $isPublished ? now() : null,
             ]);
 
             // 4️⃣ If we created an address, patch its addressable_id
@@ -2835,14 +2833,16 @@ class AdminController extends Controller
 
                 $estimate->items()->create([
                     'product_id'     => $item['product_id'],
-                    'description'           => $item['description'],
-                    'quantity'              => $item['qty'],
-                    'unit_price'            => $item['unit_price'],
-                    'line_total'            => $lineTotal,
-                    'roll_id'               => $item['roll_id'] ?? null,
-                    'is_roll'               => $item['is_roll'] ?? false,
-                    'cut_width_in'          => $item['cut_width_in'] ?? null,
-                    'cut_height_in'         => $item['cut_height_in'] ?? null,
+                    'variant_id'     => $item['variant_id']     ?? null,
+                    'subvariant_id'  => $item['subvariant_id']  ?? null,
+                    'description'    => $item['description'],
+                    'quantity'       => $item['qty'],
+                    'unit_price'     => $item['unit_price'],
+                    'line_total'     => $item['qty'] * $item['unit_price'],
+                    'roll_id'        => $item['roll_id'] ?? null,
+                    'is_roll'        => $item['is_roll'] ?? false,
+                    'cut_width_in'   => $item['cut_width_in'] ?? null,
+                    'cut_height_in'  => $item['cut_height_in'] ?? null,
                     'offcut_price_per_sqft' => $item['offcut_price_per_sqft'] ?? null,
                 ]);
             }
@@ -2861,24 +2861,44 @@ class AdminController extends Controller
 
             DB::commit();
 
-            // 7️⃣ Stubbed download link
-            $downloadUrl = null;
-            if ($data['action'] === 'download') {
-                $downloadUrl = route('admin.estimates.download', $estimate);
+            // Instantiate (or resolve) your PDF-service
+            /** @var EstimatePdfService $pdfService */
+            $pdfService = app(EstimatePdfService::class);
+
+            // Only generate when print/download is requested
+            $pdfUrl = null;
+            if (in_array($data['action'], ['download', 'print'], true)) {
+                // force regeneration
+                $pdfUrl = $pdfService->generate($estimate->id, true);
             }
+
+
+            $today = now()->format('Ymd');
+            // grab the last‐created for **today**, fallback if none
+            $lastToday = Estimate::where('estimate_number', 'like', "{$today}%")
+                ->orderBy('estimate_number', 'desc')
+                ->first();
+            if (!$lastToday) {
+                $nextSuffix = 1600;
+            } else {
+                $lastSuffix = (int) substr($lastToday->estimate_number, -strlen($lastToday->estimate_number) + 8);
+                $nextSuffix = $lastSuffix + 1;
+            }
+            $nextEstimateNumber = "{$today}{$nextSuffix}";
 
             ActivityLog::create([
                 'user_id'     => Auth::id(),
                 'action_type' => 'estimate_added',
-                'description' => 'Admin added estimate to the system :' + $data['estimate_number'],
+                'description' => 'Admin added estimate to the system: ' . $data['estimate_number'],
                 'ip_address'  => $request->ip(),
             ]);
 
             return response()->json([
                 'msgtype'      => 'success',
                 'message'      => 'Estimate saved successfully.',
-                'download_url' => $downloadUrl,
+                'download_url' => $pdfUrl,
                 'estimate_id'  => $estimate->id,
+                'next_estimate_number'  => $nextEstimateNumber,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();

@@ -23,7 +23,7 @@ Route::get('/', function () {
 })->name('home');
 
 Route::get('/temp', function () {
-    return view('emails.custom-verify');
+    return view('pdfs.estimate');
 })->name('temp');
 
 Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('user.')->group(function () {
@@ -110,5 +110,6 @@ Route::middleware('auth')->group(function () {
 Route::group(['prefix' => 'api', 'as' => 'api.'], function () {
     Route::get('/random-image', [ApisPublic::class, 'randomImage'])->name('random-image');
 });
+
 
 require __DIR__ . '/auth.php';
