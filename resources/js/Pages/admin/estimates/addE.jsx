@@ -536,7 +536,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             </div>
                         )}
 
-                        <div className="row justify-content-center tw-mt-4" id="invoice">
+                        <div className="row justify-content-center tw-mt-4" id="estimate">
                             <div className="col tw-max-w-[8.3in]">
                                 <div className="shadow-4 border radius-8">
                                     {/* Header (Estimate #, Dates, Company Info) */}
