@@ -221,7 +221,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             setAlert({ type: response.data.msgtype, message: response.data.message });
 
             const delay = ms => new Promise(res => setTimeout(res, ms));
-            await delay(4000); // <-- wait 3.5s
+            await delay(40000); // <-- wait 3.5s
 
             if (action === 'download') {
                 return openPdfModal(data.download_url);

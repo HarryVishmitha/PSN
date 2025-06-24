@@ -22,9 +22,9 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
-Route::get('/temp', function () {
-    return view('pdfs.estimate');
-})->name('temp');
+// Route::get('/temp', function () {
+//     return view('pdfs.estimate');
+// })->name('temp');
 
 Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('user.')->group(function () {
     Route::get('/dashboard', [UserController::class, 'index'])->name('dashboard');

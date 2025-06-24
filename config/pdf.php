@@ -38,4 +38,9 @@ return [
     |
     */
     'footer_view' => 'pdfs._footer',  // e.g. resources/views/pdfs/_footer.blade.php
+    'estimate' => [
+      'template'    => 'pdfs.estimate',        // your Blade path
+      'paper_size'  => env('PDF_PAPER_SIZE','a4'),
+      'orientation' => env('PDF_ORIENTATION','portrait'),
+    ],
 ];
