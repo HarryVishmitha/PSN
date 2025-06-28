@@ -12,6 +12,9 @@ use App\Http\Middleware\CheckRole;
 use App\Models\Notification;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\UserController;
+use App\Models\Estimate;
+use Barryvdh\DomPDF\Facade\Pdf;
+
 
 Route::get('/', function () {
     return Inertia::render('Home', [
@@ -22,9 +25,18 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
-// Route::get('/temp', function () {
-//     return view('pdfs.estimate');
-// })->name('temp');
+Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
+    // eager load relations:
+    $estimate->load(['customer', 'items.variant', 'items.subvariant', 'items.product']);
+
+    // render & stream:
+    $pdf = Pdf::loadView('pdfs.estimate', ['est' => $estimate])
+              ->setPaper('a4', 'portrait')
+              // optional: increase default PHP memory / timeouts if you have lots of pages
+              ->setOptions(['dpi' => 150, 'defaultFont' => 'sans-serif']);
+
+    return $pdf->stream("Estimate-{$estimate->estimate_number}.pdf");
+})->name('estimate.pdf');
 
 Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('user.')->group(function () {
     Route::get('/dashboard', [UserController::class, 'index'])->name('dashboard');
