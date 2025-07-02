@@ -2572,36 +2572,44 @@ class AdminController extends Controller
 
     public function estimateView(Request $request)
     {
-        // $this->authorize('viewAny', \App\Models\Estimate::class);
+        $perPage = $request->input('per_page', 10);
+        $search  = $request->input('search', '');
+        $status  = $request->input('status', '');
+        $group   = $request->input('group', '');
 
-        $query = \App\Models\Estimate::with(['customer', 'items.product', 'workingGroup']);
-        if ($status = $request->input('status')) {
+        $query = Estimate::with(['customer', 'workingGroup']);
+
+        if ($search) {
+            $query->where('estimate_number', 'like', "%{$search}%")
+                ->orWhereHas(
+                    'customer',
+                    fn($q) =>
+                    $q->where('name', 'like', "%{$search}%")
+                );
+        }
+
+        if ($status) {
             $query->where('status', $status);
         }
-        if ($wg = $request->input('working_group_id')) {
-            $query->where('working_group_id', $wg);
-        }
-        if ($search = $request->input('search')) {
-            $query->where('reference', 'like', "%{$search}%");
+
+        if ($group) {
+            $query->whereHas(
+                'workingGroup',
+                fn($q) =>
+                $q->where('name', $group)
+            );
         }
 
-        $estimates = $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($request->input('per_page', 15))
+        $estimates = $query->orderBy('valid_from', 'desc')
+            ->paginate($perPage)
             ->withQueryString();
 
-        ActivityLog::create([
-            'user_id'     => Auth::id(),
-            'action_type' => 'estimate_view',
-            'description' => 'Admin viewed estimates list',
-            'ip_address'  => $request->ip(),
-        ]);
+        $workingGroups = WorkingGroup::select('id', 'name')->get();
 
         return Inertia::render('admin/estimates/view', [
-            'userDetails' => Auth::user(),
+            'userDetails'   => Auth::user(),
             'estimates'     => $estimates,
-            'filters'       => $request->only(['status', 'working_group_id', 'search', 'per_page']),
-            'workingGroups' => WorkingGroup::where('status', 'active')->orderBy('name')->get(),
+            'workingGroups' => $workingGroups,
         ]);
     }
 
@@ -2688,7 +2696,7 @@ class AdminController extends Controller
         }
     }
 
-    public function storeEst() {}
+
 
     public function JSonaddDailyCustomer(Request $request)
     {
@@ -2861,16 +2869,16 @@ class AdminController extends Controller
 
             DB::commit();
 
-            // Instantiate (or resolve) your PDF-service
-            /** @var EstimatePdfService $pdfService */
-            $pdfService = app(EstimatePdfService::class);
+            // // Instantiate (or resolve) your PDF-service
+            // /** @var EstimatePdfService $pdfService */
+            // $pdfService = app(EstimatePdfService::class);
 
-            // Only generate when print/download is requested
+            // // Only generate when print/download is requested
             $pdfUrl = null;
-            if (in_array($data['action'], ['download', 'print'], true)) {
-                // force regeneration
-                $pdfUrl = $pdfService->generate($estimate->id, true);
-            }
+            // if (in_array($data['action'], ['download', 'print'], true)) {
+            //     // force regeneration
+            //     $pdfUrl = $pdfService->generate($estimate->id, true);
+            // }
 
 
             $today = now()->format('Ymd');
@@ -2912,5 +2920,32 @@ class AdminController extends Controller
                 'message' => 'Failed to save estimate. Please try again.',
             ], 500);
         }
+    }
+
+    public function previewEstimate(Estimate $estimate)
+    {
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'estimate_preview',
+            'description' => "Admin previewed estimate ID {$estimate->id}",
+            'ip_address'  => request()->ip(),
+        ]);
+
+        // Eager‐load all the relationships on Estimate and EstimateItem:
+        $estimate->load([
+            'customer',             // morphTo customer (e.g. User or Company)
+            'billingAddress',       // the billing address
+            'creator',              // who created it
+            'workingGroup',         // the working group
+            'items.product',        // each line’s product
+            'items.variant',        // each line’s variant
+            'items.subvariant',     // each line’s subvariant
+            'items.roll',           // roll info if any
+        ]);
+
+        return Inertia::render('admin/estimates/preview', [
+            'userDetails' => Auth::user(),
+            'estimate'    => $estimate,
+        ]);
     }
 }

@@ -108,7 +108,8 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::post('/api/add-daily-customer/json', [AdminController::class, 'JSonaddDailyCustomer'])->name('jsonDailyCustomers');
     Route::post('/api/add/estimates', [AdminController::class, 'storeEstimate'])->name('estimates.store');
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
-
+    Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
+    Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
 
     // Add more admin routes here
 });

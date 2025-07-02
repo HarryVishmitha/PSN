@@ -217,11 +217,11 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
             // 4️⃣ Handle post‐save behavior
             setLoading(false);
-            console.log('Estimate save response:', response.data);
+            console.log('Estimate save response:');
             setAlert({ type: response.data.msgtype, message: response.data.message });
 
             const delay = ms => new Promise(res => setTimeout(res, ms));
-            await delay(40000); // <-- wait 3.5s
+            await delay(3500); // <-- wait 3.5s
 
             if (action === 'download') {
                 return openPdfModal(data.download_url);
