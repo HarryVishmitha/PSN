@@ -124,7 +124,7 @@ const LimitedOffers = () => {
 
     return (
         <section className="tw-bg-[#f9f9f9] tw-py-20 tw-px-4 tw-relative">
-            <div className="tw-max-w-7xl tw-mx-auto">
+            <div className="tw-mx-auto">
                 <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-text-center tw-mb-12" data-aos="fade-up">
                     Limited-Time Offers
                 </h2>
