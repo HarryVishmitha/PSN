@@ -74,3 +74,10 @@ select {
 .tw-animation-spin {
     animation: tw-spin 2s linear infinite;
 }
+.tw-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.tw-no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
