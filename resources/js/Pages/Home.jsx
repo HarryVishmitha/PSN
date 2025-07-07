@@ -2,7 +2,7 @@ import React from 'react';
 import { Head, Link } from '@inertiajs/react';
 import Header from '../components/Header';
 import CookieConsent from '@/Components/CookieConsent';
-import { useState, useEffect, useRef } from 'react';
+import { useLayoutEffect, useState, useEffect, useRef } from 'react';
 import { Icon } from "@iconify/react";
 import AOS from 'aos';
 import 'aos/dist/aos.css';
@@ -10,10 +10,14 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Typewriter } from 'react-simple-typewriter';
 import Offers from '@/Components/Offers';
+import FAQs from '@/Components/Faqs';
+import ContactUs from '@/Components/ContactUs';
+import Footer from '@/Components/Footer';
+gsap.registerPlugin(ScrollTrigger);
+
 
 
 const Home = () => {
-    gsap.registerPlugin(ScrollTrigger);
 
     const [theme, setTheme] = useState('light');
     const containerRef = useRef(null);
@@ -142,11 +146,27 @@ const Home = () => {
         },
     ];
 
+    const popularProducts = [
+        { name: 'X-Banners', slug: 'x-banners' },
+        { name: 'Pull-Up Banners', slug: 'pull-up-banners' },
+        { name: 'Custom T-Shirts', slug: 'custom-t-shirts' },
+        { name: 'Business Cards', slug: 'business-cards' },
+        { name: 'Poster Printing', slug: 'poster-printing' },
+    ];
+
+
+
+
+
+
     useEffect(() => {
         AOS.init({
             duration: 1000,
             once: true,
         });
+        return () => {
+            AOS.refreshHard(); // Or simply remove AOS class manually
+        };
     }, []);
 
     const updateThemeOnHtmlEl = (theme) => {
@@ -164,36 +184,89 @@ const Home = () => {
     }, []);
 
     // verticall scroll for horizontal scrolling section
-    useEffect(() => {
-        // Clean up all existing ScrollTriggers before setting up new ones
-        ScrollTrigger.getAll().forEach(trigger => trigger.kill());
+    // useEffect(() => {
+    //     // 1. kill any old triggers (including stray pin spacers)
+    //     ScrollTrigger.getAll().forEach(t => t.kill());
 
-        // Only apply GSAP scroll effect on desktop
-        if (!isMobile && scrollRef.current && containerRef.current) {
+    //     // 2. bail out early if refs aren’t ready or we’re on mobile
+    //     if (isMobile || !scrollRef.current || !containerRef.current) {
+    //         return;
+    //     }
+
+    //     // 3. wrap in a context scoped to the actual DOM node
+    //     const ctx = gsap.context(() => {
+    //         const scrollWidth = scrollRef.current.scrollWidth;
+    //         const containerWidth = containerRef.current.offsetWidth;
+    //         const scrollDistance = scrollWidth - containerWidth;
+
+    //         gsap.to(scrollRef.current, {
+    //             x: -scrollDistance,
+    //             ease: 'none',
+    //             scrollTrigger: {
+    //                 trigger: containerRef.current,
+    //                 start: 'top top',
+    //                 end: () => `+=${scrollDistance}`,
+    //                 scrub: true,
+    //                 pin: true,
+    //                 anticipatePin: 1,
+    //                 invalidateOnRefresh: true,
+    //             },
+    //         });
+    //     }, containerRef.current);
+
+    //     // 4. force ScrollTrigger to recalculate its bounds
+    //     ScrollTrigger.refresh();
+
+    //     return () => {
+    //         // this kills the pin + all internal GSAP state cleanly
+    //         ctx.revert();
+    //     };
+    // }, [isMobile]);
+    const hasHorizontalPin = useRef(false);
+    useLayoutEffect(() => {
+        // 1) Only run once, and only on desktop
+        if (hasHorizontalPin.current || isMobile || !scrollRef.current || !containerRef.current) {
+            return;
+        }
+        hasHorizontalPin.current = true;
+
+        // 2) Clean out any old triggers & spacers
+        ScrollTrigger.getAll().forEach(t => t.kill());
+        document.querySelectorAll('.gsap-pin-spacer').forEach(el => el.remove());
+
+        // 3) Build our new pin inside a context scoped to the container element
+        const ctx = gsap.context(() => {
             const scrollWidth = scrollRef.current.scrollWidth;
             const containerWidth = containerRef.current.offsetWidth;
-            const scrollDistance = scrollWidth - containerWidth;
+            const distance = scrollWidth - containerWidth;
 
             gsap.to(scrollRef.current, {
-                x: () => `-${scrollDistance}px`,
+                x: -distance,
                 ease: 'none',
                 scrollTrigger: {
                     trigger: containerRef.current,
                     start: 'center center',
-                    end: () => `+=${scrollDistance}`,
+                    end: () => `+=${distance}`,
                     scrub: true,
                     pin: true,
                     anticipatePin: 1,
-                    invalidateOnRefresh: true, // responsive!
+                    invalidateOnRefresh: true,
                 },
             });
-        }
+        }, containerRef.current);
 
-        // Cleanup on unmount or when isMobile changes
+        // 4) Force recalculation now that it’s in place
+        ScrollTrigger.refresh();
+
+        // 5) Cleanup only once
         return () => {
-            ScrollTrigger.getAll().forEach(trigger => trigger.kill());
+            ctx.revert();                                   // kills the trigger & removes its spacer
+            ScrollTrigger.getAll().forEach(t => t.kill());  // just in case
+            document.querySelectorAll('.gsap-pin-spacer').forEach(el => el.remove());
         };
     }, [isMobile]);
+
+
 
 
     // Slogan section
@@ -536,8 +609,393 @@ const Home = () => {
             <Offers />
 
 
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* We design section */}
+            <section className="tw-bg-white tw-py-20 tw-px-4">
+                <div className="tw-max-w-7xl tw-mx-auto">
+                    <h2
+                        className="tw-text-3xl md:tw-text-5xl tw-font-extrabold tw-text-center tw-mb-4"
+                        data-aos="fade-up"
+                    >
+                        Creative by <span className="tw-text-[#f44032]">Printair</span>
+                    </h2>
+                    <p
+                        className="tw-text-center tw-text-gray-600 tw-mb-14 tw-text-lg"
+                        data-aos="fade-up"
+                        data-aos-delay="150"
+                    >
+                        We don’t just print — we design. Every masterpiece starts here.
+                    </p>
+
+                    <div className="tw-grid sm:tw-grid-cols-2 md:tw-grid-cols-3 lg:tw-grid-cols-4 tw-gap-6">
+                        {[
+                            {
+                                title: 'Minimal Product Label',
+                                tag: 'Label Design',
+                                image: 'https://picsum.photos/300/300?random=21',
+                            },
+                            {
+                                title: 'Luxury Flyer for Café',
+                                tag: 'Flyer',
+                                image: 'https://picsum.photos/300/300?random=22',
+                            },
+                            {
+                                title: 'Modern Business Card',
+                                tag: 'Brand Identity',
+                                image: 'https://picsum.photos/300/300?random=23',
+                            },
+                            {
+                                title: 'Valentine Poster Design',
+                                tag: 'Poster',
+                                image: 'https://picsum.photos/300/300?random=24',
+                            },
+                        ].map((item, i) => (
+                            <div
+                                key={i}
+                                className="tw-relative tw-group tw-rounded-xl tw-overflow-hidden tw-shadow-md hover:tw-shadow-xl tw-transition-all"
+                                data-aos="fade-up"
+                                data-aos-delay={i * 150}
+                            >
+                                <img
+                                    src={item.image}
+                                    alt={item.title}
+                                    className="tw-w-full tw-h-64 tw-object-cover tw-group-hover:tw-scale-105 tw-transition-transform tw-duration-500"
+                                />
+                                <div className="tw-absolute tw-inset-0 tw-bg-black/60 tw-opacity-0 group-hover:tw-opacity-100 tw-transition tw-duration-300 tw-flex tw-items-center tw-justify-center tw-text-center tw-p-4">
+                                    <div className="tw-text-white">
+                                        <p className="tw-text-xs tw-uppercase tw-text-gray-300 tw-mb-3 tw-font-semibold">{item.tag}</p>
+                                        <h3 className="tw-text-lg tw-font-bold tw-leading-none tw-text-white">{item.title}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="tw-text-center tw-mt-12" data-aos="fade-up" data-aos-delay="400">
+                        <a
+                            href="#"
+                            className="tw-inline-block tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded-lg tw-shadow hover:tw-bg-red-600 hover:tw-text-white tw-transition"
+                        >
+                            Request a Custom Design
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+
+            <section className="tw-bg-[#fff] tw-py-20 tw-text-center">
+                <div className="tw-container tw-mx-auto tw-px-4">
+                    <h2
+                        className="tw-text-4xl tw-font-bold tw-mb-10"
+                        data-aos="fade-up"
+                    >
+                        Design & Branding Services
+                    </h2>
+                    <p
+                        className="tw-text-lg tw-text-gray-600 tw-mb-12 max-w-xl tw-mx-auto"
+                        data-aos="fade-up"
+                        data-aos-delay="100"
+                    >
+                        We bring your brand vision to life through powerful, professional design — from concept to final render.
+                    </p>
+
+                    <div className="tw-grid sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-8 max-w-5xl tw-mx-auto tw-px-4">
+                        {[
+                            {
+                                title: 'Branding & Identity',
+                                icon: 'mdi:briefcase-outline',
+                                desc: 'Build a consistent and recognizable identity that sets your brand apart.',
+                            },
+                            {
+                                title: 'Logo Design',
+                                icon: 'mdi:palette-outline',
+                                desc: 'Get a custom logo that visually represents your values and uniqueness.',
+                            },
+                            {
+                                title: 'Packaging Design',
+                                icon: 'mdi:package-variant-closed',
+                                desc: 'Eye-catching packaging that tells your product’s story at first glance.',
+                            },
+                            {
+                                title: 'Graphic Design',
+                                icon: 'mdi:brush',
+                                desc: 'Creative layouts and visuals for all your print and digital needs.',
+                            },
+                            {
+                                title: '3D Visualizations',
+                                icon: 'mdi:cube-scan',
+                                desc: 'Realistic product or concept visuals before it’s even built.',
+                            },
+                            {
+                                title: 'Social Media Design',
+                                icon: 'mdi:instagram',
+                                desc: 'Scroll-stopping graphics optimized for all your social platforms.',
+                            },
+                        ].map((item, idx) => (
+                            <div
+                                key={idx}
+                                className="tw-bg-white tw-rounded-xl tw-shadow tw-p-6 tw-transition tw-duration-300 hover:tw-shadow-lg"
+                                data-aos="fade-up"
+                                data-aos-delay={idx * 100}
+                            >
+                                <div className="tw-w-14 tw-h-14 tw-mx-auto tw-mb-4 tw-bg-[#f44032]/10 tw-flex tw-items-center tw-justify-center tw-rounded-full">
+                                    <Icon icon={item.icon} className="tw-text-[#f44032] tw-text-2xl" />
+                                </div>
+                                <h4 className="tw-font-semibold tw-text-lg tw-mb-3">{item.title}</h4>
+                                <p className="tw-text-sm tw-text-gray-600">{item.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+
+
+                    <div className="tw-max-w-3xl tw-mx-auto tw-px-4 tw-gap-4 tw-mt-10">
+                        <p className="tw-text-gray-600 tw-mb-12 tw-text-base md:tw-text-lg" data-aos="fade-up" data-aos-delay="100">
+                            At Printair Advertising, we bring your ideas to life — from eye-catching logos to immersive 3D product visuals. We’re your one-stop creative partner for all things design and branding.
+                        </p>
+                    </div>
+
+                    <div className="tw-mt-10 tw-flex tw-flex-col sm:tw-flex-row tw-justify-center tw-gap-4">
+                        <a
+                            href="#"
+                            className="tw-inline-block tw-bg-[#f44032] hover:tw-text-white tw-text-white tw-px-6 tw-py-3 tw-rounded hover:tw-bg-red-600 tw-transition"
+                        >
+                            Request a Design Quote
+                        </a>
+                        <a
+                            href="#"
+                            className="tw-inline-block tw-border tw-border-[#f44032] tw-text-[#f44032] tw-px-6 tw-py-3 tw-rounded hover:tw-bg-[#f44032]/10 tw-transition"
+                        >
+                            Check Our Design Gallery
+                        </a>
+                    </div>
+
+                </div>
+            </section>
+
+
+
+
+
+
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* How it works section */}
+            <section
+                className="tw-bg-fixed tw-bg-center tw-bg-cover tw-bg-no-repeat tw-py-20 tw-px-4 tw-relative"
+                style={{
+                    backgroundImage: `url('https://images.unsplash.com/photo-1510146758428-e5e4b17b8b6a?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')`,
+                }}
+            >
+                <div className="tw-bg-white/60 tw-rounded-xl tw-max-w-6xl tw-mx-auto tw-p-10 tw-backdrop-blur-sm">
+                    <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-text-center tw-mb-4" data-aos="fade-up">
+                        How It Works
+                    </h2>
+                    <p className="tw-text-gray-700 md:tw-text-lg tw-text-center tw-mb-12" data-aos="fade-up" data-aos-delay="100">
+                        From concept to creation — we've streamlined the process so you can get stunning results, fast.
+                    </p>
+
+                    <div className="tw-grid sm:tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-8">
+                        {[
+                            {
+                                icon: 'mdi:lightbulb-on-outline',
+                                title: 'Share Your Idea',
+                                desc: 'Tell us what you need — a design, print, or both.',
+                            },
+                            {
+                                icon: 'mdi:draw',
+                                title: 'We Design It',
+                                desc: 'Our team crafts your vision into a powerful design.',
+                            },
+                            {
+                                icon: 'mdi:checkbox-marked-circle-outline',
+                                title: 'Approve & Confirm',
+                                desc: 'You review the design and request any final edits.',
+                            },
+                            {
+                                icon: 'mdi:truck-fast-outline',
+                                title: 'Print & Deliver',
+                                desc: 'We print with precision and deliver it to your door.',
+                            },
+                        ].map((step, i) => (
+                            <div
+                                key={i}
+                                className="tw-bg-white tw-p-6 tw-rounded-xl tw-shadow-sm hover:tw-shadow-md tw-transition tw-text-center"
+                                data-aos="fade-up"
+                                data-aos-delay={i * 150}
+                            >
+                                <div className="tw-w-14 tw-h-14 tw-mx-auto tw-mb-4 tw-bg-[#f44032]/10 tw-flex tw-items-center tw-justify-center tw-rounded-full">
+                                    <Icon icon={step.icon} className="tw-text-[#f44032] tw-text-2xl" />
+                                </div>
+                                <h4 className="tw-font-bold tw-text-lg tw-mb-1 tw-leading-tight">{step.title}</h4>
+                                <p className="tw-text-sm tw-text-gray-600">{step.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+
+
+
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* Testomonial */}
+            <section className="tw-bg-white tw-py-20 tw-px-4">
+                <div className="tw-max-w-4xl tw-mx-auto tw-text-center">
+                    <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-mb-4" data-aos="fade-up">
+                        What Our Clients Say
+                    </h2>
+                    <p className="tw-text-gray-600 tw-text-base md:tw-text-lg tw-mb-12" data-aos="fade-up" data-aos-delay="100">
+                        Hear from businesses and individuals who trusted Printair Advertising with their creative needs.
+                    </p>
+                </div>
+
+                <div className="tw-grid sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-8 tw-max-w-6xl tw-mx-auto">
+                    {[
+                        {
+                            name: 'Dinesh P.',
+                            company: 'Studio Pixel',
+                            image: 'https://i.pravatar.cc/100?img=12',
+                            review:
+                                'Printair nailed our packaging design. The colors, the print, everything was on point. Fast turnaround too!',
+                        },
+                        {
+                            name: 'Ishara L.',
+                            company: 'Luxe Wedding Planners',
+                            image: 'https://i.pravatar.cc/100?img=22',
+                            review:
+                                'From flyers to 3D event visuals, their designs elevated our entire brand. Highly recommended!',
+                        },
+                        {
+                            name: 'Kasun J.',
+                            company: 'KJ Clothing Co.',
+                            image: 'https://i.pravatar.cc/100?img=30',
+                            review:
+                                'Logo, business cards, t-shirts — they handled everything for our rebranding. Great service!',
+                        },
+                    ].map((client, idx) => (
+                        <div
+                            key={idx}
+                            className="tw-bg-[#f9f9f9] tw-rounded-xl tw-shadow tw-p-6 tw-text-left tw-transition hover:tw-shadow-md"
+                            data-aos="fade-up"
+                            data-aos-delay={idx * 100}
+                        >
+                            <div className="tw-flex tw-items-center tw-mb-4">
+                                <img
+                                    src={client.image}
+                                    alt={client.name}
+                                    className="tw-w-12 tw-h-12 tw-rounded-full tw-object-cover tw-mr-4"
+                                />
+                                <div>
+                                    <p className="tw-font-semibold">{client.name}</p>
+                                    <p className="tw-text-sm tw-text-gray-500">{client.company}</p>
+                                </div>
+                            </div>
+                            <p className="tw-text-sm tw-text-gray-700">&ldquo;{client.review}&rdquo;</p>
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+
+
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* Who are we section */}
+            <section className="tw-bg-white tw-py-20 tw-px-4">
+                <div className="tw-max-w-7xl tw-mx-auto tw-grid md:tw-grid-cols-2 tw-gap-12 tw-items-center">
+                    {/* Left side - Text content */}
+                    <div data-aos="fade-right">
+                        <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-mb-6">
+                            Who We Are
+                        </h2>
+                        <p className="tw-text-gray-700 tw-text-base md:tw-text-lg tw-leading-relaxed">
+                            At <span className="tw-font-semibold tw-text-[#f44032]">Printair Advertising</span>, we blend creativity, precision, and technology
+                            to deliver outstanding design and printing solutions. From logo creation
+                            to full-fledged branding, packaging, and beyond — we help bring your
+                            ideas to life with passion and professionalism.
+                        </p>
+                        <p className="tw-text-gray-700 tw-text-base md:tw-text-lg tw-mt-4 tw-leading-relaxed">
+                            Whether you're a business, a creator, or an individual — we treat every
+                            project with care, delivering quality that stands out.
+                        </p>
+                        <div className="tw-mt-6">
+                            <a
+                                href="#"
+                                className="tw-inline-block tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded hover:tw-bg-red-600 tw-transition"
+                            >
+                                Learn More About Us
+                            </a>
+                        </div>
+                    </div>
+
+                    {/* Right side - Image */}
+                    <div data-aos="fade-left" className="tw-relative">
+                        <img
+                            src="https://images.unsplash.com/photo-1519389950473-47ba0277781c?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+                            alt="Printair Advertising Team"
+                            className="tw-rounded-xl tw-shadow-lg tw-w-full tw-object-cover"
+                        />
+                    </div>
+                </div>
+            </section>
+
+
+
+
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* First project design section */}
+            <section className="tw-bg-gradient-to-r tw-from-[#f44032] tw-to-[#ff7e5f] tw-text-white tw-py-20 tw-text-center tw-px-4">
+                <div className="tw-max-w-3xl tw-mx-auto" data-aos="fade-up">
+                    <h2 className="tw-text-3xl md:tw-text-4xl tw-font-extrabold tw-leading-tight tw-break-words tw-mb-4">
+                        Ready to <span className="tw-whitespace-nowrap md:tw-mt-6">Bring Your Ideas</span> to Life?
+                    </h2>
+
+                    <p className="tw-text-lg tw-opacity-90 tw-mb-8">
+                        Whether it's branding, printing, or custom design, we're here to make it happen — beautifully and fast.
+                    </p>
+
+                    <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-center tw-gap-4">
+                        <a
+                            href="#"
+                            className="tw-bg-white tw-text-[#f44032] tw-font-semibold tw-px-6 tw-py-3 tw-rounded tw-shadow-md hover:tw-bg-gray-100 hover:tw-text-gray-800 tw-transition"
+                        >
+                            Request a Quote
+                        </a>
+                        <a
+                            href="#"
+                            className="tw-border tw-border-white tw-font-semibold tw-px-6 tw-py-3 tw-rounded hover:tw-bg-white hover:tw-text-[#f44032] tw-transition"
+                        >
+                            Browse Design Gallery
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+
+
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* FAQ */}
+            <FAQs />
+
+
+            {/*  */}
+            {/*  */}
+            {/*  */}
+            {/* Contact us section */}
+            <ContactUs />
 
             <CookieConsent />
+            <Footer popularProducts={popularProducts} />
         </>
     );
 };
