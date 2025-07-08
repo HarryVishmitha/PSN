@@ -7,10 +7,22 @@ export default function MetaHeads({
     title = "Printair Advertising",
     description = "You think it, We ink it.",
     image = `${appUrl}/images/favicon.png`,
-    url = window.location.href
+    url = typeof window !== 'undefined' ? window.location.href : appUrl,
+    keywords = "digital printing, Printair, banners, business cards, advertising, Sri Lanka",
+    robots = "index, follow",
+    canonical = url,
+    author = "Printair Team"
 }) {
     return (
         <Head>
+            {/* Basic SEO */}
+            
+            <meta name="description" content={description} />
+            <meta name="keywords" content={keywords} />
+            <meta name="robots" content={robots} />
+            <meta name="author" content={author} />
+            <link rel="canonical" href={canonical} />
+
             {/* Open Graph Meta Tags */}
             <meta property="og:type" content="website" />
             <meta property="og:title" content={title} />

@@ -16,14 +16,8 @@ use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 
-Route::get('/', function () {
-    return Inertia::render('Home', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-})->name('home');
+Route::get('/', [Home::class, 'index'])->name('home');
+Route::get('/cart', [Home::class, 'cart'])->name('cart');
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:

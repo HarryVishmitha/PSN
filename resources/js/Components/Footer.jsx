@@ -12,6 +12,20 @@ const Footer = ({ popularProducts = [] }) => {
                     <p className="tw-text-gray-400 tw-text-sm">
                         We deliver creative, high-quality printing and advertising solutions to businesses and individuals across Sri Lanka.
                     </p>
+                    <div className="tw-mt-6">
+                        <p className="tw-flex tw-items-center tw-gap-2 tw-text-gray-400 tw-text-sm">
+                            <Icon icon="mdi:map-marker" className="tw-text-lg tw-text-[#f44032]" />
+                            123 Main Street, Colombo, Sri Lanka
+                        </p>
+                        <p className="tw-flex tw-items-center tw-gap-2 tw-text-gray-400 tw-text-sm tw-mt-2">
+                            <Icon icon="mdi:phone" className="tw-text-lg tw-text-[#f44032]" />
+                            +94 77 123 4567
+                        </p>
+                        <p className="tw-flex tw-items-center tw-gap-2 tw-text-gray-400 tw-text-sm tw-mt-2">
+                            <Icon icon="mdi:email" className="tw-text-lg tw-text-[#f44032]" />
+                            info@printair.lk
+                        </p>
+                    </div>
                 </div>
 
                 {/* QUICK LINKS */}

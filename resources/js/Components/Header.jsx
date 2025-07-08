@@ -41,7 +41,7 @@ const Header = () => {
                     <Link href="#" className="tw-text-gray-500 hover:tw-text-[#f44032]">
                         <i className="fa-solid fa-file-pen tw-me-1"></i> Ask for Quote
                     </Link>
-                    <Link href="#" className="tw-relative tw-text-gray-500 hover:tw-text-[#f44032]">
+                    <Link href={route('cart')} className="tw-relative tw-text-gray-500 hover:tw-text-[#f44032]">
                         <span className="tw-absolute tw-text-xs tw-bg-red-500 tw-text-white tw-rounded-full tw-px-1.5 tw--top-2 tw--right-2">5</span>
                         <i className="fa-solid fa-cart-shopping tw-me-1"></i> Cart
                     </Link>
@@ -124,7 +124,7 @@ const Header = () => {
                                 <i className="fa-solid fa-file-pen"></i> Ask For Quote
                             </Link>
                             <Link
-                                href="#"
+                                href={route('cart')}
                                 className="tw-text-gray-600 hover:tw-text-[#f44032] tw-flex tw-items-center tw-gap-2"
                                 onClick={() => setMobileNavOpen(false)}
                             >

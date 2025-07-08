@@ -13,6 +13,7 @@ import Offers from '@/Components/Offers';
 import FAQs from '@/Components/Faqs';
 import ContactUs from '@/Components/ContactUs';
 import Footer from '@/Components/Footer';
+import Meta from '@/Components/Metaheads';
 gsap.registerPlugin(ScrollTrigger);
 
 
@@ -296,6 +297,15 @@ const Home = () => {
     return (
         <>
             <Head title="Home" />
+            <Meta
+                title="Printair Advertising | Premium Digital Printing in Sri Lanka"
+                description="We provide high-quality digital printing solutions including X-banners, brochures, photo products, and more. Fast, affordable, and reliable."
+                url="https://printair.lk/"
+                keywords="Printair, digital printing Sri Lanka, banners, business cards, posters, photo frames, brochure printing, x-banners, pullups, roll-up banners, digital printing, offset printing"
+                canonical="https://printair.lk/"
+                author="Printair Team"
+                robots="index, follow"
+            />
             <Header />
 
             {/* Hero section */}

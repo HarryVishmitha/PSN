@@ -38,6 +38,8 @@ export default {
             },
         },
     },
-
+    colors: {
+        primary: '#f44032', // or whatever you're using
+    },
     plugins: [forms],
 };

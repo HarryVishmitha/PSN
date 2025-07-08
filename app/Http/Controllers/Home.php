@@ -15,4 +15,9 @@ class Home extends Controller
             'canRegister' => Route::has('register')
         ]);
     }
+
+    public function cart()
+    {
+        return Inertia::render('Cart');
+    }
 }
