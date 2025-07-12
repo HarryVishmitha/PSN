@@ -2948,4 +2948,76 @@ class AdminController extends Controller
             'estimate'    => $estimate,
         ]);
     }
+
+    public function CategoryView(Request $request)
+    {
+        $query = Category::query()
+            ->with(['updater:id,name,profile_picture'])
+            ->withCount('products') // Get number of products per category
+            ->whereNull('deleted_at'); // Ensure only not-deleted categories (soft delete safe)
+
+        // Search
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('slug', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Filter: status, visibility
+        if ($status = $request->input('status')) {
+            $query->where('status', $status);
+        }
+
+        if ($visibility = $request->input('visibility')) {
+            $query->where('visibility', $visibility);
+        }
+
+        // Sorting
+        $sortBy = $request->input('sortBy', 'created_at');
+        $sortDirection = $request->input('sortDirection', 'desc');
+        $query->orderBy($sortBy, $sortDirection);
+
+        // Pagination
+        $perPage = $request->input('perPage', 10);
+        $categories = $query->paginate($perPage)->withQueryString();
+
+        return Inertia::render('admin/category', [
+            'userDetails' => Auth::user(),
+            'categories' => $categories,
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+                'visibility' => $visibility,
+                'sortBy' => $sortBy,
+                'sortDirection' => $sortDirection,
+                'perPage' => $perPage,
+            ],
+        ]);
+    }
+
+    public function CategoryStore(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:categories,name',
+            'description' => 'nullable|string',
+            'img_link' => 'nullable|url',
+            'active' => 'required|boolean',
+        ]);
+
+        try {
+            Category::create([
+                'name' => $request->name,
+                'description' => $request->description,
+                'img_link' => $request->img_link,
+                'active' => $request->active,
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+
+            return redirect()->route('admin.category.view')->with('success', 'Category created successfully.');
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Failed to create category: ' . $e->getMessage());
+        }
+    }
 }

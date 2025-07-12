@@ -9,8 +9,17 @@ use Illuminate\Support\Facades\Route;
 
 class Home extends Controller
 {
-    public function index() {
+    public function index()
+    {
         return Inertia::render('Home', [
+            'canLogin' => Route::has('login'),
+            'canRegister' => Route::has('register')
+        ]);
+    }
+
+    public function allProducts()
+    {
+        return Inertia::render('Aproducts', [
             'canLogin' => Route::has('login'),
             'canRegister' => Route::has('register')
         ]);
@@ -19,5 +28,10 @@ class Home extends Controller
     public function cart()
     {
         return Inertia::render('Cart');
+    }
+
+    public function checkout()
+    {
+        return Inertia::render('Checkout');
     }
 }

@@ -7,7 +7,6 @@ const Header = () => {
     const overlayRef = useRef();
 
     const navLinks = [
-        'All Products',
         'Business Stationery',
         'Marketing Materials',
         'Large Format',
@@ -70,6 +69,10 @@ const Header = () => {
             {/* Desktop Navigation */}
             <div className="tw-w-full tw-hidden md:tw-flex tw-justify-center tw-py-3 tw-text-sm">
                 <nav className="tw-flex tw-gap-6">
+                    <Link key={'all'} href={route('products.all')} className='tw-group tw-relative tw-pb-1 tw-text-gray-500 hover:tw-text-[#f44032] tw-transition tw-duration-300'>
+                        All Products
+                        <span className="tw-absolute tw-w-full tw-h-[2px] tw-rounded tw-bg-[#f44032] tw-transform tw-scale-x-0 tw-origin-center tw-transition-transform tw-duration-300 tw-bottom-0 group-hover:tw-scale-x-100 tw-left-0"></span>
+                    </Link>
                     {navLinks.map((label, idx) => (
                         <Link
                             key={idx}

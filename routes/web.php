@@ -18,6 +18,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
+Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
+Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:
@@ -104,6 +106,15 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
+    
+    Route::get('/categories', [AdminController::class, 'CategoryView'])->name('category.view');
+    Route::get('/categories/create', [AdminController::class, 'CategoryCreate'])->name('category.create');
+    Route::post('/categories', [AdminController::class, 'CategoryStore'])->name('category.store');
+    Route::get('/categories/{id}/edit', [AdminController::class, 'CategoryEdit'])->name('category.edit');
+    Route::put('/categories/{id}', [AdminController::class, 'CategoryUpdate'])->name('category.update');
+    Route::delete('/categories/{id}', [AdminController::class, 'CategoryDelete'])->name('category.delete');
+    Route::post('/categories/{id}/restore', [AdminController::class, 'CategoryRestore'])->name('category.restore');
+    Route::post('/categories/bulk-action', [AdminController::class, 'CategoryBulkAction'])->name('category.bulk');
 
     // Add more admin routes here
 });

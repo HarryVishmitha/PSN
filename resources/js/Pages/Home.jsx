@@ -322,7 +322,7 @@ const Home = () => {
                         <div className="tw-flex tw-flex-wrap tw-gap-4">
                             <Link
                                 href="#"
-                                className="tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded-lg tw-shadow hover:tw-bg-red-600 tw-transition"
+                                className="tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded-lg tw-shadow hover:tw-bg-red-600 tw-transition hover:tw-text-white"
                                 data-aos="fade-up"
                                 data-aos-delay="400"
                             >
