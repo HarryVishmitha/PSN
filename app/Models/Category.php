@@ -31,4 +31,8 @@ class Category extends Model
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
+    public function views()
+    {
+        return $this->hasMany(CategoryView::class);
+    }
 }

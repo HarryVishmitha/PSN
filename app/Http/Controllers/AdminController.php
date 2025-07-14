@@ -3001,23 +3001,40 @@ class AdminController extends Controller
         $request->validate([
             'name' => 'required|string|max:255|unique:categories,name',
             'description' => 'nullable|string',
-            'img_link' => 'nullable|url',
-            'active' => 'required|boolean',
+            'image' => 'nullable|image|max:2048', // max 2MB
+            'status' => 'required|in:active,inactive',
         ]);
 
         try {
-            Category::create([
+            $imageUrl = null;
+
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+                $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                $path = $image->storeAs('uploads/categories', $filename, 'public');
+                $imageUrl = asset('storage/' . $path);
+            }
+
+            $category = Category::create([
                 'name' => $request->name,
                 'description' => $request->description,
-                'img_link' => $request->img_link,
-                'active' => $request->active,
+                'img_link' => $imageUrl,
+                'active' => $request->status === 'active',
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
             ]);
 
-            return redirect()->route('admin.category.view')->with('success', 'Category created successfully.');
+            return response()->json([
+                'success' => true,
+                'message' => 'Category created successfully.',
+                'data' => $category,
+            ], 201);
         } catch (\Throwable $e) {
-            return back()->with('error', 'Failed to create category: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create category.',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 }

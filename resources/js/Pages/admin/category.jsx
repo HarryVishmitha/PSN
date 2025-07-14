@@ -13,8 +13,212 @@ import 'react-quill-new/dist/quill.snow.css';
 
 const Category = ({ userDetails, categories, filters }) => {
     const [alert, setAlert] = useState(null); // { type, message }
+    const [formData, setFormData] = useState({
+        name: '',
+        description: '',
+        status: 'active',
+        image: null,
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    console.log(categories);
+
+
+    // Add new category
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+
+
+
+    // Quill text editor and highlight.js
+    const quillRef = useRef(null);
+    const [isHighlightReady, setIsHighlightReady] = useState(false);
+
+    useEffect(() => {
+        hljs?.configure({
+            languages: [
+                "javascript",
+                "ruby",
+                "python",
+                "java",
+                "csharp",
+                "cpp",
+                "go",
+                "php",
+                "swift",
+            ],
+        });
+    }, []);
+
+    // Quill editor modules & formats
+    const modules = isHighlightReady
+        ? {
+            syntax: {
+                highlight: (text) => hljs?.highlightAuto(text).value,
+            },
+            toolbar: {
+                container: "#toolbar-container",
+            },
+        }
+        : {
+            toolbar: {
+                container: "#toolbar-container",
+            },
+        };
+
+    const formats = [
+        "font",
+        "size",
+        "bold",
+        "italic",
+        "underline",
+        "strike",
+        "color",
+        "background",
+        "script",
+        "header",
+        "blockquote",
+        "code-block",
+        "list",
+        "indent",
+        "direction",
+        "align",
+        "link",
+        "image",
+        "video",
+        "formula",
+    ];
+
+    const fileInputRef = useRef(null);
+    const [dragging, setDragging] = useState(false);
+    const [preview, setPreview] = useState(null);
+
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file && file.type.startsWith("image/")) {
+            setFormData(prev => ({ ...prev, image: file }));
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const clearPreview = () => {
+        setFormData(prev => ({ ...prev, image: null }));
+        setPreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = null;
+        }
+    };
+
+    const onDragEnter = (e) => {
+        e.preventDefault();
+        setDragging(true);
+    };
+
+    const onDragLeave = (e) => {
+        e.preventDefault();
+        setDragging(false);
+    };
+
+    const onDragOver = (e) => {
+        e.preventDefault();
+    };
+
+    const onDrop = (e) => {
+        e.preventDefault();
+        setDragging(false);
+
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith("image/")) {
+            setFormData(prev => ({ ...prev, image: file }));
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleAddCategory = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true); // ⬅ Start loading
+
+        const submitData = new FormData();
+        submitData.append('name', formData.name);
+        submitData.append('description', formData.description);
+        submitData.append('status', formData.status);
+        if (formData.image) {
+            submitData.append('image', formData.image);
+        }
+
+        try {
+            const response = await axios.post(route('admin.category.store'), submitData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            setAlert({ type: 'success', message: response.data.message || 'Category added successfully!' });
+
+            setFormData({ name: '', description: '', status: 'active', image: null });
+            setPreview(null);
+            fileInputRef.current.value = null;
+
+            document.querySelector('#addCateModal .btn-close').click();
+
+            setTimeout(() => {
+                router.reload({ only: ['categories'] });
+            }, 1000);
+        } catch (error) {
+            let errorMessage = "Something went wrong. Please try again.";
+            if (error.response?.data?.errors) {
+                errorMessage = Object.values(error.response.data.errors).flat().join('\n');
+            }
+            setAlert({ type: 'danger', message: errorMessage });
+        } finally {
+            setIsSubmitting(false); // ⬅ End loading
+        }
+    };
+
+
+
+    const [modalMode, setModalMode] = useState('view'); // 'view' or 'edit'
+    const [selectedCategory, setSelectedCategory] = useState(null);
+    const [editData, setEditData] = useState({
+        name: '',
+        description: '',
+        status: 'active',
+        image: null,
+    });
+    const [editPreview, setEditPreview] = useState(null);
+    const editFileInputRef = useRef(null);
+
+
+    const openCategoryModal = (category, mode = 'view') => {
+        setModalMode(mode);
+        setSelectedCategory(category);
+
+        setEditData({
+            name: category.name || '',
+            description: category.description || '',
+            status: category.active ? 'active' : 'inactive',
+            image: null,
+        });
+
+        setEditPreview(category.image_link || null);
+        setTimeout(() => {
+            const modal = new bootstrap.Modal(document.getElementById('viewEditCateModal'));
+            modal.show();
+        }, 100);
+    };
+
+
+
 
     return (
         <>
@@ -59,13 +263,14 @@ const Category = ({ userDetails, categories, filters }) => {
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
-                        <Link
-                            href={route('admin.category.view')}
+                        <button
                             className="btn btn-primary text-sm btn-sm px-12 py-12 radius-8 d-flex align-items-center gap-2"
+                            data-bs-toggle="modal"
+                            data-bs-target="#addCateModal"
                         >
                             <Icon icon="ic:baseline-plus" className="icon text-xl line-height-1" />
                             Add New Category
-                        </Link>
+                        </button>
                     </div>
                     <div className="card-body p-24">
                         <div className="table-responsive scroll-sm">
@@ -75,7 +280,7 @@ const Category = ({ userDetails, categories, filters }) => {
                                         <th><input type="checkbox" className="form-check-input" /></th>
                                         <th>S.L</th>
                                         <th>Name</th>
-                                        <th>Description</th>
+                                        <th style={{ width: "250px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Description</th>
                                         <th>Status</th>
                                         <th>Added by / Updated by</th>
                                         <th>No. of Products (contain)</th>
@@ -83,27 +288,67 @@ const Category = ({ userDetails, categories, filters }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {categories.data.map((category, index)=>(
+                                    {categories.data.map((category, index) => (
                                         <tr key={category.id}>
                                             <td><input type="checkbox" className="form-check-input" /></td>
                                             <td>{index + 1}</td>
                                             <td>
-                                                hi
+                                                <div className="d-flex align-items-center">
+                                                    {category.image_link ? (
+                                                        <img
+                                                            src={category.image_link}
+                                                            alt={category.name}
+                                                            className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden"
+                                                        />
+                                                    ) : (
+                                                        <Icon icon="tabler:category" className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden tw-bg-gray-400 tw-p-2" />
+                                                    )}
+                                                    <span className="text-md mb-0 fw-normal text-secondary-light">{category.name}</span>
+                                                </div>
                                             </td>
-                                            <td>hi</td>
-                                            <td>hi</td>
-                                            <td>hi</td>
-                                            {/* <td className="text-center">
-                                                <span className={design.status === 'active' ? 'bg-success-focus text-success-600 px-24 py-4 radius-4 fw-medium text-sm' : 'bg-danger-focus text-danger-600 px-24 py-4 radius-4 fw-medium text-sm'}>
-                                                    {design.status.charAt(0).toUpperCase() + design.status.slice(1)}
+                                            <td>
+                                                <div
+                                                    className="tw-text-gray-500 tw-text-sm dark:tw-text-gray-400 tw-leading-relaxed tw-mt-3"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html:
+                                                            category.description ||
+                                                            '-',
+                                                    }}
+                                                />
+                                            </td>
+                                            <td className='teext-center'>
+                                                <span className={category.active ? 'bg-success-focus text-success-600 px-24 py-4 radius-4 fw-medium text-sm' : 'bg-danger-focus text-danger-600 px-24 py-4 radius-4 fw-medium text-sm'}>
+                                                    {category.active ? ("Active") : ("Inactive")}
                                                 </span>
-                                            </td> */}
+                                            </td>
+                                            <td>
+                                                <div className="d-flex align-items-center">
+                                                    {category.updater.profile_picture ? (
+                                                        <img
+                                                            src={category.updater.profile_picture}
+                                                            alt={category.updater.name}
+                                                            className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden"
+                                                        />
+                                                    ) : (
+                                                        <img
+                                                            src='/assets/images/user.png'
+                                                            alt={category.updater.name}
+                                                            className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden"
+                                                        />
+                                                    )}
+                                                    <span className="text-md mb-0 fw-normal text-secondary-light">{category.updater.name}</span>
+                                                </div>
+
+                                            </td>
+                                            <td className='text-center'>
+                                                {category.products_count}
+                                            </td>
                                             <td className="text-center">
                                                 <div className="d-flex justify-content-center gap-10">
-                                                    <button className="bg-info-focus bg-hover-info-200 text-info-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" data-bs-toggle="modal" data-bs-target="#viewCateModal">
+                                                    <button className="bg-info-focus bg-hover-info-200 text-info-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"  onClick={() => openCategoryModal(category, 'view')}>
                                                         <Icon icon="majesticons:eye-line" className="icon text-xl" />
                                                     </button>
-                                                    <button className="bg-success-focus bg-hover-success-200 text-success-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" data-bs-toggle="modal" data-bs-target="#editCateModal">
+                                                    <button className="bg-success-focus bg-hover-success-200 text-success-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"  onClick={() => openCategoryModal(category, 'edit')}>
                                                         <Icon icon="lucide:edit" className="menu-icon" />
                                                     </button>
                                                     <button className="remove-item-btn bg-danger-focus bg-hover-danger-200 text-danger-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" data-bs-toggle="modal" data-bs-target="#deleteCateModal">
@@ -116,8 +361,262 @@ const Category = ({ userDetails, categories, filters }) => {
                                 </tbody>
                             </table>
                         </div>
+
+                        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-24">
+                            <span>Showing {categories.from} to {categories.to} of {categories.total} entries</span>
+                            <ul className="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center">
+                                {categories && categories.last_page > 1 && (
+                                    <li className="page-item">
+                                        <Link
+                                            className="page-link bg-neutral-200 text-secondary-light fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md"
+                                            href={categories.prev_page_url}
+                                        >
+                                            <Icon icon="ep:d-arrow-left" />
+                                        </Link>
+                                    </li>
+                                )}
+                                {Array.from({ length: categories.last_page }, (_, i) => i + 1).map((page) => (
+                                    <li className="page-item" key={page}>
+                                        <Link
+                                            className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${page === categories.current_page
+                                                ? "bg-primary-600 text-white"
+                                                : "bg-neutral-200 text-secondary-light"
+                                                }`}
+                                            href={`?page=${page}`}
+                                        >
+                                            {page}
+                                        </Link>
+                                    </li>
+                                ))}
+                                {categories.current_page < categories.last_page && (
+                                    <li className="page-item">
+                                        <Link
+                                            className="page-link bg-neutral-200 text-secondary-light fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md"
+                                            href={categories.next_page_url}
+                                        >
+                                            <Icon icon="ep:d-arrow-right" />
+                                        </Link>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
                     </div>
                 </div>
+
+                {/* Add New Category Modal */}
+                <div className="modal fade" id="addCateModal" tabIndex="-1" aria-labelledby="addCateModalLabel" aria-hidden="true">
+                    <div className="modal-dialog modal-dialog-centered modal-lg">
+                        <div className="modal-content radius-12">
+                            <div className="modal-header">
+                                <h5 className="modal-title" id="addCateModalLabel">Add New Category</h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div className="modal-body tw-bg-gray-50 tw-rounded-b-xl tw-px-6 tw-py-4">
+                                <form onSubmit={handleAddCategory} className="tw-space-y-6">
+                                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+                                        {/* Category Name */}
+                                        <div className="tw-flex tw-flex-col">
+                                            <label className="tw-font-semibold tw-text-sm tw-text-gray-700">Category Name <span className="tw-text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                name="name"
+                                                className="tw-form-input tw-border tw-rounded-lg tw-py-2 tw-px-4 tw-mt-1 tw-text-sm tw-shadow-sm tw-outline-none focus:tw-border-primary-500 focus:tw-ring-1 focus:tw-ring-primary-400"
+                                                value={formData.name}
+                                                onChange={handleChange}
+                                                required
+                                                placeholder="e.g., Business Cards"
+                                            />
+                                        </div>
+
+                                        {/* Status */}
+                                        <div className="tw-flex tw-flex-col">
+                                            <label className="tw-font-semibold tw-text-sm tw-text-gray-700 tw-mb-2">Status</label>
+                                            <div className="d-flex align-items-center flex-wrap tw-gap-6">
+                                                <div className="form-check checked-success d-flex align-items-center tw-gap-2">
+                                                    <input
+                                                        className="form-check-input"
+                                                        type="radio"
+                                                        name="status"
+                                                        id="addStatusActive"
+                                                        value="active"
+                                                        checked={formData.status === 'active'}
+                                                        onChange={handleChange}
+                                                    />
+                                                    <label
+                                                        className="form-check-label tw-font-medium tw-text-sm tw-text-gray-700 d-flex align-items-center tw-gap-1"
+                                                        htmlFor="addStatusActive"
+                                                    >
+                                                        <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-600" />
+                                                        Active
+                                                    </label>
+                                                </div>
+                                                <div className="form-check checked-danger d-flex align-items-center tw-gap-2">
+                                                    <input
+                                                        className="form-check-input"
+                                                        type="radio"
+                                                        name="status"
+                                                        id="addStatusInactive"
+                                                        value="inactive"
+                                                        checked={formData.status === 'inactive'}
+                                                        onChange={handleChange}
+                                                    />
+                                                    <label
+                                                        className="form-check-label tw-font-medium tw-text-sm tw-text-gray-700 d-flex align-items-center tw-gap-1"
+                                                        htmlFor="addStatusInactive"
+                                                    >
+                                                        <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-600" />
+                                                        Inactive
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Description */}
+                                    <div>
+                                        <div className="border border-neutral-200 radius-8 overflow-hidden">
+                                            <div className="height-200">
+                                                <div id="toolbar-container">
+                                                    <span className="ql-formats">
+                                                        <select className="ql-font"></select>
+                                                        <select className="ql-size"></select>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-bold"></button>
+                                                        <button className="ql-italic"></button>
+                                                        <button className="ql-underline"></button>
+                                                        <button className="ql-strike"></button>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <select className="ql-color"></select>
+                                                        <select className="ql-background"></select>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-script" value="sub"></button>
+                                                        <button className="ql-script" value="super"></button>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-header" value="1"></button>
+                                                        <button className="ql-header" value="2"></button>
+                                                        <button className="ql-blockquote"></button>
+                                                        <button className="ql-code-block"></button>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-list" value="ordered"></button>
+                                                        <button className="ql-list" value="bullet"></button>
+                                                        <button className="ql-indent" value="-1"></button>
+                                                        <button className="ql-indent" value="+1"></button>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-direction" value="rtl"></button>
+                                                        <select className="ql-align"></select>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-link"></button>
+                                                        <button className="ql-image"></button>
+                                                        <button className="ql-video"></button>
+                                                        <button className="ql-formula"></button>
+                                                    </span>
+                                                    <span className="ql-formats">
+                                                        <button className="ql-clean"></button>
+                                                    </span>
+                                                </div>
+                                                <ReactQuill
+                                                    ref={quillRef}
+                                                    theme="snow"
+                                                    value={formData.description}
+                                                    onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                                                    modules={modules}
+                                                    formats={formats}
+                                                    placeholder="This product is specially made to..."
+                                                    // className={`${errors.productDescription ? 'is-invalid' : ''}`}
+                                                    id="editor"
+                                                />
+                                            </div>
+                                        </div>
+
+                                    </div>
+
+                                    {/* Image Upload */}
+                                    {/* Image Upload with Drag & Drop and Preview */}
+                                    <div className="tw-flex tw-flex-col tw-gap-2">
+                                        <label className="tw-font-semibold tw-text-sm tw-text-gray-700">Category Image</label>
+
+                                        {/* Image Preview */}
+                                        {preview && (
+                                            <div className="tw-flex tw-items-center tw-gap-4 tw-mt-3 tw-w-[160px] tw-h-[200px]">
+                                                <img
+                                                    src={preview}
+                                                    alt="Preview"
+                                                    className="tw-w-full tw-h-full tw-object-cover tw-rounded-md tw-shadow"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={clearPreview}
+                                                    className="tw-text-sm tw-text-red-500 hover:tw-underline"
+                                                >
+                                                    Remove Image
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        <div
+                                            className={`upload-image-wrapper d-flex align-items-center tw-gap-3 tw-p-3 tw-border-2 tw-w-[160px] tw-h-[200px] tw-rounded-md tw-transition-all ${dragging
+                                                ? 'tw-bg-blue-50 tw-border-blue-400'
+                                                : 'tw-bg-neutral-50 tw-border-dashed tw-border-gray-300 '
+                                                }`}
+                                            onDragEnter={onDragEnter}
+                                            onDragOver={onDragOver}
+                                            onDragLeave={onDragLeave}
+                                            onDrop={onDrop}
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-label="Drag & drop files here or click to browse"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    fileInputRef.current?.click();
+                                                }
+                                            }}
+                                        >
+                                            <label
+                                                htmlFor="file-input"
+                                                className="d-flex flex-column align-items-center justify-content-center tw-text-center tw-w-full tw-h-full tw-cursor-pointer tw-select-none tw-gap-1"
+                                            >
+                                                <Icon icon="solar:camera-outline" className="tw-text-2xl tw-text-secondary-light" />
+                                                <span className="tw-font-medium tw-text-sm tw-text-secondary-light">
+                                                    {preview ? "Click to change image. Size : 160px X 200px (Keep it under 1MB)" : "Drag & Drop or Click to Upload. Size : 160px X 200px (Keep it under 1MB)"}
+                                                </span>
+                                            </label>
+                                            <input
+                                                id="file-input"
+                                                type="file"
+                                                accept="image/*"
+                                                hidden
+                                                ref={fileInputRef}
+                                                onChange={handleImageChange}
+                                                disabled={isSubmitting}
+                                            />
+                                        </div>
+
+
+                                    </div>
+
+
+                                    {/* Submit Button */}
+                                    <div className="tw-text-end tw-pt-2">
+                                        <button type="submit" className="btn btn-primary d-flex justify-content-center align-items-center tw-w-full">
+                                            <Icon icon="material-symbols:upload-rounded" className="tw-text-lg" />
+                                            Add Category
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
             </AdminDashboard>
         </>
     );

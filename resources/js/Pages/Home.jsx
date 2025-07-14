@@ -86,24 +86,36 @@ const Home = () => {
         return () => window.removeEventListener('resize', updateWidth);
     }, []);
 
+    const [categories, setCategories] = useState([]);
+    const [categoryLoading, setCategoryLoading] = useState(false);
+    const [Caterror, setCatError] = useState(null);
 
+    const fetchCategories = async () => {
+        setCategoryLoading(true);
+        setCatError(null);
+        try {
+            const response = await axios.get('/api/category/all');
+            const data = response.data;
 
+            if (data.success) {
+                setCategories(data.data); // categories data
+            } else {
+                // Backend responded but with success: false
+                setCatError(data.message || 'Failed to load categories.');
+            }
+        } catch (err) {
+            // Network or other axios error
+            setCatError(err.message || 'Something went wrong.');
+        } finally {
+            setCategoryLoading(false);
+        }
+    };
 
     // Various data that needs in this component please call them once designs complete
-    const categories = [
-        { name: 'Business Cards', image: 'https://placehold.co/160x180' },
-        { name: 'Flyers', image: 'https://picsum.photos/160/180' },
-        { name: 'Posters', image: 'https://picsum.photos/200/300' },
-        { name: 'T-Shirts', image: 'https://picsum.photos/160/180' },
-        { name: 'Labels', image: 'https://picsum.photos/160/180' },
-        { name: 'Stickers', image: 'https://picsum.photos/160/180' },
-        { name: 'Mugs', image: 'https://picsum.photos/160/180' },
-        { name: 'Banners', image: 'https://picsum.photos/160/180' },
-        { name: 'Booklets', image: 'https://picsum.photos/160/180' },
-        { name: 'Envelopes', image: 'https://picsum.photos/160/180' },
-        { name: 'Calendars', image: 'https://picsum.photos/160/180' },
-        { name: 'Brochures', image: 'https://picsum.photos/160/180' },
-    ];
+    useEffect(() => {
+
+        fetchCategories();
+    }, []);
 
     // Trending products data array
     const trendingProducts = [
@@ -365,41 +377,84 @@ const Home = () => {
                     </div>
 
                     <div className="tw-relative tw-overflow-hidden">
-                        <div
-                            ref={scrollRef}
-                            className="tw-flex tw-gap-4 tw-px-4 tw-transition-all tw-duration-500 tw-scroll-smooth"
-                            style={{ overflowX: 'auto', scrollBehavior: 'smooth' }}
-                        >
-                            {categories.map((cat, idx) => (
-                                <div
-                                    key={idx}
-                                    className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0"
-                                >
-                                    <img
-                                        src={cat.image}
-                                        alt={cat.name}
-                                        className="tw-w-full tw-h-full tw-object-cover"
+                        {categoryLoading ? (
+                            <div className="tw-flex tw-gap-4 tw-px-4 tw-justify-center">
+                                {[...Array(12)].map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-bg-gray-300 tw-animate-pulse tw-flex-shrink-0"
                                     />
-                                    <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center">
-                                        <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
+                                ))}
+                            </div>
+                        ) : (
+
+                            Array.isArray(categories) && categories.length > 0 ? (
+                                <div className="tw-relative">
+                                    <div
+                                        ref={scrollRef}
+                                        className="tw-flex tw-gap-4 tw-px-4 tw-transition-all tw-duration-500 tw-scroll-smooth"
+                                        style={{ overflowX: 'auto', scrollBehavior: 'smooth' }}
+                                    >
+                                        {categories.map((cat, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0"
+                                            >
+
+                                                <img
+                                                    src={cat.img_link || '/assets/images/category_default-01.jpg'}
+                                                    alt={cat.name}
+                                                    className="tw-w-full tw-h-full tw-object-cover"
+                                                />
+                                                <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center">
+                                                    <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <button
+                                        aria-label="Scroll Left"
+                                        className="tw-absolute tw-left-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
+                                        onClick={() => scrollRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}
+                                    >
+                                        <Icon icon="ic:round-chevron-left" className="tw-text-xl" />
+                                    </button>
+
+                                    <button
+                                        aria-label="Scroll Right"
+                                        className="tw-absolute tw-right-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
+                                        onClick={() => scrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}
+                                    >
+                                        <Icon icon="ic:round-chevron-right" className="tw-text-xl" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div
+                                    role="alert"
+                                    className="tw-border tw-border-red-600 tw-bg-red-100 tw-text-red-700 tw-p-4 tw-rounded tw-max-w-md tw-mx-auto tw-mb-6 tw-text-center tw-relative tw-font-sans"
+                                >
+                                    <strong>Sorry!</strong> There are no categories to show yet or something went wrong! Our developers are working on it.
+                                    <button
+                                        onClick={() => setError(null)}
+                                        aria-label="Dismiss error"
+                                        className="tw-absolute tw-top-2 tw-right-2 tw-text-red-700 tw-text-xl tw-font-bold hover:tw-text-red-900"
+                                    >
+                                        &times;
+                                    </button>
+                                    <div className="tw-mt-4">
+                                        <button
+                                            onClick={fetchCategories}
+                                            className="tw-bg-red-600 tw-text-white tw-px-4 tw-py-2 tw-rounded tw-font-semibold hover:tw-bg-red-700 tw-transition"
+                                        >
+                                            Retry
+                                        </button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            )
 
-                        {/* Arrows */}
-                        <button
-                            className="tw-absolute tw-left-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
-                            onClick={() => scrollRef.current.scrollBy({ left: -180, behavior: 'smooth' })}
-                        >
-                            <Icon icon="ic:round-chevron-left" className="tw-text-xl" />
-                        </button>
-                        <button
-                            className="tw-absolute tw-right-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
-                            onClick={() => scrollRef.current.scrollBy({ left: 180, behavior: 'smooth' })}
-                        >
-                            <Icon icon="ic:round-chevron-right" className="tw-text-xl" />
-                        </button>
+                        )}
+
                     </div>
                 </section>
             ) : (
@@ -408,23 +463,67 @@ const Home = () => {
                     <div className="tw-container tw-px-4">
                         <h2 className="tw-text-xl tw-font-bold tw-mb-8">Popular Categories</h2>
                     </div>
-                    <div ref={scrollRef} className="tw-flex tw-gap-4 tw-px-4">
-                        {categories.map((cat, idx) => (
-                            <div
-                                key={idx}
-                                className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0"
-                            >
-                                <img
-                                    src={cat.image}
-                                    alt={cat.name}
-                                    className="tw-w-full tw-h-full tw-object-cover"
+                    {categoryLoading ? (
+                        <div className="tw-flex tw-gap-4 tw-px-4 tw-justify-center">
+                            {[...Array(12)].map((_, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-bg-gray-300 tw-animate-pulse tw-flex-shrink-0"
                                 />
-                                <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center">
-                                    <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
-                                </div>
+                            ))}
+                        </div>
+                    ) : (
+
+                        Array.isArray(categories) && categories.length > 0 ? (
+                            <div ref={scrollRef} className="tw-flex tw-gap-4 tw-px-4 tw-justify-center">
+                                {categories.map((cat, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0 tw-group hover:tw-shadow-sm tw-border"
+                                    >
+
+                                        <img
+                                            src={cat.img_link || '/assets/images/category_default-01.jpg'}
+                                            alt={cat.name}
+                                            className="tw-w-full tw-h-full tw-object-cover"
+                                        />
+                                        <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center group-hover:tw-bg-black/50">
+                                            <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
+                        ) : (
+                            <>
+                                <div
+                                    class="alert alert-danger bg-danger-100 text-danger-600 border-danger-100 px-24 py-11 mb-0 fw-semibold text-lg radius-8 tw-mx-5 tw-text-center"
+                                    role="alert"
+                                >
+                                    <div
+                                        class="d-flex align-items-center justify-content-center text-lg"
+                                    >
+                                        <div class="d-flex align-items-start gap-2">
+                                            <div>
+                                                Sorry! Something went wrong!
+                                                <p class="fw-medium text-danger-600 text-sm mt-8">
+                                                    There are no categories to show yet or something went wrong! Our developers are working on it.
+                                                </p>
+                                                Reload the Page to try again
+                                            </div>
+                                        </div>
+                                        <button
+                                            class="remove-button text-danger-600 text-xxl line-height-1"
+                                        >
+                                            <iconify-icon
+                                                icon="iconamoon:sign-times-light"
+                                                class="icon"
+                                            ></iconify-icon>
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )
+                    )}
                 </section>
             )}
 
