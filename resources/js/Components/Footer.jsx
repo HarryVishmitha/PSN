@@ -15,15 +15,15 @@ const Footer = ({ popularProducts = [] }) => {
                     <div className="tw-mt-6">
                         <p className="tw-flex tw-items-center tw-gap-2 tw-text-gray-400 tw-text-sm">
                             <Icon icon="mdi:map-marker" className="tw-text-lg tw-text-[#f44032]" />
-                            123 Main Street, Colombo, Sri Lanka
+                            No. 67/D/1, Uggashena, Walpola, Ragama, Sri Lanka
                         </p>
                         <p className="tw-flex tw-items-center tw-gap-2 tw-text-gray-400 tw-text-sm tw-mt-2">
                             <Icon icon="mdi:phone" className="tw-text-lg tw-text-[#f44032]" />
-                            +94 77 123 4567
+                            +94 76 886 0175 | (011) 224 1858
                         </p>
                         <p className="tw-flex tw-items-center tw-gap-2 tw-text-gray-400 tw-text-sm tw-mt-2">
                             <Icon icon="mdi:email" className="tw-text-lg tw-text-[#f44032]" />
-                            info@printair.lk
+                            contact@printair.lk
                         </p>
                     </div>
                 </div>

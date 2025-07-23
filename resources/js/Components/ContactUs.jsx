@@ -19,15 +19,16 @@ const ContactUs = () => {
                             Feel free to reach out to us with any inquiries or custom design requests.
                         </p>
                         <ul className="tw-space-y-2">
-                            <li><strong>Phone:</strong> +94 77 123 4567</li>
-                            <li><strong>Email:</strong> info@printair.lk</li>
-                            <li><strong>Address:</strong> No. 123, Main Street, Colombo, Sri Lanka</li>
+                            <li><strong>Phone:</strong> +94 76 886 0175 | (011) 224 1858 </li>
+                            <li><strong>Email:</strong> contact@printair.lk</li>
+                            <li><strong>Address:</strong> No. 67/D/1, Uggashena, Walpola, Ragama, Sri Lanka</li>
+                            <li><strong>Postal Code:</strong> 11011</li>
                         </ul>
                     </div>
 
                     <iframe
                         title="Printair Location"
-                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d63335.06789635838!2d79.8305889!3d6.9219221!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae2593e0cfb0f6b%3A0x66a5c2e0e69e51e1!2sColombo!5e0!3m2!1sen!2slk!4v1711234567890"
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3959.6284964775527!2d79.92438707499777!3d7.052865292949481!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae2f9e69a99f8bb%3A0x22ee736733e2cc74!2sPrintair!5e0!3m2!1sen!2slk!4v1752900934311!5m2!1sen!2slk"
                         width="100%"
                         height="250"
                         style={{ border: 0 }}

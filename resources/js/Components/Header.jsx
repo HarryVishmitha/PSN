@@ -32,8 +32,8 @@ const Header = () => {
             {/* Top Bar */}
             <div className="tw-container tw-mx-auto tw-flex tw-justify-between tw-items-center tw-px-3 tw-py-4">
                 <Link href="/" className="tw-flex tw-items-center tw-space-x-2">
-                    <img src="/images/favicon.png" alt="Printair Logo" className="tw-w-10 tw-h-10" />
-                    <span className="tw-font-bold tw-text-[27px] tw-text-gray-800">Printair</span>
+                    <img src="/assets/images/logo-full.png" alt="Printair Logo" className="tw-h-14" />
+                    {/* <span className="tw-font-bold tw-text-[27px] tw-text-gray-800">Printair</span> */}
                 </Link>
 
                 <div className="tw-hidden md:tw-flex tw-items-center tw-space-x-6">

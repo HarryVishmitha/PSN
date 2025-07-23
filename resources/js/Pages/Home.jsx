@@ -355,9 +355,9 @@ const Home = () => {
                     <div className="tw-relative tw-z-10" data-aos="zoom-in-left" data-aos-delay="200">
                         <div className="tw-absolute tw-bg-[#f44032]/10 tw-w-[300px] tw-h-[300px] tw-rounded-full tw-z-0 tw-top-[-60px] tw-left-[-60px] tw-blur-3xl"></div>
                         <img
-                            src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTbPIQpemZv2uJF4Qm4S9Ke9HA-rqy-uCNjsg&s"
+                            src="/assets/images/printing-machine.png"
                             alt="Hero Preview"
-                            className="tw-relative tw-z-10 tw-w-full tw-max-w-md tw-mx-auto tw-rounded-xl tw-shadow-lg"
+                            className="tw-relative tw-z-10 tw-w-full tw-max-w-md md:tw-max-w-3xl tw-mx-auto tw-rounded-xl"
                         />
                     </div>
                 </div>
@@ -628,10 +628,10 @@ const Home = () => {
             {/* Why choose us */}
             <section
                 className="tw-relative tw-w-full tw-py-24 tw-bg-cover tw-bg-center tw-bg-no-repeat"
-                style={{ backgroundImage: "url('https://plus.unsplash.com/premium_photo-1667128695914-d97b26e1d013?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')" }} // Replace with your actual image path
+                style={{ backgroundImage: "url('/assets/images/bg-71925.jpg')" }} // Replace with your actual image path
             >
                 {/* Overlay for better text readability */}
-                <div className="tw-absolute tw-inset-0 tw-bg-white/80 md:tw-bg-white/70 tw-backdrop-blur-sm"></div>
+                <div className="tw-absolute tw-inset-0 tw-bg-white/60 md:tw-bg-white/70 tw-backdrop-blur-sm"></div>
 
                 {/* Main content */}
                 <div className="tw-relative tw-mx-auto tw-max-w-7xl tw-px-4">
@@ -895,10 +895,10 @@ const Home = () => {
             <section
                 className="tw-bg-fixed tw-bg-center tw-bg-cover tw-bg-no-repeat tw-py-20 tw-px-4 tw-relative"
                 style={{
-                    backgroundImage: `url('https://images.unsplash.com/photo-1510146758428-e5e4b17b8b6a?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')`,
+                    backgroundImage: `url('/assets/images/printing-process-bg.jpg')`,
                 }}
             >
-                <div className="tw-bg-white/60 tw-rounded-xl tw-max-w-6xl tw-mx-auto tw-p-10 tw-backdrop-blur-sm">
+                <div className="tw-bg-white/70 tw-rounded-xl tw-max-w-6xl tw-mx-auto tw-p-10 tw-backdrop-blur-sm">
                     <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-text-center tw-mb-4" data-aos="fade-up">
                         How It Works
                     </h2>
