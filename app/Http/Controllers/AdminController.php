@@ -3037,4 +3037,81 @@ class AdminController extends Controller
             ], 500);
         }
     }
+
+    public function CategoryUpdate(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:categories,name,' . $id,
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        try {
+            $category = Category::findOrFail($id);
+
+            $imageUrl = $category->img_link;
+
+            // Replace image if a new one was uploaded
+            if ($request->hasFile('image')) {
+                // Delete old image if exists
+                if ($imageUrl && str_contains($imageUrl, '/storage/uploads/')) {
+                    $oldPath = str_replace(asset('storage') . '/', '', $imageUrl);
+                    Storage::disk('public')->delete($oldPath);
+                }
+
+                $image = $request->file('image');
+                $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                $path = $image->storeAs('uploads/categories', $filename, 'public');
+                $imageUrl = asset('storage/' . $path);
+            }
+
+            $category->update([
+                'name' => $request->name,
+                'description' => $request->description,
+                'img_link' => $imageUrl,
+                'active' => $request->status === 'active',
+                'updated_by' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Category updated successfully.',
+                'data' => $category,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update category.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function CategoryDelete(Category $category)
+    {
+        try {
+            $category = Category::findOrFail($category->id);
+
+            // Soft delete the category
+            $category->delete();
+
+            // Log the deletion
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'category_delete',
+                'description' => "Admin deleted category ID {$category->id}",
+                'ip_address'  => request()->ip(),
+            ]);
+            return redirect()
+                ->back()
+                ->with('success', 'Category deleted successfully.');
+
+        } catch (\Throwable $e) {
+            Log::error("Failed to delete category [{$category->id}]: " . $e->getMessage());
+            throw ValidationException::withMessages([
+                'error' => 'Failed to delete category. Please try again.',
+            ]);
+        }
+    }
 }

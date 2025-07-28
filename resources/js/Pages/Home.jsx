@@ -628,10 +628,10 @@ const Home = () => {
             {/* Why choose us */}
             <section
                 className="tw-relative tw-w-full tw-py-24 tw-bg-cover tw-bg-center tw-bg-no-repeat"
-                style={{ backgroundImage: "url('/assets/images/bg-71925.jpg')" }} // Replace with your actual image path
+            // style={{ backgroundImage: "url('/assets/images/bg-71925.jpg')" }} // Replace with your actual image path
             >
                 {/* Overlay for better text readability */}
-                <div className="tw-absolute tw-inset-0 tw-bg-white/60 md:tw-bg-white/70 tw-backdrop-blur-sm"></div>
+                {/* <div className="tw-absolute tw-inset-0 tw-bg-white/80 md:tw-bg-white/80 tw-backdrop-blur-sm"></div> */}
 
                 {/* Main content */}
                 <div className="tw-relative tw-mx-auto tw-max-w-7xl tw-px-4">
@@ -898,6 +898,7 @@ const Home = () => {
                     backgroundImage: `url('/assets/images/printing-process-bg.jpg')`,
                 }}
             >
+                <div className="tw-absolute tw-inset-0 tw-bg-white/80 md:tw-bg-white/80 tw-backdrop-blur-sm"></div>
                 <div className="tw-bg-white/70 tw-rounded-xl tw-max-w-6xl tw-mx-auto tw-p-10 tw-backdrop-blur-sm">
                     <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-text-center tw-mb-4" data-aos="fade-up">
                         How It Works

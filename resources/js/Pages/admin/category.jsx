@@ -212,10 +212,93 @@ const Category = ({ userDetails, categories, filters }) => {
 
         setEditPreview(category.image_link || null);
         setTimeout(() => {
-            const modal = new bootstrap.Modal(document.getElementById('viewEditCateModal'));
+            const modal = new bootstrap.Modal(document.getElementById('addCateModal'));
             modal.show();
         }, 100);
     };
+
+
+    const handleUpdateCategory = async (e) => {
+        e.preventDefault();
+        if (!selectedCategory?.id) return;
+
+        setIsSubmitting(true);
+
+        const submitData = new FormData();
+        submitData.append('name', editData.name);
+        submitData.append('description', editData.description);
+        submitData.append('status', editData.status);
+        submitData.append('_method', 'PUT'); // Laravel uses this for PUT via POST
+
+        if (editData.image) {
+            submitData.append('image', editData.image);
+        }
+
+        try {
+            const response = await axios.post(
+                route('admin.category.update', selectedCategory.id),
+                submitData,
+                {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                }
+            );
+
+            setAlert({ type: 'success', message: response.data.message || 'Category updated successfully!' });
+
+            // Reset
+            setEditData({ name: '', description: '', status: 'active', image: null });
+            setEditPreview(null);
+            editFileInputRef.current.value = null;
+
+            document.querySelector('#addCateModal .btn-close')?.click();
+
+            setTimeout(() => {
+                router.reload({ only: ['categories'] });
+            }, 1000);
+        } catch (error) {
+            let errorMessage = 'Something went wrong. Please try again.';
+            if (error.response?.data?.errors) {
+                errorMessage = Object.values(error.response.data.errors).flat().join('\n');
+            }
+            setAlert({ type: 'danger', message: errorMessage });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const openDelete = (category) => setSelected(category);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [selected, setSelected] = useState(null);
+
+    const confirmDelete = () => {
+        setDeleteLoading(true);
+        setAlert(null);
+        router.delete(route('admin.category.delete', selected.id), {
+            preserveState: true,
+            onSuccess: () => {
+
+                // const flash = page.props?.flash || {};
+                setAlert({ type: 'success', message: 'Category deleted Successfully!' });
+                // if (flash.success) {
+                //     setAlert({ type: 'success', message: 'Design deleted Successfully!' });
+                // } else if (flash.error) {
+                //     setAlert({ type: 'danger', message: flash.error });
+                // }
+            },
+            onError: (error) => {
+                // show an error alert
+                setAlert({
+                    type: 'danger',
+                    message: error?.response?.data?.error || 'Failed to delete category. Please try again.',
+                });
+            },
+            onFinish: () => {
+                setDeleteLoading(false);
+                document.querySelector('#deleteCateModal .btn-close').click();
+            },
+        });
+    };
+
 
 
 
@@ -267,10 +350,17 @@ const Category = ({ userDetails, categories, filters }) => {
                             className="btn btn-primary text-sm btn-sm px-12 py-12 radius-8 d-flex align-items-center gap-2"
                             data-bs-toggle="modal"
                             data-bs-target="#addCateModal"
+                            onClick={() => {
+                                setModalMode('add');
+                                setFormData({ name: '', description: '', status: 'active', image: null });
+                                setPreview(null);
+                                if (fileInputRef.current) fileInputRef.current.value = null;
+                            }}
                         >
                             <Icon icon="ic:baseline-plus" className="icon text-xl line-height-1" />
                             Add New Category
                         </button>
+
                     </div>
                     <div className="card-body p-24">
                         <div className="table-responsive scroll-sm">
@@ -289,14 +379,15 @@ const Category = ({ userDetails, categories, filters }) => {
                                 </thead>
                                 <tbody>
                                     {categories.data.map((category, index) => (
+
                                         <tr key={category.id}>
                                             <td><input type="checkbox" className="form-check-input" /></td>
                                             <td>{index + 1}</td>
                                             <td>
                                                 <div className="d-flex align-items-center">
-                                                    {category.image_link ? (
+                                                    {category.img_link ? (
                                                         <img
-                                                            src={category.image_link}
+                                                            src={category.img_link}
                                                             alt={category.name}
                                                             className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden"
                                                         />
@@ -345,13 +436,13 @@ const Category = ({ userDetails, categories, filters }) => {
                                             </td>
                                             <td className="text-center">
                                                 <div className="d-flex justify-content-center gap-10">
-                                                    <button className="bg-info-focus bg-hover-info-200 text-info-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"  onClick={() => openCategoryModal(category, 'view')}>
+                                                    <button className="bg-info-focus bg-hover-info-200 text-info-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" onClick={() => openCategoryModal(category, 'view')}>
                                                         <Icon icon="majesticons:eye-line" className="icon text-xl" />
                                                     </button>
-                                                    <button className="bg-success-focus bg-hover-success-200 text-success-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"  onClick={() => openCategoryModal(category, 'edit')}>
+                                                    <button className="bg-success-focus bg-hover-success-200 text-success-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" onClick={() => openCategoryModal(category, 'edit')}>
                                                         <Icon icon="lucide:edit" className="menu-icon" />
                                                     </button>
-                                                    <button className="remove-item-btn bg-danger-focus bg-hover-danger-200 text-danger-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" data-bs-toggle="modal" data-bs-target="#deleteCateModal">
+                                                    <button className="remove-item-btn bg-danger-focus bg-hover-danger-200 text-danger-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle" data-bs-toggle="modal" data-bs-target="#deleteCateModal" onClick={() => openDelete(category)}>
                                                         <Icon icon="fluent:delete-24-regular" className="menu-icon" />
                                                     </button>
                                                 </div>
@@ -365,6 +456,7 @@ const Category = ({ userDetails, categories, filters }) => {
                         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-24">
                             <span>Showing {categories.from} to {categories.to} of {categories.total} entries</span>
                             <ul className="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center">
+
                                 {categories && categories.last_page > 1 && (
                                     <li className="page-item">
                                         <Link
@@ -408,11 +500,20 @@ const Category = ({ userDetails, categories, filters }) => {
                     <div className="modal-dialog modal-dialog-centered modal-lg">
                         <div className="modal-content radius-12">
                             <div className="modal-header">
-                                <h5 className="modal-title" id="addCateModalLabel">Add New Category</h5>
+                                <h5 className="modal-title">
+                                    {modalMode === 'add' && "Add New Category"}
+                                    {modalMode === 'edit' && "Edit Category"}
+                                    {modalMode === 'view' && "View Category"}
+                                </h5>
+
                                 <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                             <div className="modal-body tw-bg-gray-50 tw-rounded-b-xl tw-px-6 tw-py-4">
-                                <form onSubmit={handleAddCategory} className="tw-space-y-6">
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (modalMode === 'add') handleAddCategory(e);
+                                    else if (modalMode === 'edit') handleUpdateCategory(e);
+                                }} className="tw-space-y-6">
                                     <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
                                         {/* Category Name */}
                                         <div className="tw-flex tw-flex-col">
@@ -420,10 +521,15 @@ const Category = ({ userDetails, categories, filters }) => {
                                             <input
                                                 type="text"
                                                 name="name"
-                                                className="tw-form-input tw-border tw-rounded-lg tw-py-2 tw-px-4 tw-mt-1 tw-text-sm tw-shadow-sm tw-outline-none focus:tw-border-primary-500 focus:tw-ring-1 focus:tw-ring-primary-400"
-                                                value={formData.name}
-                                                onChange={handleChange}
+                                                className="tw-form-input tw-border tw-rounded-lg tw-py-2 tw-px-4 tw-mt-1 tw-text-sm"
+                                                value={modalMode === 'add' ? formData.name : editData.name}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (modalMode === 'add') setFormData(prev => ({ ...prev, name: value }));
+                                                    else if (modalMode === 'edit') setEditData(prev => ({ ...prev, name: value }));
+                                                }}
                                                 required
+                                                readOnly={modalMode === 'view'}
                                                 placeholder="e.g., Business Cards"
                                             />
                                         </div>
@@ -437,10 +543,15 @@ const Category = ({ userDetails, categories, filters }) => {
                                                         className="form-check-input"
                                                         type="radio"
                                                         name="status"
-                                                        id="addStatusActive"
-                                                        value="active"
-                                                        checked={formData.status === 'active'}
-                                                        onChange={handleChange}
+                                                        id={`status-active`}
+                                                        value='active'
+                                                        checked={(modalMode === 'add' ? formData.status : editData.status) === 'active'}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value;
+                                                            if (modalMode === 'add') setFormData(prev => ({ ...prev, status: value }));
+                                                            else if (modalMode === 'edit') setEditData(prev => ({ ...prev, status: value }));
+                                                        }}
+                                                        disabled={modalMode === 'view'}
                                                     />
                                                     <label
                                                         className="form-check-label tw-font-medium tw-text-sm tw-text-gray-700 d-flex align-items-center tw-gap-1"
@@ -455,10 +566,15 @@ const Category = ({ userDetails, categories, filters }) => {
                                                         className="form-check-input"
                                                         type="radio"
                                                         name="status"
-                                                        id="addStatusInactive"
-                                                        value="inactive"
-                                                        checked={formData.status === 'inactive'}
-                                                        onChange={handleChange}
+                                                        id={`status-inactive`}
+                                                        value='inactive'
+                                                        checked={(modalMode === 'add' ? formData.status : editData.status) === 'inactive'}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value;
+                                                            if (modalMode === 'add') setFormData(prev => ({ ...prev, status: value }));
+                                                            else if (modalMode === 'edit') setEditData(prev => ({ ...prev, status: value }));
+                                                        }}
+                                                        disabled={modalMode === 'view'}
                                                     />
                                                     <label
                                                         className="form-check-label tw-font-medium tw-text-sm tw-text-gray-700 d-flex align-items-center tw-gap-1"
@@ -524,13 +640,15 @@ const Category = ({ userDetails, categories, filters }) => {
                                                 <ReactQuill
                                                     ref={quillRef}
                                                     theme="snow"
-                                                    value={formData.description}
-                                                    onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                                                    value={modalMode === 'add' ? formData.description : editData.description}
+                                                    onChange={(value) => {
+                                                        if (modalMode === 'add') setFormData(prev => ({ ...prev, description: value }));
+                                                        else if (modalMode === 'edit') setEditData(prev => ({ ...prev, description: value }));
+                                                    }}
+                                                    readOnly={modalMode === 'view'}
                                                     modules={modules}
                                                     formats={formats}
-                                                    placeholder="This product is specially made to..."
-                                                    // className={`${errors.productDescription ? 'is-invalid' : ''}`}
-                                                    id="editor"
+                                                    placeholder="This category is used for..."
                                                 />
                                             </div>
                                         </div>
@@ -539,77 +657,129 @@ const Category = ({ userDetails, categories, filters }) => {
 
                                     {/* Image Upload */}
                                     {/* Image Upload with Drag & Drop and Preview */}
+                                    {/* Image Upload with Drag & Drop and Preview */}
                                     <div className="tw-flex tw-flex-col tw-gap-2">
                                         <label className="tw-font-semibold tw-text-sm tw-text-gray-700">Category Image</label>
 
-                                        {/* Image Preview */}
-                                        {preview && (
+                                        {/* ✅ IMAGE PREVIEW */}
+                                        {(modalMode === 'add' && preview) || (modalMode !== 'add' && (editPreview || selectedCategory?.img_link)) ? (
                                             <div className="tw-flex tw-items-center tw-gap-4 tw-mt-3 tw-w-[160px] tw-h-[200px]">
                                                 <img
-                                                    src={preview}
+                                                    src={modalMode === 'add' ? preview : (editPreview || selectedCategory?.img_link)}
                                                     alt="Preview"
                                                     className="tw-w-full tw-h-full tw-object-cover tw-rounded-md tw-shadow"
                                                 />
-                                                <button
-                                                    type="button"
-                                                    onClick={clearPreview}
-                                                    className="tw-text-sm tw-text-red-500 hover:tw-underline"
+                                                {modalMode !== 'view' && (
+                                                    <button type="button" onClick={() => {
+                                                        if (modalMode === 'add') {
+                                                            clearPreview();
+                                                        } else {
+                                                            setEditData(prev => ({ ...prev, image: null }));
+                                                            setEditPreview(null);
+                                                            if (editFileInputRef.current) editFileInputRef.current.value = null;
+                                                        }
+                                                    }} className="tw-text-sm tw-text-red-500 hover:tw-underline">
+                                                        Remove Image
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ) : null}
+
+                                        {/* ✅ IMAGE UPLOADER */}
+                                        {modalMode !== 'view' && (
+                                            <div
+                                                className={`upload-image-wrapper d-flex align-items-center tw-gap-3 tw-p-3 tw-border-2 tw-w-[160px] tw-h-[200px] tw-rounded-md tw-transition-all ${dragging
+                                                    ? 'tw-bg-blue-50 tw-border-blue-400'
+                                                    : 'tw-bg-neutral-50 tw-border-dashed tw-border-gray-300 '
+                                                    }`}
+                                                onDragEnter={onDragEnter}
+                                                onDragOver={onDragOver}
+                                                onDragLeave={onDragLeave}
+                                                onDrop={(e) => {
+                                                    onDrop(e);
+                                                    if (modalMode !== 'add') {
+                                                        const file = e.dataTransfer.files[0];
+                                                        if (file && file.type.startsWith("image/")) {
+                                                            setEditData(prev => ({ ...prev, image: file }));
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = () => setEditPreview(reader.result);
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }
+                                                }}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() => {
+                                                    if (modalMode === 'add') fileInputRef.current?.click();
+                                                    else editFileInputRef.current?.click();
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        if (modalMode === 'add') fileInputRef.current?.click();
+                                                        else editFileInputRef.current?.click();
+                                                    }
+                                                }}
+                                            >
+                                                <label
+                                                    htmlFor="file-input"
+                                                    className="d-flex flex-column align-items-center justify-content-center tw-text-center tw-w-full tw-h-full tw-cursor-pointer tw-select-none tw-gap-1"
                                                 >
-                                                    Remove Image
-                                                </button>
+                                                    <Icon icon="solar:camera-outline" className="tw-text-2xl tw-text-secondary-light" />
+                                                    <span className="tw-font-medium tw-text-sm tw-text-secondary-light">
+                                                        Drag & Drop or Click to Upload. Size: 160x200px
+                                                    </span>
+                                                </label>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    ref={modalMode === 'add' ? fileInputRef : editFileInputRef}
+                                                    onChange={(e) => {
+                                                        const file = e.target.files[0];
+                                                        if (file && file.type.startsWith("image/")) {
+                                                            if (modalMode === 'add') {
+                                                                setFormData(prev => ({ ...prev, image: file }));
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => setPreview(reader.result);
+                                                                reader.readAsDataURL(file);
+                                                            } else {
+                                                                setEditData(prev => ({ ...prev, image: file }));
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => setEditPreview(reader.result);
+                                                                reader.readAsDataURL(file);
+                                                            }
+                                                        }
+                                                    }}
+                                                    hidden
+                                                />
                                             </div>
                                         )}
-
-                                        <div
-                                            className={`upload-image-wrapper d-flex align-items-center tw-gap-3 tw-p-3 tw-border-2 tw-w-[160px] tw-h-[200px] tw-rounded-md tw-transition-all ${dragging
-                                                ? 'tw-bg-blue-50 tw-border-blue-400'
-                                                : 'tw-bg-neutral-50 tw-border-dashed tw-border-gray-300 '
-                                                }`}
-                                            onDragEnter={onDragEnter}
-                                            onDragOver={onDragOver}
-                                            onDragLeave={onDragLeave}
-                                            onDrop={onDrop}
-                                            role="button"
-                                            tabIndex={0}
-                                            aria-label="Drag & drop files here or click to browse"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' || e.key === ' ') {
-                                                    fileInputRef.current?.click();
-                                                }
-                                            }}
-                                        >
-                                            <label
-                                                htmlFor="file-input"
-                                                className="d-flex flex-column align-items-center justify-content-center tw-text-center tw-w-full tw-h-full tw-cursor-pointer tw-select-none tw-gap-1"
-                                            >
-                                                <Icon icon="solar:camera-outline" className="tw-text-2xl tw-text-secondary-light" />
-                                                <span className="tw-font-medium tw-text-sm tw-text-secondary-light">
-                                                    {preview ? "Click to change image. Size : 160px X 200px (Keep it under 1MB)" : "Drag & Drop or Click to Upload. Size : 160px X 200px (Keep it under 1MB)"}
-                                                </span>
-                                            </label>
-                                            <input
-                                                id="file-input"
-                                                type="file"
-                                                accept="image/*"
-                                                hidden
-                                                ref={fileInputRef}
-                                                onChange={handleImageChange}
-                                                disabled={isSubmitting}
-                                            />
-                                        </div>
-
-
                                     </div>
+
 
 
                                     {/* Submit Button */}
-                                    <div className="tw-text-end tw-pt-2">
-                                        <button type="submit" className="btn btn-primary d-flex justify-content-center align-items-center tw-w-full">
-                                            <Icon icon="material-symbols:upload-rounded" className="tw-text-lg" />
-                                            Add Category
-                                        </button>
-                                    </div>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary d-flex justify-content-center align-items-center tw-w-full"
+                                        disabled={isSubmitting}
+                                    >
+                                        {isSubmitting ? (
+                                            <>
+                                                <span
+                                                    className="spinner-border spinner-border-sm me-2 tw-w-4 tw-h-4"
+                                                    role="status"
+                                                    aria-hidden="true"
+                                                />
+                                                {modalMode === 'add' ? 'Adding...' : 'Updating...'}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Icon icon="material-symbols:upload-rounded" className="tw-text-lg" />
+                                                {modalMode === 'add' ? 'Add Category' : 'Update Category'}
+                                            </>
+                                        )}
+                                    </button>
+
                                 </form>
                             </div>
 
@@ -617,7 +787,30 @@ const Category = ({ userDetails, categories, filters }) => {
                     </div>
                 </div>
 
-            </AdminDashboard>
+
+                {/* Delete Confirmation Modal */}
+                <div className="modal fade" id="deleteCateModal" tabIndex={-1} aria-labelledby="deleteCateModalLabel" aria-hidden="true">
+                    <div className="modal-dialog">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h1 className="modal-title fs-5 text-red-500" id="deleteCateModalLabel">Are you sure?</h1>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div className="modal-body font-light">
+                                <p>Do you really want to delete this category? This process cannot be undone.</p>
+                            </div>
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="button" className="btn btn-outline-danger" onClick={confirmDelete} disabled={deleteLoading}>
+                                    {deleteLoading ? <span className="spinner-border spinner-border-sm" role="status"></span> : "Delete Design"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </AdminDashboard >
         </>
     );
 }
