@@ -3106,12 +3106,42 @@ class AdminController extends Controller
             return redirect()
                 ->back()
                 ->with('success', 'Category deleted successfully.');
-
         } catch (\Throwable $e) {
             Log::error("Failed to delete category [{$category->id}]: " . $e->getMessage());
             throw ValidationException::withMessages([
                 'error' => 'Failed to delete category. Please try again.',
             ]);
         }
+    }
+
+    public function topnavCategories()
+    {
+
+        ActivityLog::create([
+            'user_id'    => Auth::id(),
+            'action_type' => 'topnav_categories_access',
+            'description' => 'Admin accessed top navigation categories.',
+            'ip_address' => request()->ip(),
+        ]);
+
+        $categories = Category::with('nav') // relationship to nav_categories
+            ->where('active', '1')
+            ->whereNull('deleted_at') // ensures not soft-deleted
+            ->orderBy('name', 'asc')
+            ->get()
+            ->map(function ($category) {
+                return [
+                    'id'          => $category->id,
+                    'name'        => $category->name,
+                    'img_link'   => $category->img_link,
+                    'is_visible'  => $category->nav?->is_visible ?? false,
+                    'nav_order'   => $category->nav?->nav_order ?? null,
+                ];
+            });
+
+        return Inertia::render('admin/topnavCategories', [
+            'userDetails' => Auth::user(),
+            'categories'  => $categories,
+        ]);
     }
 }

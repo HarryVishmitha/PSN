@@ -115,6 +115,8 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::delete('/categories/{category}/delete', [AdminController::class, 'CategoryDelete'])->name('category.delete');
     Route::post('/categories/{id}/restore', [AdminController::class, 'CategoryRestore'])->name('category.restore');
     Route::post('/categories/bulk-action', [AdminController::class, 'CategoryBulkAction'])->name('category.bulk');
+    Route::get('/site-settings', [AdminController::class, 'siteSettings'])->name('siteSettings');
+    Route::get('/site-settings/topnav-categories/manage', [AdminController::class, 'topnavCategories'])->name('topnavCategories');
 
     // Add more admin routes here
 });
