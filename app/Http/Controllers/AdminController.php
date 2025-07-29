@@ -3144,4 +3144,57 @@ class AdminController extends Controller
             'categories'  => $categories,
         ]);
     }
+
+    public function reorderTopNavCategories(Request $request)
+    {
+        $validated = $request->validate([
+            'categories'   => 'required|array|min:1',
+            'categories.*.id' => 'required|integer|exists:categories,id',
+            'categories.*.is_visible' => 'required|boolean',
+            'categories.*.order'  => 'nullable|integer',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            foreach ($validated['categories'] as $cat) {
+                // Find or create nav_category record for this category
+                $category = Category::find($cat['id']);
+                if (!$category) {
+                    continue;
+                }
+                $nav = $category->nav()->first();
+                if (!$nav) {
+                    $category->nav()->create([
+                        'is_visible' => $cat['is_visible'],
+                        'nav_order'  => $cat['order'] ?? 0,
+                    ]);
+                } else {
+                    $nav->update([
+                        'is_visible' => $cat['is_visible'],
+                        'nav_order'  => $cat['order'] ?? 0,
+                    ]);
+                }
+            }
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'topnav_categories_reorder',
+                'description' => 'Admin reordered top navigation categories.',
+                'ip_address'  => request()->ip(),
+            ]);
+
+            DB::commit();
+            return redirect()
+            ->back()->with([
+                'success' => true,
+                'message' => 'Categories reordered successfully.',
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Failed to reorder topnav categories: ' . $e->getMessage());
+             throw ValidationException::withMessages([
+                'error' => 'Failed to update categories.',
+            ]);
+        }
+    }
 }

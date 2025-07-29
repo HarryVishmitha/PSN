@@ -21,6 +21,7 @@ Route::get('/cart', [Home::class, 'cart'])->name('cart');
 Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
 Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
 Route::get('/api/category/all', [Home::class, 'categories'])->name('categories.all');
+Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.categories');
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:
@@ -117,6 +118,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::post('/categories/bulk-action', [AdminController::class, 'CategoryBulkAction'])->name('category.bulk');
     Route::get('/site-settings', [AdminController::class, 'siteSettings'])->name('siteSettings');
     Route::get('/site-settings/topnav-categories/manage', [AdminController::class, 'topnavCategories'])->name('topnavCategories');
+    Route::post('/api/top-nav-category/reorder', [AdminController::class, 'reorderTopNavCategories'])->name('topnavCategories.reorder');
 
     // Add more admin routes here
 });

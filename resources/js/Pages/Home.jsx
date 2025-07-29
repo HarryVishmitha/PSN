@@ -111,9 +111,9 @@ const Home = () => {
         }
     };
 
+
     // Various data that needs in this component please call them once designs complete
     useEffect(() => {
-
         fetchCategories();
     }, []);
 

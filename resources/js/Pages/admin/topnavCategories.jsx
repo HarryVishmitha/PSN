@@ -82,7 +82,18 @@ const TopnavCategories = ({ userDetails, categories: initialCategories }) => {
             })),
         ];
 
-        router.post('/admin/topnav-categories/reorder', { categories: payload });
+        try {
+            router.post(
+                route('admin.topnavCategories.reorder'),
+                { categories: payload },
+                {
+                    onSuccess: () => setAlert({ type: 'success', message: 'Categories updated successfully.' }),
+                    onError: () => setAlert({ type: 'danger', message: 'Failed to update categories.' }),
+                }
+            );
+        } catch (error) {
+            setAlert({ type: 'danger', message: 'An unexpected error occurred.' });
+        }
     };
 
 
