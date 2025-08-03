@@ -171,18 +171,30 @@ const Header = () => {
 
                         {/* Main Nav Links */}
                         <nav className="tw-mt-12 tw-grid tw-gap-4">
-                            {navLinks.map((label, index) => (
-                                <Link
-                                    key={index}
-                                    href="#"
-                                    className="tw-text-gray-700 hover:tw-text-[#f44032] tw-text-base tw-font-medium tw-transition"
-                                    onClick={() => setMobileNavOpen(false)}
-                                >
-                                    {label}
-                                </Link>
-                            ))}
+                            {navLoading ? (
+                                [...Array(10)].map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="tw-w-[100%] tw-h-[15px] tw-rounded-xl tw-bg-gray-300 tw-animate-pulse tw-flex-shrink-0"
+                                    />
+                                ))
+                            ) : navCategories.length === 0 ? (
+                                <div className="tw-text-gray-500 tw-py-2 tw-text-center">
+                                    There are no categories to show.
+                                </div>
+                            ) : (
+                                navCategories.map((category, idx) => (
+                                    <Link
+                                        key={idx}
+                                        href="#"
+                                        className="tw-group tw-relative tw-pb-1 tw-text-gray-500 hover:tw-text-[#f44032] tw-transition tw-duration-300"
+                                    >
+                                        {category.category.name}
+                                        <span className="tw-absolute tw-w-full tw-h-[2px] tw-rounded tw-bg-[#f44032] tw-transform tw-scale-x-0 tw-origin-center tw-transition-transform tw-duration-300 tw-bottom-0 group-hover:tw-scale-x-100 tw-left-0"></span>
+                                    </Link>
+                                ))
+                            )}
                         </nav>
-
                         {/* Divider + CTA Links */}
                         <div className="tw-border-t tw-my-6 tw-pt-4 tw-grid tw-gap-4">
                             <Link
