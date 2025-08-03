@@ -21,6 +21,7 @@ Route::get('/cart', [Home::class, 'cart'])->name('cart');
 Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
 Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
 Route::get('/api/category/all', [Home::class, 'categories'])->name('categories.all');
+Route::get('/gallery/designs', [Home::class, 'designs'])->name('designs.all');
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:
