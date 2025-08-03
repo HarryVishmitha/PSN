@@ -35,4 +35,8 @@ class Category extends Model
     {
         return $this->hasMany(CategoryView::class);
     }
+    public function nav()
+    {
+        return $this->hasOne(NavCategory::class);
+    }
 }

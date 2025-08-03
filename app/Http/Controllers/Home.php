@@ -21,6 +21,42 @@ class Home extends Controller
         ]);
     }
 
+    public function navCategories(): JsonResponse
+    {
+        try {
+            $navCategories = \App\Models\NavCategory::where('is_visible', 1)
+                ->orderBy('nav_order')
+                ->with(['category.products'])
+                ->get();
+
+                $navCategories = $navCategories->map(function ($navCategory) {
+                    // Filter out categories where 'active' is not 1
+                    $navCategory->category = $navCategory->category && $navCategory->category->active == 1
+                        ? $navCategory->category
+                        : null;
+                    return $navCategory;
+                })->filter(function ($navCategory) {
+                    // Only keep navCategories with a valid category
+                    return $navCategory->category !== null;
+                })->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => $navCategories,
+            ]);
+        }
+        catch (\Exception $e) {
+            // Log the error if you want
+            Log::error('Failed to fetch categories: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve categories.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function categories(): JsonResponse
     {
         try {
@@ -49,7 +85,7 @@ class Home extends Controller
         } catch (\Exception $e) {
             // Log the error if you want
 
-            Log::error('Failed to fetch categories: '.$e->getMessage());
+            Log::error('Failed to fetch categories: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,

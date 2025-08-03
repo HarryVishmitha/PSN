@@ -3037,4 +3037,164 @@ class AdminController extends Controller
             ], 500);
         }
     }
+
+    public function CategoryUpdate(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:categories,name,' . $id,
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        try {
+            $category = Category::findOrFail($id);
+
+            $imageUrl = $category->img_link;
+
+            // Replace image if a new one was uploaded
+            if ($request->hasFile('image')) {
+                // Delete old image if exists
+                if ($imageUrl && str_contains($imageUrl, '/storage/uploads/')) {
+                    $oldPath = str_replace(asset('storage') . '/', '', $imageUrl);
+                    Storage::disk('public')->delete($oldPath);
+                }
+
+                $image = $request->file('image');
+                $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                $path = $image->storeAs('uploads/categories', $filename, 'public');
+                $imageUrl = asset('storage/' . $path);
+            }
+
+            $category->update([
+                'name' => $request->name,
+                'description' => $request->description,
+                'img_link' => $imageUrl,
+                'active' => $request->status === 'active',
+                'updated_by' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Category updated successfully.',
+                'data' => $category,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update category.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function CategoryDelete(Category $category)
+    {
+        try {
+            $category = Category::findOrFail($category->id);
+
+            // Soft delete the category
+            $category->delete();
+
+            // Log the deletion
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'category_delete',
+                'description' => "Admin deleted category ID {$category->id}",
+                'ip_address'  => request()->ip(),
+            ]);
+            return redirect()
+                ->back()
+                ->with('success', 'Category deleted successfully.');
+        } catch (\Throwable $e) {
+            Log::error("Failed to delete category [{$category->id}]: " . $e->getMessage());
+            throw ValidationException::withMessages([
+                'error' => 'Failed to delete category. Please try again.',
+            ]);
+        }
+    }
+
+    public function topnavCategories()
+    {
+
+        ActivityLog::create([
+            'user_id'    => Auth::id(),
+            'action_type' => 'topnav_categories_access',
+            'description' => 'Admin accessed top navigation categories.',
+            'ip_address' => request()->ip(),
+        ]);
+
+        $categories = Category::with('nav') // relationship to nav_categories
+            ->where('active', '1')
+            ->whereNull('deleted_at') // ensures not soft-deleted
+            ->orderBy('name', 'asc')
+            ->get()
+            ->map(function ($category) {
+                return [
+                    'id'          => $category->id,
+                    'name'        => $category->name,
+                    'img_link'   => $category->img_link,
+                    'is_visible'  => $category->nav?->is_visible ?? false,
+                    'nav_order'   => $category->nav?->nav_order ?? null,
+                ];
+            });
+
+        return Inertia::render('admin/topnavCategories', [
+            'userDetails' => Auth::user(),
+            'categories'  => $categories,
+        ]);
+    }
+
+    public function reorderTopNavCategories(Request $request)
+    {
+        $validated = $request->validate([
+            'categories'   => 'required|array|min:1',
+            'categories.*.id' => 'required|integer|exists:categories,id',
+            'categories.*.is_visible' => 'required|boolean',
+            'categories.*.order'  => 'nullable|integer',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            foreach ($validated['categories'] as $cat) {
+                // Find or create nav_category record for this category
+                $category = Category::find($cat['id']);
+                if (!$category) {
+                    continue;
+                }
+                $nav = $category->nav()->first();
+                if (!$nav) {
+                    $category->nav()->create([
+                        'is_visible' => $cat['is_visible'],
+                        'nav_order'  => $cat['order'] ?? 0,
+                    ]);
+                } else {
+                    $nav->update([
+                        'is_visible' => $cat['is_visible'],
+                        'nav_order'  => $cat['order'] ?? 0,
+                    ]);
+                }
+            }
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'topnav_categories_reorder',
+                'description' => 'Admin reordered top navigation categories.',
+                'ip_address'  => request()->ip(),
+            ]);
+
+            DB::commit();
+            return redirect()
+            ->back()->with([
+                'success' => true,
+                'message' => 'Categories reordered successfully.',
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Failed to reorder topnav categories: ' . $e->getMessage());
+             throw ValidationException::withMessages([
+                'error' => 'Failed to update categories.',
+            ]);
+        }
+    }
 }

@@ -20,6 +20,9 @@ import './bootstrap';
 // import '../css/lib/prism.css';
 // import '../css/lib/slick.css';
 // import '../css/lib/slick.css';
+import * as bootstrap from 'bootstrap';
+window.bootstrap = bootstrap;
+
 
 import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter
 import { createInertiaApp } from '@inertiajs/react';
