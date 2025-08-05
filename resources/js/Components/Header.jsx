@@ -273,7 +273,6 @@ const Header = () => {
                                 ))
                             )}
                         </nav>
-
                         {/* Divider + CTA Links */}
                         < div className="tw-border-t tw-my-6 tw-pt-4 tw-grid tw-gap-4" >
                             <Link

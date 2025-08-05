@@ -161,4 +161,12 @@ class Home extends Controller
     {
         return Inertia::render('Checkout');
     }
+
+    public function designs()
+    {
+        return Inertia::render('Designs', [
+            'canLogin' => Route::has('login'),
+            'canRegister' => Route::has('register')
+        ]);
+    }
 }
