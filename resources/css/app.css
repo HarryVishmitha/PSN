@@ -81,3 +81,9 @@ select {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+@media (max-width: 576px) {
+    .pagination .page-item:not(:first-child):not(:last-child):not(:nth-child(2)):not(:nth-last-child(2)) {
+        display: none;
+    }
+}

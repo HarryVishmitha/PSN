@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Http\JsonResponse;
 use App\Models\Category;
 use Illuminate\Support\Facades\Log;
+use App\Models\Product;
+use Illuminate\Support\Facades\DB;
 
 class Home extends Controller
 {
@@ -26,27 +28,39 @@ class Home extends Controller
         try {
             $navCategories = \App\Models\NavCategory::where('is_visible', 1)
                 ->orderBy('nav_order')
-                ->with(['category.products'])
+                ->with(['category.products.workingGroup', 'category.products.images']) // Load working group and images for filtering
                 ->get();
 
-                $navCategories = $navCategories->map(function ($navCategory) {
-                    // Filter out categories where 'active' is not 1
-                    $navCategory->category = $navCategory->category && $navCategory->category->active == 1
-                        ? $navCategory->category
-                        : null;
+            $navCategories = $navCategories->map(function ($navCategory) {
+                if (
+                    $navCategory->category &&
+                    $navCategory->category->active == 1
+                ) {
+                    // Filter only products from public working groups
+                    $navCategory->category->setRelation(
+                        'products',
+                        $navCategory->category->products->filter(function ($product) {
+                            return $product->status === 'published'
+                                && $product->workingGroup
+                                && strtolower($product->workingGroup->name) === 'public';
+                        })->values()
+                    );
                     return $navCategory;
-                })->filter(function ($navCategory) {
-                    // Only keep navCategories with a valid category
-                    return $navCategory->category !== null;
-                })->values();
+                }
+
+                // Invalidate category if not active
+                $navCategory->category = null;
+                return $navCategory;
+            })->filter(function ($navCategory) {
+                // Only keep valid ones
+                return $navCategory->category !== null;
+            })->values();
 
             return response()->json([
                 'success' => true,
                 'data' => $navCategories,
             ]);
-        }
-        catch (\Exception $e) {
-            // Log the error if you want
+        } catch (\Exception $e) {
             Log::error('Failed to fetch categories: ' . $e->getMessage());
 
             return response()->json([
@@ -95,6 +109,34 @@ class Home extends Controller
         }
     }
 
+    public function mostPProducts(): JsonResponse
+    {
+        try {
+            $products = Product::select('products.*', DB::raw('COUNT(product_views.id) as view_count'))
+                ->join('working_groups', 'products.working_group_id', '=', 'working_groups.id')
+                ->leftJoin('product_views', 'products.id', '=', 'product_views.product_id')
+                ->where('products.status', 'published')
+                ->whereNull('products.deleted_at')
+                ->where('working_groups.status', 'public')
+                ->groupBy('products.id')
+                ->orderByDesc('view_count')
+                ->with(['images']) // Optional: eager load images
+                ->take(5) // Limit top 5
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $products,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch most popular products.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function allProducts()
     {
         return Inertia::render('Aproducts', [
@@ -103,9 +145,16 @@ class Home extends Controller
         ]);
     }
 
+    public function quotations()
+    {
+        return Inertia::render('Quotations');
+    }
+
     public function cart()
     {
-        return Inertia::render('Cart');
+
+        return Inertia::render('Indevelopment');
+        // return Inertia::render('Cart');
     }
 
     public function checkout()

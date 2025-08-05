@@ -1,14 +1,46 @@
-import React from 'react';
 import { Icon } from '@iconify/react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
-const Footer = ({ popularProducts = [] }) => {
+const Footer = () => {
+    const [popularProducts, setPopularProducts] = useState([]);
+    const [popularLoading, setPopularLoading] = useState(false);
+    const [popularError, setPopularError] = useState(null);
+
+    const fetchPopularProducts = async () => {
+        try {
+            const response = await axios.get('/api/most-popular-products');
+            const data = response.data;
+
+            if (data.success) {
+                setPopularProducts(data.data);
+                console.log('Popular products loaded:', data.data);
+            } else {
+                setPopularError(data.message || 'Failed to load popular products.');
+            }
+        } catch (err) {
+            setPopularError(err.message || 'Something went wrong.');
+        } finally {
+            setPopularLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        setPopularLoading(true);
+        const timer = setTimeout(() => {
+            fetchPopularProducts();
+        }, 500);
+        return () => clearTimeout(timer);
+    }, []);
+
+
     return (
         <footer className="tw-bg-black tw-text-white tw-pt-20 tw-pb-8 tw-px-4 tw-relative z-10">
-            <div className="tw-px-16 tw-mx-auto tw-grid md:tw-grid-cols-4 tw-gap-10 tw-border-b tw-border-gray-700 tw-pb-10">
+            <div className="md:tw-px-16 tw-px-3 tw-mx-auto tw-grid md:tw-grid-cols-4 tw-gap-10 tw-border-b tw-border-gray-700 tw-pb-10">
 
                 {/* LOGO + ABOUT */}
                 <div>
-                    <h3 className="tw-text-2xl tw-font-bold tw-mb-4 tw-text-white">Printair <span className='tw-text-[#f44032] tw-mt-5'>Advertising</span></h3>
+                    <h3 className="tw-text-2xl tw-font-bold tw-mb-4 tw-text-white tw-cursor-default">Printair <span className='tw-text-[#f44032] tw-mt-5'>Advertising</span></h3>
                     <p className="tw-text-gray-400 tw-text-sm">
                         We deliver creative, high-quality printing and advertising solutions to businesses and individuals across Sri Lanka.
                     </p>
@@ -29,7 +61,7 @@ const Footer = ({ popularProducts = [] }) => {
                 </div>
 
                 {/* QUICK LINKS */}
-                <div>
+                <div className='md:tw-text-left tw-text-center'>
                     <h4 className="tw-text-lg tw-font-semibold tw-mb-3 tw-text-white">Quick Links</h4>
                     <ul className="tw-space-y-2 tw-text-sm tw-text-gray-500">
                         <li><a href="/" className="hover:tw-text-white">Home</a></li>
@@ -40,22 +72,31 @@ const Footer = ({ popularProducts = [] }) => {
                 </div>
 
                 {/* POPULAR PRODUCTS */}
-                <div>
+                <div className='md:tw-text-left tw-text-center'>
                     <h4 className="tw-text-lg tw-font-semibold tw-mb-3 tw-text-white">Popular Products</h4>
                     <ul className="tw-space-y-2 tw-text-sm tw-text-gray-500">
-                        {popularProducts.map((product, index) => (
-                            <li key={index}>
-                                <a href={`/products/${product.slug}`} className="hover:tw-text-white">
-                                    {product.name}
-                                </a>
-                            </li>
-                        ))}
+                        {popularLoading ? (
+                            [...Array(4)].map((_, i) => (
+                                <li key={i} className="tw-h-4 tw-bg-gray-700 tw-rounded tw-animate-pulse tw-w-3/4 tw-mx-auto md:tw-mx-0" />
+                            ))
+                        ) : (
+                            popularProducts.map((product, index) => (
+                                <li key={index}>
+                                    <Link
+                                        href={`/public/${product.id}/products/${product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                                        className="hover:tw-text-white"
+                                    >
+                                        {product.name}
+                                    </Link>
+                                </li>
+                            ))
+                        )}
                     </ul>
                 </div>
 
 
                 {/* SERVICES */}
-                <div>
+                <div className='md:tw-text-left tw-text-center'>
                     <h4 className="tw-text-lg tw-font-semibold tw-mb-3 tw-text-white">Design Services</h4>
                     <ul className="tw-space-y-2 tw-text-sm tw-text-gray-500">
                         <li>Logo Design</li>
@@ -68,21 +109,21 @@ const Footer = ({ popularProducts = [] }) => {
 
                 {/* SOCIAL + NEWSLETTER */}
                 <div className="tw-flex tw-flex-col tw-gap-4">
-                    <h4 className="tw-text-lg tw-font-semibold tw-text-white">Stay Connected</h4>
+                    <h4 className="tw-text-lg tw-font-semibold tw-text-white md:tw-text-left tw-text-center">Stay Connected</h4>
 
                     {/* Social Icons */}
-                    <div className="tw-flex tw-space-x-3">
-                        <a href="#" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                    <div className="tw-flex tw-space-x-3 tw-justify-center md:tw-justify-start">
+                        <a href="https://www.facebook.com/Printair/" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
                             <Icon icon="mdi:facebook" className="tw-text-xl" />
                         </a>
-                        <a href="#" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                        <a href="https://www.instagram.com/printairsl/" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
                             <Icon icon="mdi:instagram" className="tw-text-xl" />
                         </a>
-                        <a href="#" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
-                            <Icon icon="mdi:twitter" className="tw-text-xl" />
+                        <a href="https://www.tiktok.com/@printair2?is_from_webapp=1&sender_device=pc" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                            <Icon icon="ic:baseline-tiktok" className="tw-text-xl" />
                         </a>
-                        <a href="#" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
-                            <Icon icon="mdi:linkedin" className="tw-text-xl" />
+                        <a href="https://youtube.com/@printairadvertising3730?si=TNTcyKiTcRrESCJm" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                            <Icon icon="mdi:youtube" className="tw-text-xl" />
                         </a>
                     </div>
 

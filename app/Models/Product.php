@@ -91,4 +91,14 @@ class Product extends Model
     {
         return $this->hasMany(Design::class);
     }
+
+    public function views()
+    {
+        return $this->hasMany(ProductView::class);
+    }
+    
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class);
+    }
 }

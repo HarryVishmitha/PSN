@@ -11,6 +11,8 @@ import hljs from "highlight.js";
 import ReactQuill from "react-quill-new";
 import 'react-quill-new/dist/quill.snow.css';
 import ReactSelect from 'react-select';
+import CreatableSelect from 'react-select/creatable';
+
 
 const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
     // Global states
@@ -53,6 +55,33 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
 
     // Images state for product images
     const [uploadedImages, setUploadedImages] = useState([]);
+
+    //tags
+    const [allTags, setAllTags] = useState([]); // All tags fetched from DB
+    const [selectedTags, setSelectedTags] = useState([]); // Tags selected in the form
+    const [isTagLoading, setIsTagLoading] = useState(false);
+
+
+    useEffect(() => {
+        const fetchTags = async () => {
+            setIsTagLoading(true);
+            try {
+                const res = await axios.get('/admin/api/json-tags'); // update this to your actual API route
+                const tagOptions = res.data.tags.map(tag => ({
+                    value: tag.id,
+                    label: tag.name
+                }));
+                setAllTags(tagOptions);
+            } catch (err) {
+                console.error('Failed to fetch tags', err);
+            } finally {
+                setIsTagLoading(false);
+            }
+        };
+
+        fetchTags();
+    }, []);
+
 
     //Check for saved inputs
     useEffect(() => {
@@ -363,7 +392,12 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
                 setErrors({ categories: 'Please select at least one category.' });
                 return;
             }
-            setFormDataArray(prev => [...prev, { categories: selectedCategories.map(cat => cat.value) }]);
+            if (selectedTags.length < 5) {
+                setAlert({ type: 'danger', message: 'Please enter at least 5 tags.' });
+                setErrors(prev => ({ ...prev, tags: 'Minimum 5 tags are required.' }));
+                return;
+            }
+            setFormDataArray(prev => [...prev, { categories: selectedCategories.map(cat => cat.value), tags: selectedTags }]);
         }
         if (currentStep === 4) {
             const pricingErrors = validatePricing();
@@ -589,6 +623,16 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
         }
         data.append('pricePerSqft', pricePerSqft || '0');
         data.append('categories', JSON.stringify(selectedCategories.map(cat => cat.value)));
+        // Extract new tags and existing tag IDs
+        const existingTagIds = selectedTags.filter(t => t.value && !isNaN(t.value)).map(t => t.value);
+        const newTagNames = selectedTags.filter(t => isNaN(t.value)).map(t => t.label);
+
+        // Append existing tag IDs
+        data.append('tags', JSON.stringify(existingTagIds));
+
+        // Append new tag names separately (if backend supports batch create)
+        data.append('newTags', JSON.stringify(newTagNames));
+
         // Process images: Ensure the primary image is the first image
         const primaryIndex = uploadedImages.findIndex(img => img.isPrimary);
         let sortedImages = [];
@@ -859,6 +903,25 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
                                             <Icon icon="ic:outline-add" width="24px" />
                                             Add new category
                                         </div>
+
+                                        <div className="form-group mb-3">
+                                            <label className="form-label">Add Tags (optional)</label>
+                                            <CreatableSelect
+                                                isMulti
+                                                isClearable
+                                                options={allTags}
+                                                value={selectedTags}
+                                                onChange={(newValue) => setSelectedTags(newValue)}
+                                                isLoading={isTagLoading}
+                                                classNamePrefix="react-select"
+                                                placeholder="Type and press enter to add new tags"
+                                            />
+                                            {errors.tags && (
+                                                <div className="invalid-feedback d-block">{errors.tags}</div>
+                                            )}
+
+                                        </div>
+
                                         <hr />
                                     </div>
                                     <div className="form-group d-flex align-items-center justify-content-end gap-8 mt-3">

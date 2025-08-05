@@ -50,6 +50,7 @@ use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Encoders\AutoEncoder;
 use App\Services\EstimatePdfService;
+use App\Models\Tag;
 
 
 
@@ -942,6 +943,24 @@ class AdminController extends Controller
         ]);
     }
 
+    public function jsonTags()
+    {
+        try {
+            $tags = Tag::select('id', 'name')->orderBy('name')->get();
+
+            return response()->json([
+                'success' => true,
+                'tags' => $tags
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch tags.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function jsonCats()
     {
         // Retrieve all categories from the database.
@@ -977,7 +996,13 @@ class AdminController extends Controller
             'variants'               => 'nullable|string', // Expecting JSON string
             'categories'             => 'required|string', // Expecting JSON string
             'images'                 => 'required|array|min:1|max:2048',
+            'tags'     => 'nullable|string',  // expecting JSON array of tag IDs
+            'newTags'  => 'nullable|string',  // expecting JSON array of tag names
+
         ]);
+
+        $tagIds = json_decode($request->input('tags'), true) ?? [];
+        $newTagNames = json_decode($request->input('newTags'), true) ?? [];
 
         DB::beginTransaction();
 
@@ -1004,6 +1029,26 @@ class AdminController extends Controller
             // Attach categories to the product.
             $categories = json_decode($validatedData['categories'], true);
             $product->categories()->attach($categories);
+
+            //create tags if they are provided
+            $newTagIds = [];
+
+            foreach ($newTagNames as $tagName) {
+                $tagName = trim($tagName);
+                if (!$tagName) continue;
+
+                $tag = \App\Models\Tag::firstOrCreate(
+                    ['name' => $tagName],
+                    ['slug' => Str::slug($tagName), 'created_by' => Auth::id()]
+                );
+
+                $newTagIds[] = $tag->id;
+            }
+
+            $allTagIds = array_merge($tagIds, $newTagIds);
+            $product->tags()->attach($allTagIds);
+
+
 
             // Handle inventory based on pricing method and variants.
             if ($validatedData['pricingMethod'] === 'standard' && $validatedData['hasVariants'] === 'false') {
@@ -3185,14 +3230,14 @@ class AdminController extends Controller
 
             DB::commit();
             return redirect()
-            ->back()->with([
-                'success' => true,
-                'message' => 'Categories reordered successfully.',
-            ]);
+                ->back()->with([
+                    'success' => true,
+                    'message' => 'Categories reordered successfully.',
+                ]);
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Failed to reorder topnav categories: ' . $e->getMessage());
-             throw ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'error' => 'Failed to update categories.',
             ]);
         }

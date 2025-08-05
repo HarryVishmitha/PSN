@@ -15,6 +15,8 @@ import ContactUs from '@/Components/ContactUs';
 import Footer from '@/Components/Footer';
 import Meta from '@/Components/Metaheads';
 gsap.registerPlugin(ScrollTrigger);
+import { router } from '@inertiajs/react';
+
 
 
 
@@ -398,15 +400,18 @@ const Home = () => {
                                         {categories.map((cat, idx) => (
                                             <div
                                                 key={idx}
-                                                className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0"
+                                                onClick={() => route.get('/products/all', {
+                                                    category_id: cat.id,
+                                                    category_name: cat.name
+                                                })}
+                                                className="category-card tw-cursor-pointer tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0 tw-group hover:tw-shadow-sm tw-border"
                                             >
-
                                                 <img
                                                     src={cat.img_link || '/assets/images/category_default-01.jpg'}
                                                     alt={cat.name}
                                                     className="tw-w-full tw-h-full tw-object-cover"
                                                 />
-                                                <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center">
+                                                <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center group-hover:tw-bg-black/50">
                                                     <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
                                                 </div>
                                             </div>
@@ -479,9 +484,12 @@ const Home = () => {
                                 {categories.map((cat, idx) => (
                                     <div
                                         key={idx}
-                                        className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0 tw-group hover:tw-shadow-sm tw-border"
+                                        onClick={() => router.get('/products/all', {
+                                            category_id: cat.id,
+                                            category_name: cat.name
+                                        })}
+                                        className="category-card tw-cursor-pointer tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0 tw-group hover:tw-shadow-sm tw-border"
                                     >
-
                                         <img
                                             src={cat.img_link || '/assets/images/category_default-01.jpg'}
                                             alt={cat.name}
