@@ -96,9 +96,13 @@ class Product extends Model
     {
         return $this->hasMany(ProductView::class);
     }
-    
+
     public function tags()
     {
         return $this->belongsToMany(Tag::class);
+    }
+    public function shareLinks()
+    {
+        return $this->hasMany(DesignShareLink::class);
     }
 }

@@ -78,9 +78,13 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withPivot('status', 'read_at')
             ->withTimestamps();
     }
-    
+
     public function categoryViews()
     {
         return $this->hasMany(CategoryView::class);
+    }
+    public function createdShareLinks()
+    {
+        return $this->hasMany(DesignShareLink::class, 'created_by');
     }
 }

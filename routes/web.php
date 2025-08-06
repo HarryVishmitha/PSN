@@ -12,6 +12,7 @@ use App\Http\Middleware\CheckRole;
 use App\Models\Notification;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\DesignShareLinkController;
 use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -26,6 +27,8 @@ Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.cat
 Route::get('/requests/quotations', [Home::class, 'quotations'])->name('requests.quotations');
 Route::get('/api/most-popular-products', [Home::class, 'mostPProducts'])->name('mostPopularProducts');
 Route::get('/public/{id}/product/{name}', [Home::class, 'productDetail'])->name('productDetail');
+Route::get('/share/{token}', [DesignShareLinkController::class, 'access'])->name('share.access');
+
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:
@@ -33,9 +36,9 @@ Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
 
     // render & stream:
     $pdf = Pdf::loadView('pdfs.estimate', ['est' => $estimate])
-              ->setPaper('a4', 'portrait')
-              // optional: increase default PHP memory / timeouts if you have lots of pages
-              ->setOptions(['dpi' => 150, 'defaultFont' => 'sans-serif']);
+        ->setPaper('a4', 'portrait')
+        // optional: increase default PHP memory / timeouts if you have lots of pages
+        ->setOptions(['dpi' => 150, 'defaultFont' => 'sans-serif']);
 
     return $pdf->stream("Estimate-{$estimate->estimate_number}.pdf");
 })->name('estimate.pdf');
@@ -52,6 +55,9 @@ Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('use
     Route::get('/api/{product}/designs', [UserController::class, 'jsonDesigns'])->name('getDesigns');
     Route::get('/designs', [UserController::class, 'designs'])->name('designs');
     Route::get('/api/design/{design}', [UserController::class, 'designView'])->name('designView');
+    Route::post('/api/product/{product}/share', [UserController::class, 'sharedesigns'])->name('shareDesign');
+    Route::get('/api/product/{product}/shared-links', [UserController::class, 'sharedLinks'])->name('getSharedLinks');
+    Route::get('/api/product/{product}/shared-links', [UserController::class, 'sharedLinks'])->name('getSharedLinks');
 });
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
