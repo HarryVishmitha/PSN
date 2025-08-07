@@ -13,6 +13,7 @@ class Category extends Model
     protected $fillable = [
         'name',
         'description',
+        'img_link',
         'active',
         'created_by',
         'updated_by',
@@ -24,5 +25,18 @@ class Category extends Model
     public function products()
     {
         return $this->belongsToMany(Product::class, 'product_categories');
+    }
+
+    public function updater()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+    public function views()
+    {
+        return $this->hasMany(CategoryView::class);
+    }
+    public function nav()
+    {
+        return $this->hasOne(NavCategory::class);
     }
 }

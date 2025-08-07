@@ -48,6 +48,8 @@ use Pion\Laravel\ChunkUpload\Handler\HandlerInterface;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Encoders\AutoEncoder;
+use App\Http\Controllers\DesignShareLinkController;
+use App\Models\DesignShareLink;
 
 class UserController extends Controller
 {
@@ -343,6 +345,7 @@ class UserController extends Controller
             // 3️⃣ Fetch only active (status = 'active') designs for this product
             $allDesigns = $product->design()
                 ->where('status', 'active')
+                ->where('access_type', 'working_group') // exclude private designs
                 ->with('designAccesses')         // eager-load pivot entries
                 ->get();
 
@@ -359,7 +362,7 @@ class UserController extends Controller
                     case 'restricted':
                         // only users in design_access
                         return $d->designAccesses
-                                 ->contains('user_id', $user->id);
+                            ->contains('user_id', $user->id);
 
                     default:
                         return false;
@@ -379,7 +382,6 @@ class UserController extends Controller
             });
 
             return response()->json($payload);
-
         } catch (\Exception $e) {
             Log::error('jsonProducts error: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
@@ -388,5 +390,66 @@ class UserController extends Controller
                 'message' => 'Failed to retrieve products due to a server error.'
             ], 500);
         }
+    }
+
+    public function sharedesigns(Request $request, Product $product)
+    {
+        Log::info('Sharing design for product: ' . $product->id, [
+            'user_id' => Auth::id(),
+            'ip_address' => request()->ip(),
+        ]);
+        try {
+
+            // 1️⃣ Auth guard
+            if (! Auth::check()) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+
+            $user = Auth::user();
+
+            // 🧠 Call the logic from DesignShareLinkController manually
+            $shareLinkController = new DesignShareLinkController();
+
+            ActivityLog::create([
+                'user_id'    => Auth::id(),
+                'action_type' => 'Sharable_link_creation',
+                'description' => 'User created a sharable link.',
+                'ip_address' => request()->ip(),
+            ]);
+
+            return $shareLinkController->store($request, $product);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to share design.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function sharedLinks(Product $product)
+    {
+        $user = Auth::user();
+
+        $links = DesignShareLink::with('creator:id,name')
+            ->where('product_id', $product->id)
+            ->where('created_by', $user->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($link) {
+                return [
+                    'token'        => $link->token,
+                    'url'          => url("/share/{$link->token}"),
+                    'created_by'   => $link->creator->name,
+                    'views'        => $link->view_count,
+                    'expires_at'   => $link->expires_at,
+                    'created_at'   => $link->created_at,
+                    'has_password' => $link->password_hash !== null,
+                ];
+            });
+
+        return response()->json([
+            'message' => 'Share links retrieved',
+            'links'   => $links,
+        ]);
     }
 }

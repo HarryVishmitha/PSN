@@ -261,42 +261,90 @@ export default function Designs({ userDetails, designs, filters, workingGroups }
 
                         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-24">
                             <span>Showing {designs.from} to {designs.to} of {designs.total} entries</span>
+
                             <ul className="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center">
-                                {designs && designs.last_page > 1 && (
-                                    <li className="page-item">
-                                        <Link
-                                            className="page-link bg-neutral-200 text-secondary-light fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md"
-                                            href={designs.prev_page_url}
-                                        >
-                                            <Icon icon="ep:d-arrow-left" />
-                                        </Link>
-                                    </li>
-                                )}
-                                {Array.from({ length: designs.last_page }, (_, i) => i + 1).map((page) => (
-                                    <li className="page-item" key={page}>
-                                        <Link
-                                            className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${page === designs.current_page
-                                                ? "bg-primary-600 text-white"
-                                                : "bg-neutral-200 text-secondary-light"
-                                                }`}
-                                            href={`?page=${page}`}
-                                        >
-                                            {page}
-                                        </Link>
-                                    </li>
-                                ))}
-                                {designs.current_page < designs.last_page && (
-                                    <li className="page-item">
-                                        <Link
-                                            className="page-link bg-neutral-200 text-secondary-light fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md"
-                                            href={designs.next_page_url}
-                                        >
-                                            <Icon icon="ep:d-arrow-right" />
-                                        </Link>
-                                    </li>
-                                )}
+                                {/* First Page Button */}
+                                <li className="page-item">
+                                    <Link
+                                        href="?page=1"
+                                        aria-label="First Page"
+                                        className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${designs.current_page === 1 ? 'disabled pointer-events-none opacity-50 bg-neutral-100' : 'bg-neutral-200 text-secondary-light'}`}
+                                    >
+                                        «
+                                    </Link>
+                                </li>
+
+                                {/* Previous Button */}
+                                <li className="page-item">
+                                    <Link
+                                        href={designs.prev_page_url || '#'}
+                                        aria-label="Previous Page"
+                                        className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${!designs.prev_page_url ? 'disabled pointer-events-none opacity-50 bg-neutral-100' : 'bg-neutral-200 text-secondary-light'}`}
+                                    >
+                                        ‹
+                                    </Link>
+                                </li>
+
+                                {/* Dynamic page range */}
+                                {Array.from({ length: designs.last_page }, (_, i) => i + 1)
+                                    .filter(page =>
+                                        page === 1 || page === designs.last_page ||
+                                        Math.abs(page - designs.current_page) <= 2
+                                    )
+                                    .reduce((acc, page, index, array) => {
+                                        if (index > 0 && page - array[index - 1] > 1) {
+                                            acc.push('ellipsis');
+                                        }
+                                        acc.push(page);
+                                        return acc;
+                                    }, [])
+                                    .map((item, idx) => (
+                                        item === 'ellipsis' ? (
+                                            <li className="page-item" key={`ellipsis-${idx}`}>
+                                                <span className="page-link bg-transparent border-0 text-secondary-light">...</span>
+                                            </li>
+                                        ) : (
+                                            <li className="page-item" key={item}>
+                                                <Link
+                                                    href={`?page=${item}`}
+                                                    aria-label={`Page ${item}`}
+                                                    className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${item === designs.current_page
+                                                        ? "bg-primary-600 text-white pointer-events-none"
+                                                        : "bg-neutral-200 text-secondary-light"
+                                                        }`}
+                                                >
+                                                    {item}
+                                                </Link>
+                                            </li>
+                                        )
+                                    ))
+                                }
+
+                                {/* Next Button */}
+                                <li className="page-item">
+                                    <Link
+                                        href={designs.next_page_url || '#'}
+                                        aria-label="Next Page"
+                                        className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${!designs.next_page_url ? 'disabled pointer-events-none opacity-50 bg-neutral-100' : 'bg-neutral-200 text-secondary-light'}`}
+                                    >
+                                        ›
+                                    </Link>
+                                </li>
+
+                                {/* Last Page Button */}
+                                <li className="page-item">
+                                    <Link
+                                        href={`?page=${designs.last_page}`}
+                                        aria-label="Last Page"
+                                        className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${designs.current_page === designs.last_page ? 'disabled pointer-events-none opacity-50 bg-neutral-100' : 'bg-neutral-200 text-secondary-light'}`}
+                                    >
+                                        »
+                                    </Link>
+                                </li>
                             </ul>
                         </div>
+
+
                     </div>
                 </div>
 

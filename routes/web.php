@@ -12,12 +12,26 @@ use App\Http\Middleware\CheckRole;
 use App\Models\Notification;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\DesignShareLinkController;
 use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 
 Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
+Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
+Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
+Route::get('/api/category/all', [Home::class, 'categories'])->name('categories.all');
+Route::get('/gallery/designs', [Home::class, 'designs'])->name('designs.all');
+Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.categories');
+Route::get('/requests/quotations', [Home::class, 'quotations'])->name('requests.quotations');
+Route::get('/api/most-popular-products', [Home::class, 'mostPProducts'])->name('mostPopularProducts');
+Route::get('/public/{id}/product/{name}', [Home::class, 'productDetail'])->name('productDetail');
+Route::get('/share/{token}', fn ($token) => Inertia::render('SharedDesigns', ['token' => $token]))->name('share.page');
+Route::get('/api/share/{token}', [DesignShareLinkController::class, 'publicLinkInfo']);
+Route::post('/api/share/{token}/verify', [DesignShareLinkController::class, 'verifyPassword']);
+Route::get('/api/trending-products', [Home::class, 'trending'])->name('trending.products');
+
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:
@@ -25,9 +39,9 @@ Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
 
     // render & stream:
     $pdf = Pdf::loadView('pdfs.estimate', ['est' => $estimate])
-              ->setPaper('a4', 'portrait')
-              // optional: increase default PHP memory / timeouts if you have lots of pages
-              ->setOptions(['dpi' => 150, 'defaultFont' => 'sans-serif']);
+        ->setPaper('a4', 'portrait')
+        // optional: increase default PHP memory / timeouts if you have lots of pages
+        ->setOptions(['dpi' => 150, 'defaultFont' => 'sans-serif']);
 
     return $pdf->stream("Estimate-{$estimate->estimate_number}.pdf");
 })->name('estimate.pdf');
@@ -44,6 +58,9 @@ Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('use
     Route::get('/api/{product}/designs', [UserController::class, 'jsonDesigns'])->name('getDesigns');
     Route::get('/designs', [UserController::class, 'designs'])->name('designs');
     Route::get('/api/design/{design}', [UserController::class, 'designView'])->name('designView');
+    Route::post('/api/product/{product}/share', [UserController::class, 'sharedesigns'])->name('shareDesign');
+    Route::get('/api/product/{product}/shared-links', [UserController::class, 'sharedLinks'])->name('getSharedLinks');
+    Route::get('/api/product/{product}/shared-links', [UserController::class, 'sharedLinks'])->name('getSharedLinks');
 });
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
@@ -104,7 +121,18 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
-
+    Route::get('/categories', [AdminController::class, 'CategoryView'])->name('category.view');
+    // Route::get('/categories/create', [AdminController::class, 'CategoryCreate'])->name('category.create');
+    Route::post('/api/category/add', [AdminController::class, 'CategoryStore'])->name('category.store');
+    Route::get('/categories/{id}/edit', [AdminController::class, 'CategoryEdit'])->name('category.edit');
+    Route::put('/categories/{id}', [AdminController::class, 'CategoryUpdate'])->name('category.update');
+    Route::delete('/categories/{category}/delete', [AdminController::class, 'CategoryDelete'])->name('category.delete');
+    Route::post('/categories/{id}/restore', [AdminController::class, 'CategoryRestore'])->name('category.restore');
+    Route::post('/categories/bulk-action', [AdminController::class, 'CategoryBulkAction'])->name('category.bulk');
+    Route::get('/site-settings', [AdminController::class, 'siteSettings'])->name('siteSettings');
+    Route::get('/site-settings/topnav-categories/manage', [AdminController::class, 'topnavCategories'])->name('topnavCategories');
+    Route::post('/api/top-nav-category/reorder', [AdminController::class, 'reorderTopNavCategories'])->name('topnavCategories.reorder');
+    Route::get('/api/json-tags', [AdminController::class, 'jsonTags'])->name('getTags');
     // Add more admin routes here
 });
 

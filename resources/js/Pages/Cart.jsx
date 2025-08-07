@@ -248,7 +248,7 @@ const cart = () => {
                                 {/* Continue Shopping */}
                                 <Link
                                     href="/products"
-                                    className="tw-block tw-text-sm tw-text-center tw-mt-2 tw-py-1 tw-text-black tw-rounded-md tw-border-4 tw-border-black hover:tw-bg-black hover:tw-text-white"
+                                    className="tw-block tw-text-sm tw-text-center tw-mt-2 tw-py-1 tw-text-black tw-rounded-md tw-border-2 tw-border-black hover:tw-bg-black hover:tw-text-white"
                                     data-aos="fade-up"
                                     data-aos-delay="500"
                                 >

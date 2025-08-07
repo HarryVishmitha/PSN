@@ -50,6 +50,7 @@ use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Encoders\AutoEncoder;
 use App\Services\EstimatePdfService;
+use App\Models\Tag;
 
 
 
@@ -942,6 +943,24 @@ class AdminController extends Controller
         ]);
     }
 
+    public function jsonTags()
+    {
+        try {
+            $tags = Tag::select('id', 'name')->orderBy('name')->get();
+
+            return response()->json([
+                'success' => true,
+                'tags' => $tags
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch tags.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function jsonCats()
     {
         // Retrieve all categories from the database.
@@ -977,7 +996,13 @@ class AdminController extends Controller
             'variants'               => 'nullable|string', // Expecting JSON string
             'categories'             => 'required|string', // Expecting JSON string
             'images'                 => 'required|array|min:1|max:2048',
+            'tags'     => 'nullable|string',  // expecting JSON array of tag IDs
+            'newTags'  => 'nullable|string',  // expecting JSON array of tag names
+
         ]);
+
+        $tagIds = json_decode($request->input('tags'), true) ?? [];
+        $newTagNames = json_decode($request->input('newTags'), true) ?? [];
 
         DB::beginTransaction();
 
@@ -1004,6 +1029,26 @@ class AdminController extends Controller
             // Attach categories to the product.
             $categories = json_decode($validatedData['categories'], true);
             $product->categories()->attach($categories);
+
+            //create tags if they are provided
+            $newTagIds = [];
+
+            foreach ($newTagNames as $tagName) {
+                $tagName = trim($tagName);
+                if (!$tagName) continue;
+
+                $tag = \App\Models\Tag::firstOrCreate(
+                    ['name' => $tagName],
+                    ['slug' => Str::slug($tagName), 'created_by' => Auth::id()]
+                );
+
+                $newTagIds[] = $tag->id;
+            }
+
+            $allTagIds = array_merge($tagIds, $newTagIds);
+            $product->tags()->attach($allTagIds);
+
+
 
             // Handle inventory based on pricing method and variants.
             if ($validatedData['pricingMethod'] === 'standard' && $validatedData['hasVariants'] === 'false') {
@@ -2947,5 +2992,254 @@ class AdminController extends Controller
             'userDetails' => Auth::user(),
             'estimate'    => $estimate,
         ]);
+    }
+
+    public function CategoryView(Request $request)
+    {
+        $query = Category::query()
+            ->with(['updater:id,name,profile_picture'])
+            ->withCount('products') // Get number of products per category
+            ->whereNull('deleted_at'); // Ensure only not-deleted categories (soft delete safe)
+
+        // Search
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('slug', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Filter: status, visibility
+        if ($status = $request->input('status')) {
+            $query->where('status', $status);
+        }
+
+        if ($visibility = $request->input('visibility')) {
+            $query->where('visibility', $visibility);
+        }
+
+        // Sorting
+        $sortBy = $request->input('sortBy', 'created_at');
+        $sortDirection = $request->input('sortDirection', 'desc');
+        $query->orderBy($sortBy, $sortDirection);
+
+        // Pagination
+        $perPage = $request->input('perPage', 10);
+        $categories = $query->paginate($perPage)->withQueryString();
+
+        return Inertia::render('admin/category', [
+            'userDetails' => Auth::user(),
+            'categories' => $categories,
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+                'visibility' => $visibility,
+                'sortBy' => $sortBy,
+                'sortDirection' => $sortDirection,
+                'perPage' => $perPage,
+            ],
+        ]);
+    }
+
+    public function CategoryStore(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:categories,name',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|max:2048', // max 2MB
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        try {
+            $imageUrl = null;
+
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+                $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                $path = $image->storeAs('uploads/categories', $filename, 'public');
+                $imageUrl = asset('storage/' . $path);
+            }
+
+            $category = Category::create([
+                'name' => $request->name,
+                'description' => $request->description,
+                'img_link' => $imageUrl,
+                'active' => $request->status === 'active',
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Category created successfully.',
+                'data' => $category,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create category.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function CategoryUpdate(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:categories,name,' . $id,
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        try {
+            $category = Category::findOrFail($id);
+
+            $imageUrl = $category->img_link;
+
+            // Replace image if a new one was uploaded
+            if ($request->hasFile('image')) {
+                // Delete old image if exists
+                if ($imageUrl && str_contains($imageUrl, '/storage/uploads/')) {
+                    $oldPath = str_replace(asset('storage') . '/', '', $imageUrl);
+                    Storage::disk('public')->delete($oldPath);
+                }
+
+                $image = $request->file('image');
+                $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                $path = $image->storeAs('uploads/categories', $filename, 'public');
+                $imageUrl = asset('storage/' . $path);
+            }
+
+            $category->update([
+                'name' => $request->name,
+                'description' => $request->description,
+                'img_link' => $imageUrl,
+                'active' => $request->status === 'active',
+                'updated_by' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Category updated successfully.',
+                'data' => $category,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update category.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function CategoryDelete(Category $category)
+    {
+        try {
+            $category = Category::findOrFail($category->id);
+
+            // Soft delete the category
+            $category->delete();
+
+            // Log the deletion
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'category_delete',
+                'description' => "Admin deleted category ID {$category->id}",
+                'ip_address'  => request()->ip(),
+            ]);
+            return redirect()
+                ->back()
+                ->with('success', 'Category deleted successfully.');
+        } catch (\Throwable $e) {
+            Log::error("Failed to delete category [{$category->id}]: " . $e->getMessage());
+            throw ValidationException::withMessages([
+                'error' => 'Failed to delete category. Please try again.',
+            ]);
+        }
+    }
+
+    public function topnavCategories()
+    {
+
+        ActivityLog::create([
+            'user_id'    => Auth::id(),
+            'action_type' => 'topnav_categories_access',
+            'description' => 'Admin accessed top navigation categories.',
+            'ip_address' => request()->ip(),
+        ]);
+
+        $categories = Category::with('nav') // relationship to nav_categories
+            ->where('active', '1')
+            ->whereNull('deleted_at') // ensures not soft-deleted
+            ->orderBy('name', 'asc')
+            ->get()
+            ->map(function ($category) {
+                return [
+                    'id'          => $category->id,
+                    'name'        => $category->name,
+                    'img_link'   => $category->img_link,
+                    'is_visible'  => $category->nav?->is_visible ?? false,
+                    'nav_order'   => $category->nav?->nav_order ?? null,
+                ];
+            });
+
+        return Inertia::render('admin/topnavCategories', [
+            'userDetails' => Auth::user(),
+            'categories'  => $categories,
+        ]);
+    }
+
+    public function reorderTopNavCategories(Request $request)
+    {
+        $validated = $request->validate([
+            'categories'   => 'required|array|min:1',
+            'categories.*.id' => 'required|integer|exists:categories,id',
+            'categories.*.is_visible' => 'required|boolean',
+            'categories.*.order'  => 'nullable|integer',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            foreach ($validated['categories'] as $cat) {
+                // Find or create nav_category record for this category
+                $category = Category::find($cat['id']);
+                if (!$category) {
+                    continue;
+                }
+                $nav = $category->nav()->first();
+                if (!$nav) {
+                    $category->nav()->create([
+                        'is_visible' => $cat['is_visible'],
+                        'nav_order'  => $cat['order'] ?? 0,
+                    ]);
+                } else {
+                    $nav->update([
+                        'is_visible' => $cat['is_visible'],
+                        'nav_order'  => $cat['order'] ?? 0,
+                    ]);
+                }
+            }
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'topnav_categories_reorder',
+                'description' => 'Admin reordered top navigation categories.',
+                'ip_address'  => request()->ip(),
+            ]);
+
+            DB::commit();
+            return redirect()
+                ->back()->with([
+                    'success' => true,
+                    'message' => 'Categories reordered successfully.',
+                ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Failed to reorder topnav categories: ' . $e->getMessage());
+            throw ValidationException::withMessages([
+                'error' => 'Failed to update categories.',
+            ]);
+        }
     }
 }

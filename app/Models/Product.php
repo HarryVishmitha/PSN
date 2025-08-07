@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\ProductView;
 
 class Product extends Model
 {
@@ -90,5 +91,19 @@ class Product extends Model
     public function design()
     {
         return $this->hasMany(Design::class);
+    }
+    public function views()
+    {
+        return $this->hasMany(ProductView::class);
+    }
+
+
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class);
+    }
+    public function shareLinks()
+    {
+        return $this->hasMany(DesignShareLink::class);
     }
 }

@@ -15,7 +15,8 @@ import ContactUs from '@/Components/ContactUs';
 import Footer from '@/Components/Footer';
 import Meta from '@/Components/Metaheads';
 gsap.registerPlugin(ScrollTrigger);
-
+import { router } from '@inertiajs/react';
+import axios from 'axios'
 
 
 const Home = () => {
@@ -86,66 +87,70 @@ const Home = () => {
         return () => window.removeEventListener('resize', updateWidth);
     }, []);
 
+    const [categories, setCategories] = useState([]);
+    const [categoryLoading, setCategoryLoading] = useState(false);
+    const [Caterror, setCatError] = useState(null);
 
+    const fetchCategories = async () => {
+        setCategoryLoading(true);
+        setCatError(null);
+        try {
+            const response = await axios.get('/api/category/all');
+            const data = response.data;
+
+            if (data.success) {
+                setCategories(data.data); // categories data
+            } else {
+                // Backend responded but with success: false
+                setCatError(data.message || 'Failed to load categories.');
+
+            }
+        } catch (err) {
+            // Network or other axios error
+            setCatError(err.message || 'Something went wrong.');
+        } finally {
+            setCategoryLoading(false);
+        }
+    };
+
+    const [trendingProducts, setTrendingProducts] = useState([]);
+    const [trendingLoading, setTrendingLoading] = useState(false);
+    const [trendingError, setTrendingError] = useState(null);
+
+    const fetchTrendingProducts = async () => {
+        setTrendingLoading(true);
+        setTrendingError(null);
+        try {
+            const response = await axios.get('/api/trending-products');
+            const data = response.data;
+
+            if (data.success) {
+                setTrendingProducts(data.data); // categories data
+            } else {
+                // Backend responded but with success: false
+                setTrendingError(data.message || 'Failed to load trending products.');
+                console.log('Trending products error1:', data.message);
+            }
+        } catch (err) {
+            // Network or other axios error
+            setTrendingError(err.message || 'Something went wrong.');
+            console.log('Trending products error:', err);
+        } finally {
+            setTrendingLoading(false);
+        }
+    };
 
 
     // Various data that needs in this component please call them once designs complete
-    const categories = [
-        { name: 'Business Cards', image: 'https://placehold.co/160x180' },
-        { name: 'Flyers', image: 'https://picsum.photos/160/180' },
-        { name: 'Posters', image: 'https://picsum.photos/200/300' },
-        { name: 'T-Shirts', image: 'https://picsum.photos/160/180' },
-        { name: 'Labels', image: 'https://picsum.photos/160/180' },
-        { name: 'Stickers', image: 'https://picsum.photos/160/180' },
-        { name: 'Mugs', image: 'https://picsum.photos/160/180' },
-        { name: 'Banners', image: 'https://picsum.photos/160/180' },
-        { name: 'Booklets', image: 'https://picsum.photos/160/180' },
-        { name: 'Envelopes', image: 'https://picsum.photos/160/180' },
-        { name: 'Calendars', image: 'https://picsum.photos/160/180' },
-        { name: 'Brochures', image: 'https://picsum.photos/160/180' },
-    ];
+    useEffect(() => {
+        fetchCategories();
+    }, []);
 
-    // Trending products data array
-    const trendingProducts = [
-        {
-            name: 'Custom Mugs',
-            desc: 'Your design, our quality. Your design, our quality. Your design, our quality. Your design, our quality.',
-            image: 'https://picsum.photos/id/1011/400/300',
-            badge: 'New',
-            price: '12.99',
-            rating: 4.5,
-            stock: 12,
-            tags: ['Customizable', 'Eco-friendly'],
-            views: 1280,
-            discount: '-10%',
-            link: '/products/custom-mugs',
-        },
-        {
-            name: 'Posters',
-            desc: 'Make a bold statement. Make a bold statement. Make a bold statement. Make a bold statement.',
-            image: 'https://picsum.photos/id/1018/400/300',
-            price: '7.99',
-            rating: 4.0,
-            stock: 5,
-            tags: ['Bold'],
-            views: 800,
-            discount: '',
-            link: '/products/posters',
-        },
-        {
-            name: 'Business Cards',
-            desc: 'Professional first impression. Professional first impression. Professional first impression. Professional first impression.',
-            image: 'https://picsum.photos/id/1025/400/300',
-            badge: 'Hot',
-            price: '19.99',
-            rating: 4.9,
-            stock: 2,
-            tags: ['Premium', 'Fast Delivery'],
-            views: 1895,
-            discount: '-15%',
-            link: '/products/business-cards',
-        },
-    ];
+    useEffect(() => {
+        fetchTrendingProducts();
+    }, []);
+
+
 
     const popularProducts = [
         { name: 'X-Banners', slug: 'x-banners' },
@@ -322,7 +327,7 @@ const Home = () => {
                         <div className="tw-flex tw-flex-wrap tw-gap-4">
                             <Link
                                 href="#"
-                                className="tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded-lg tw-shadow hover:tw-bg-red-600 tw-transition"
+                                className="tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded-lg tw-shadow hover:tw-bg-red-600 tw-transition hover:tw-text-white"
                                 data-aos="fade-up"
                                 data-aos-delay="400"
                             >
@@ -343,9 +348,9 @@ const Home = () => {
                     <div className="tw-relative tw-z-10" data-aos="zoom-in-left" data-aos-delay="200">
                         <div className="tw-absolute tw-bg-[#f44032]/10 tw-w-[300px] tw-h-[300px] tw-rounded-full tw-z-0 tw-top-[-60px] tw-left-[-60px] tw-blur-3xl"></div>
                         <img
-                            src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTbPIQpemZv2uJF4Qm4S9Ke9HA-rqy-uCNjsg&s"
+                            src="/assets/images/printing-machine.png"
                             alt="Hero Preview"
-                            className="tw-relative tw-z-10 tw-w-full tw-max-w-md tw-mx-auto tw-rounded-xl tw-shadow-lg"
+                            className="tw-relative tw-z-10 tw-w-full tw-max-w-md md:tw-max-w-3xl tw-mx-auto tw-rounded-xl"
                         />
                     </div>
                 </div>
@@ -365,41 +370,87 @@ const Home = () => {
                     </div>
 
                     <div className="tw-relative tw-overflow-hidden">
-                        <div
-                            ref={scrollRef}
-                            className="tw-flex tw-gap-4 tw-px-4 tw-transition-all tw-duration-500 tw-scroll-smooth"
-                            style={{ overflowX: 'auto', scrollBehavior: 'smooth' }}
-                        >
-                            {categories.map((cat, idx) => (
-                                <div
-                                    key={idx}
-                                    className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0"
-                                >
-                                    <img
-                                        src={cat.image}
-                                        alt={cat.name}
-                                        className="tw-w-full tw-h-full tw-object-cover"
+                        {categoryLoading ? (
+                            <div className="tw-flex tw-gap-4 tw-px-4 tw-justify-center">
+                                {[...Array(12)].map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-bg-gray-300 tw-animate-pulse tw-flex-shrink-0"
                                     />
-                                    <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center">
-                                        <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
+                                ))}
+                            </div>
+                        ) : (
+
+                            Array.isArray(categories) && categories.length > 0 ? (
+                                <div className="tw-relative">
+                                    <div
+                                        ref={scrollRef}
+                                        className="tw-flex tw-gap-4 tw-px-4 tw-transition-all tw-duration-500 tw-scroll-smooth"
+                                        style={{ overflowX: 'auto', scrollBehavior: 'smooth' }}
+                                    >
+                                        {categories.map((cat, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => route.get('/products/all', {
+                                                    category_id: cat.id,
+                                                    category_name: cat.name
+                                                })}
+                                                className="category-card tw-cursor-pointer tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0 tw-group hover:tw-shadow-sm tw-border"
+                                            >
+                                                <img
+                                                    src={cat.img_link || '/assets/images/category_default-01.jpg'}
+                                                    alt={cat.name}
+                                                    className="tw-w-full tw-h-full tw-object-cover"
+                                                />
+                                                <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center group-hover:tw-bg-black/50">
+                                                    <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <button
+                                        aria-label="Scroll Left"
+                                        className="tw-absolute tw-left-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
+                                        onClick={() => scrollRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}
+                                    >
+                                        <Icon icon="ic:round-chevron-left" className="tw-text-xl" />
+                                    </button>
+
+                                    <button
+                                        aria-label="Scroll Right"
+                                        className="tw-absolute tw-right-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
+                                        onClick={() => scrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}
+                                    >
+                                        <Icon icon="ic:round-chevron-right" className="tw-text-xl" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div
+                                    role="alert"
+                                    className="tw-border tw-border-red-600 tw-bg-red-100 tw-text-red-700 tw-p-4 tw-rounded tw-max-w-md tw-mx-auto tw-mb-6 tw-text-center tw-relative tw-font-sans"
+                                >
+                                    <strong>Sorry!</strong> There are no categories to show yet or something went wrong! Our developers are working on it.
+                                    <button
+                                        onClick={() => setError(null)}
+                                        aria-label="Dismiss error"
+                                        className="tw-absolute tw-top-2 tw-right-2 tw-text-red-700 tw-text-xl tw-font-bold hover:tw-text-red-900"
+                                    >
+                                        &times;
+                                    </button>
+                                    <div className="tw-mt-4">
+                                        <button
+                                            onClick={fetchCategories}
+                                            className="tw-bg-red-600 tw-text-white tw-px-4 tw-py-2 tw-rounded tw-font-semibold hover:tw-bg-red-700 tw-transition"
+                                        >
+                                            Retry
+                                        </button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            )
 
-                        {/* Arrows */}
-                        <button
-                            className="tw-absolute tw-left-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
-                            onClick={() => scrollRef.current.scrollBy({ left: -180, behavior: 'smooth' })}
-                        >
-                            <Icon icon="ic:round-chevron-left" className="tw-text-xl" />
-                        </button>
-                        <button
-                            className="tw-absolute tw-right-2 tw-top-1/2 -tw-translate-y-1/2 tw-bg-white tw-shadow tw-rounded-full tw-p-2"
-                            onClick={() => scrollRef.current.scrollBy({ left: 180, behavior: 'smooth' })}
-                        >
-                            <Icon icon="ic:round-chevron-right" className="tw-text-xl" />
-                        </button>
+                        )}
+
                     </div>
                 </section>
             ) : (
@@ -408,23 +459,70 @@ const Home = () => {
                     <div className="tw-container tw-px-4">
                         <h2 className="tw-text-xl tw-font-bold tw-mb-8">Popular Categories</h2>
                     </div>
-                    <div ref={scrollRef} className="tw-flex tw-gap-4 tw-px-4">
-                        {categories.map((cat, idx) => (
-                            <div
-                                key={idx}
-                                className="category-card tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0"
-                            >
-                                <img
-                                    src={cat.image}
-                                    alt={cat.name}
-                                    className="tw-w-full tw-h-full tw-object-cover"
+                    {categoryLoading ? (
+                        <div className="tw-flex tw-gap-4 tw-px-4 tw-justify-center">
+                            {[...Array(12)].map((_, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-bg-gray-300 tw-animate-pulse tw-flex-shrink-0"
                                 />
-                                <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center">
-                                    <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
-                                </div>
+                            ))}
+                        </div>
+                    ) : (
+
+                        Array.isArray(categories) && categories.length > 0 ? (
+                            <div ref={scrollRef} className="tw-flex tw-gap-4 tw-px-4 tw-justify-center">
+                                {categories.map((cat, idx) => (
+                                    <div
+                                        key={idx}
+                                        onClick={() => router.get('/products/all', {
+                                            category_id: cat.id,
+                                            category_name: cat.name
+                                        })}
+                                        className="category-card tw-cursor-pointer tw-w-[160px] tw-h-[200px] tw-rounded-xl tw-overflow-hidden tw-shadow-lg tw-relative tw-flex-shrink-0 tw-group hover:tw-shadow-sm tw-border"
+                                    >
+                                        <img
+                                            src={cat.img_link || '/assets/images/category_default-01.jpg'}
+                                            alt={cat.name}
+                                            className="tw-w-full tw-h-full tw-object-cover"
+                                        />
+                                        <div className="tw-absolute tw-inset-0 tw-bg-black/30 tw-flex tw-items-center tw-justify-center group-hover:tw-bg-black/50">
+                                            <span className="tw-text-white tw-font-semibold tw-text-center tw-text-lg">{cat.name}</span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
+                        ) : (
+                            <>
+                                <div
+                                    class="alert alert-danger bg-danger-100 text-danger-600 border-danger-100 px-24 py-11 mb-0 fw-semibold text-lg radius-8 tw-mx-5 tw-text-center"
+                                    role="alert"
+                                >
+                                    <div
+                                        class="d-flex align-items-center justify-content-center text-lg"
+                                    >
+                                        <div class="d-flex align-items-start gap-2">
+                                            <div>
+                                                Sorry! Something went wrong!
+                                                <p class="fw-medium text-danger-600 text-sm mt-8">
+                                                    There are no categories to show yet or something went wrong! Our developers are working on it.
+                                                </p>
+                                                Reload the Page to try again
+                                            </div>
+                                        </div>
+                                        <button
+                                            class="remove-button text-danger-600 text-xxl line-height-1"
+                                        >
+                                            <iconify-icon
+                                                icon="iconamoon:sign-times-light"
+                                                class="icon"
+                                            ></iconify-icon>
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )
+                    )}
                 </section>
             )}
 
@@ -443,83 +541,124 @@ const Home = () => {
                         Trending Products
                     </h2>
 
-                    {/* Product Grid */}
-                    <div className="tw-grid tw-gap-8 sm:tw-grid-cols-2 lg:tw-grid-cols-3">
-                        {trendingProducts.map((product, idx) => (
-                            <div
-                                key={idx}
-                                className="tw-bg-white tw-rounded-xl tw-shadow-md hover:tw-shadow-xl tw-transition-all tw-flex tw-flex-col tw-h-full tw-border"
-                                data-aos="fade-up"
-                                data-aos-delay={idx * 150}
+                    {trendingError && (
+                        <div className="tw-text-center tw-text-red-600 tw-mb-6">
+                            <p>Oops! {trendingError}</p>
+                            <button
+                                onClick={fetchTrendingProducts}
+                                className="tw-underline tw-text-blue-600"
                             >
+                                Retry
+                            </button>
+                        </div>
+                    )}
 
-                                <a href={product.link} className="tw-block">
-                                    <div className="tw-relative tw-overflow-hidden">
-                                        <img
-                                            src={product.image}
-                                            alt={product.name}
-                                            className="tw-w-full tw-h-56 tw-object-cover tw-transition-transform tw-duration-300 hover:tw-scale-105"
-                                        />
-                                        {product.badge && (
-                                            <span className="tw-absolute tw-top-2 tw-left-2 tw-bg-red-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
-                                                {product.badge}
-                                            </span>
-                                        )}
-                                        {product.discount && (
-                                            <span className="tw-absolute tw-top-2 tw-right-2 tw-bg-green-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
-                                                {product.discount}
-                                            </span>
-                                        )}
-                                    </div>
-                                </a>
+                    {/* Product Grid */}
+                    <div className="tw-grid tw-gap-8 sm:tw-grid-cols-2 lg:tw-grid-cols-5">
 
-                                <div className="tw-p-5 tw-flex tw-flex-col tw-flex-1 tw-h-full">
-                                    <h3 className="tw-text-xl tw-font-semibold tw-leading-tight tw-mb-1 tw-line-clamp-1">
-                                        <Link href={product.link}>{product.name}</Link>
-                                    </h3>
-
-                                    <div className="tw-flex tw-items-center tw-mb-1">
-                                        {[...Array(5)].map((_, i) => (
-                                            <svg
-                                                key={i}
-                                                className={`tw-w-4 tw-h-4 tw-fill-current ${i < Math.floor(product.rating) ? 'tw-text-yellow-400' : 'tw-text-gray-300'}`}
-                                                viewBox="0 0 20 20"
-                                            >
-                                                <path d="M10 15l-5.878 3.09 1.123-6.545L.49 6.91l6.564-.955L10 0l2.946 5.955 6.564.955-4.755 4.635 1.123 6.545z" />
-                                            </svg>
+                        {trendingLoading ? (
+                            [...Array(5)].map((_, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tw-bg-white tw-rounded-xl tw-shadow-md tw-border tw-p-4 tw-space-y-4 tw-animate-pulse"
+                                >
+                                    <div className="tw-h-56 tw-bg-gray-200 tw-rounded-md" />
+                                    <div className="tw-h-4 tw-bg-gray-200 tw-rounded tw-w-3/4" />
+                                    <div className="tw-flex tw-items-center tw-gap-2">
+                                        {[...Array(5)].map((_, starIdx) => (
+                                            <div key={starIdx} className="tw-w-4 tw-h-4 tw-bg-gray-200 tw-rounded" />
                                         ))}
-                                        <span className="tw-text-sm tw-text-gray-500 tw-ml-2">({product.views.toLocaleString()} views)</span>
+                                        <div className="tw-h-3 tw-bg-gray-200 tw-rounded tw-w-16" />
                                     </div>
-
-                                    <p className="tw-text-gray-600 tw-text-sm tw-mb-2 tw-line-clamp-3">
-                                        {product.desc}
-                                    </p>
-                                    <div className="tw-flex tw-items-center tw-justify-between tw-mt-auto">
-                                        <div>
-                                            <span className="tw-font-bold tw-text-[#f44032] tw-text-sm">LKR {product.price}</span>
-                                            <span className="tw-text-xs tw-text-gray-400 tw-ml-2">{product.stock <= 5 ? `Only ${product.stock} left!` : 'In Stock'}</span>
-                                        </div>
-                                        <button className="tw-bg-[#f44032] tw-text-white tw-px-4 tw-py-2 tw-rounded hover:tw-bg-red-600 tw-text-sm tw-transition">
-                                            Order Now
-                                        </button>
+                                    <div className="tw-h-3 tw-bg-gray-200 tw-rounded tw-w-full" />
+                                    <div className="tw-h-3 tw-bg-gray-100 tw-rounded tw-w-5/6" />
+                                    <div className="tw-flex tw-justify-between tw-items-center">
+                                        <div className="tw-h-4 tw-bg-gray-200 tw-w-24 tw-rounded" />
+                                        <div className="tw-h-8 tw-w-20 tw-bg-gray-300 tw-rounded" />
                                     </div>
-
-                                    <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-1 tw-overflow-hidden tw-max-h-[50px]">
-                                        {product.tags.map((tag, i) => (
-                                            <span
-                                                key={i}
-                                                className="tw-bg-gray-100 tw-text-gray-600 tw-text-xs tw-px-2 tw-py-1 tw-rounded"
-                                            >
-                                                #{tag}
-                                            </span>
+                                    <div className="tw-flex tw-gap-2 tw-flex-wrap">
+                                        {[...Array(3)].map((_, tagIdx) => (
+                                            <div key={tagIdx} className="tw-h-5 tw-w-12 tw-bg-gray-200 tw-rounded" />
                                         ))}
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        ) : (
+                            trendingProducts.map((product, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tw-bg-white tw-rounded-xl tw-shadow-md hover:tw-shadow-xl tw-transition-all tw-flex tw-flex-col tw-h-full tw-border"
+
+                                >
+
+                                    <a href={product.link} className="tw-block">
+                                        <div className="tw-relative tw-overflow-hidden">
+                                            <img
+                                                src={product.image}
+                                                alt={product.name}
+                                                className="tw-w-full tw-object-cover tw-transition-transform tw-duration-300 hover:tw-scale-105"
+                                            />
+                                            {product.badge && (
+                                                <span className="tw-absolute tw-top-2 tw-left-2 tw-bg-red-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
+                                                    {product.badge}
+                                                </span>
+                                            )}
+                                            {product.discount && (
+                                                <span className="tw-absolute tw-top-2 tw-right-2 tw-bg-green-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
+                                                    {product.discount}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </a>
+
+                                    <div className="tw-p-5 tw-flex tw-flex-col tw-flex-1 tw-h-full">
+                                        <h6 className="tw-text-xl tw-font-semibold tw-leading-tight tw-mb-1 tw-line-clamp-1">
+                                            <Link href={product.link}>{product.name}</Link>
+                                        </h6>
+
+                                        <div className="tw-flex tw-items-center tw-mb-1">
+                                            {[...Array(5)].map((_, i) => (
+                                                <svg
+                                                    key={i}
+                                                    className={`tw-w-4 tw-h-4 tw-fill-current ${i < Math.floor(product.rating) ? 'tw-text-yellow-400' : 'tw-text-gray-300'}`}
+                                                    viewBox="0 0 20 20"
+                                                >
+                                                    <path d="M10 15l-5.878 3.09 1.123-6.545L.49 6.91l6.564-.955L10 0l2.946 5.955 6.564.955-4.755 4.635 1.123 6.545z" />
+                                                </svg>
+                                            ))}
+                                            <span className="tw-text-sm tw-text-gray-500 tw-ml-2">({(product.views ?? 0).toLocaleString()} views)</span>
+                                        </div>
+
+                                        <p className="tw-text-gray-600 tw-text-sm tw-mb-2 tw-line-clamp-3">
+                                            {product.desc}
+                                        </p>
+                                        <div className="tw-flex tw-items-center tw-justify-between tw-mt-auto">
+                                            <div>
+                                                <span className="tw-font-bold tw-text-[#f44032] tw-text-sm">LKR {product.price}</span>
+                                                <span className="tw-text-xs tw-text-gray-400 tw-ml-2">{product.stock <= 5 ? `Only ${product.stock} left!` : 'In Stock'}</span>
+                                            </div>
+                                            <button className="tw-bg-[#f44032] tw-text-white tw-px-4 tw-py-2 tw-rounded hover:tw-bg-red-600 tw-text-sm tw-transition">
+                                                Order Now
+                                            </button>
+                                        </div>
+
+                                        <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-1 tw-overflow-hidden tw-max-h-[50px]">
+                                            {product.tags.map((tag, i) => (
+                                                <span
+                                                    key={i}
+                                                    className="tw-bg-gray-100 tw-text-gray-600 tw-text-xs tw-px-2 tw-py-1 tw-rounded"
+                                                >
+                                                    #{tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
-            </section>
+            </section >
 
 
 
@@ -529,10 +668,10 @@ const Home = () => {
             {/* Why choose us */}
             <section
                 className="tw-relative tw-w-full tw-py-24 tw-bg-cover tw-bg-center tw-bg-no-repeat"
-                style={{ backgroundImage: "url('https://plus.unsplash.com/premium_photo-1667128695914-d97b26e1d013?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')" }} // Replace with your actual image path
+            // style={{ backgroundImage: "url('/assets/images/bg-71925.jpg')" }} // Replace with your actual image path
             >
                 {/* Overlay for better text readability */}
-                <div className="tw-absolute tw-inset-0 tw-bg-white/80 md:tw-bg-white/70 tw-backdrop-blur-sm"></div>
+                {/* <div className="tw-absolute tw-inset-0 tw-bg-white/80 md:tw-bg-white/80 tw-backdrop-blur-sm"></div> */}
 
                 {/* Main content */}
                 <div className="tw-relative tw-mx-auto tw-max-w-7xl tw-px-4">
@@ -796,10 +935,11 @@ const Home = () => {
             <section
                 className="tw-bg-fixed tw-bg-center tw-bg-cover tw-bg-no-repeat tw-py-20 tw-px-4 tw-relative"
                 style={{
-                    backgroundImage: `url('https://images.unsplash.com/photo-1510146758428-e5e4b17b8b6a?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')`,
+                    backgroundImage: `url('/assets/images/printing-process-bg.jpg')`,
                 }}
             >
-                <div className="tw-bg-white/60 tw-rounded-xl tw-max-w-6xl tw-mx-auto tw-p-10 tw-backdrop-blur-sm">
+                <div className="tw-absolute tw-inset-0 tw-bg-white/80 md:tw-bg-white/80 tw-backdrop-blur-sm"></div>
+                <div className="tw-bg-white/70 tw-rounded-xl tw-max-w-6xl tw-mx-auto tw-p-10 tw-backdrop-blur-sm">
                     <h2 className="tw-text-3xl md:tw-text-4xl tw-font-bold tw-text-center tw-mb-4" data-aos="fade-up">
                         How It Works
                     </h2>

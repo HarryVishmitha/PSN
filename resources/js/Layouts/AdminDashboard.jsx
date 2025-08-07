@@ -276,6 +276,19 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     <span>Working Groups</span>
                                 </Link>
                             </li>
+                            <li className='mb-3'>
+                                <Link
+                                    to='/admin/categories'
+                                    href={route('admin.category.view')}
+                                    className={url === '/admin/categories' ? 'active-page' : ''}
+                                >
+                                    <Icon
+                                        icon='mdi-folder-outline'
+                                        className='menu-icon'
+                                    />
+                                    <span>Categories</span>
+                                </Link>
+                            </li>
                             <li className='dropdown'>
                                 <Link href={route('admin.inventory')}>
                                     <Icon icon='lsicon:inventory-filled' className='menu-icon' />
@@ -395,6 +408,34 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     </li>
                                 </ul>
                             </li>
+
+                            <li className='dropdown'>
+                                <Link href={route('admin.siteSettings')}>
+                                    <Icon icon='material-symbols:settings-outline' className='menu-icon tw-text-red-500' alt='designs' />
+                                    <span className='tw-text-red-500'>Site Settings</span>
+                                </Link>
+                                <ul className='sidebar-submenu'>
+                                    <li>
+                                        <Link
+                                            href={route('admin.topnavCategories')}
+                                            className={url === '/admin/site-settings/topnav-categories/manage' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-warning-main w-auto' />{" "}
+                                            Home Page Nav Category
+                                        </Link>
+                                    </li>
+                                    <li>
+                                        <Link
+                                            href={route('admin.estimates')}
+                                            className={url === '/admin/estimates' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
+                                            All Quotations
+                                        </Link>
+                                    </li>
+                                </ul>
+                            </li>
+
                             <li>
                                 <Link
                                     href='/testimonials'
