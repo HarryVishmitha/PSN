@@ -11,6 +11,7 @@ import { Icon } from '@iconify/react';
 export default function Login({ status, canResetPassword }) {
     const [imageUrl, setImageUrl] = useState(null);
     const [isLoading, setIsLoading] = useState(true); // Track loading state
+    
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',

@@ -39,7 +39,7 @@ const Header = () => {
 
             if (data.success) {
                 setNavCategories(data.data); // nav categories data
-                console.log('Navigation categories loaded:', data.data);
+                // console.log('Navigation categories loaded:', data.data);
             } else {
                 // Backend responded but with success: false
                 setNavError(data.message || 'Failed to load navigation categories.');

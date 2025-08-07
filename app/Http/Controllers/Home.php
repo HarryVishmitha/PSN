@@ -11,6 +11,8 @@ use App\Models\Category;
 use Illuminate\Support\Facades\Log;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use App\Models\WorkingGroup;
+use Illuminate\Support\Str;
 
 class Home extends Controller
 {
@@ -111,28 +113,112 @@ class Home extends Controller
 
     public function mostPProducts(): JsonResponse
     {
+        Log::info('Fetching most popular products');
+
         try {
-            $products = Product::select('products.*', DB::raw('COUNT(product_views.id) as view_count'))
-                ->join('working_groups', 'products.working_group_id', '=', 'working_groups.id')
-                ->leftJoin('product_views', 'products.id', '=', 'product_views.product_id')
-                ->where('products.status', 'published')
-                ->whereNull('products.deleted_at')
-                ->where('working_groups.status', 'public')
-                ->groupBy('products.id')
-                ->orderByDesc('view_count')
-                ->with(['images']) // Optional: eager load images
-                ->take(5) // Limit top 5
+            $products = Product::withCount('views')
+                ->with('images') // Eager load images
+                ->where('status', 'published')
+                ->whereNull('deleted_at')
+                ->whereHas('workingGroup', function ($query) {
+                    $query->where('status', 'public');
+                })
+                ->orderByDesc('views_count')
+                ->take(5)
                 ->get();
+
+            Log::info('Most popular products fetched successfully', ['count' => $products->count()]);
 
             return response()->json([
                 'success' => true,
-                'data' => $products,
+                'data'    => $products,
             ]);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch most popular products: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch most popular products.',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function trending(): JsonResponse
+    {
+        try {
+            // Only fetch products from the 'public' working group
+            $publicGroupId = WorkingGroup::whereRaw('LOWER(name) = ?', ['public'])->value('id');
+
+            if (!$publicGroupId) {
+                return response()->json(['message' => 'Public working group not found'], 404);
+            }
+
+            // 1. Popular Products by Views
+            $popular = Product::with(['images', 'tags', 'inventories'])
+                ->withCount('views')
+                ->where('status', 'published')
+                ->where('working_group_id', $publicGroupId)
+                ->orderByDesc('views_count')
+                ->take(3)
+                ->get();
+
+            // 2. Recently Added Products
+            $recent = Product::with(['images', 'tags', 'inventories'])
+                ->where('status', 'published')
+                ->where('working_group_id', $publicGroupId)
+                ->whereNotIn('id', $popular->pluck('id'))
+                ->orderByDesc('created_at')
+                ->take(2)
+                ->get();
+
+            // 3. Fallback Random Products
+            $fallback = Product::with(['images', 'tags', 'inventories'])
+                ->where('status', 'published')
+                ->where('working_group_id', $publicGroupId)
+                ->whereNotIn('id', $popular->pluck('id')->merge($recent->pluck('id')))
+                ->inRandomOrder()
+                ->take(1)
+                ->get();
+
+            // Combine and format response
+            $trending = $popular
+                ->concat($recent)
+                ->concat($fallback)
+                ->take(5)
+                ->map(function ($product) {
+                    // Determine badge type
+                    $badge = null;
+                    if ($product->views_count > 1000) {
+                        $badge = 'Hot';
+                    } elseif ($product->created_at->gt(now()->subDays(7))) {
+                        $badge = 'New';
+                    }
+
+                    return [
+                        'name' => $product->name,
+                        'desc' => Str::limit($product->meta_description, 150),
+                        'image' => optional($product->images->first())->image_url ?? '/images/HS484530.jpg',
+                        'badge' => $badge,
+                        'price' => number_format($product->price ?? 0, 2),
+                        'rating' => 5, // Reviews to be added later
+                        'stock' => $product->inventories->sum('quantity') ?? 0,
+                        'tags' => $product->tags->pluck('name'),
+                        'views' => $product->views_count,
+                        'discount' => isset($product->metadata['discount']) ? "-{$product->metadata['discount']}%" : '',
+                        'link' => route('productDetail', ['id' => $product->id, 'name' => Str::slug($product->name)]),
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $trending,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to load trending products', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong. Please try again later.',
             ], 500);
         }
     }

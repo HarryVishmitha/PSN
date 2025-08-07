@@ -345,6 +345,7 @@ class UserController extends Controller
             // 3️⃣ Fetch only active (status = 'active') designs for this product
             $allDesigns = $product->design()
                 ->where('status', 'active')
+                ->where('access_type', 'working_group') // exclude private designs
                 ->with('designAccesses')         // eager-load pivot entries
                 ->get();
 

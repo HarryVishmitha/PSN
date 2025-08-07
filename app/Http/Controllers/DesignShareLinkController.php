@@ -65,6 +65,85 @@ class DesignShareLinkController extends Controller
         }
     }
 
+    public function publicLinkInfo($token)
+    {
+        $shareLink = DesignShareLink::with('product.design', 'creator')
+            ->where('token', $token)
+            ->first();
+
+        if (!$shareLink) {
+            return response()->json(['message' => 'Invalid or expired link.'], 404);
+        }
+
+        // Expiration check
+        if ($shareLink->expires_at && now()->greaterThan($shareLink->expires_at)) {
+            return response()->json(['message' => 'This link has expired.'], 410);
+        }
+
+        // View limit check
+        if ($shareLink->view_limit && $shareLink->view_count >= $shareLink->view_limit) {
+            return response()->json(['message' => 'This link has reached its view limit.'], 410);
+        }
+
+        // Password required?
+        if ($shareLink->password_hash) {
+            return response()->json([
+                'requires_password' => true,
+                'token' => $token
+            ]);
+        }
+
+        // No password? Return full data
+        return $this->jsonDesignData($shareLink);
+    }
+
+
+    protected function jsonDesignData(DesignShareLink $shareLink)
+    {
+        try {
+            DB::transaction(function () use ($shareLink) {
+                $shareLink->increment('view_count');
+            });
+        } catch (\Throwable $e) {
+            Log::error("Failed to increment view count", ['error' => $e->getMessage()]);
+        }
+
+        $product = $shareLink->product;
+
+        $creator = $shareLink->creator;
+        $creatorGroupId = $creator->working_group_id;
+
+        // Fallback: if no group, treat as 'public' working group (null group)
+        $designs = $product->design()
+            ->where('access_type', 'working_group')
+            ->where('status', 'active')
+            ->where(function ($query) use ($creatorGroupId) {
+                if ($creatorGroupId === null) {
+                    $query->whereNull('working_group_id');
+                } else {
+                    $query->where('working_group_id', $creatorGroupId);
+                }
+            })
+            ->get();
+
+        return response()->json([
+            'product' => [
+                'id'          => $product->id,
+                'name'        => $product->name,
+                'description' => $product->meta_description,
+            ],
+            'designs' => $designs,
+            'shared_by' => [
+                'name' => $creator->name
+            ],
+            'views' => $shareLink->view_count,
+            'expires_at' => $shareLink->expires_at,
+            'requires_password' => false,
+        ]);
+    }
+
+
+
     /**
      * Show shared design page (password prompt if needed)
      */
@@ -94,7 +173,7 @@ class DesignShareLinkController extends Controller
         // View directly
         return $this->renderDesigns($shareLink);
     }
-    
+
 
     /**
      * Handle password submission
@@ -138,5 +217,27 @@ class DesignShareLinkController extends Controller
             'designs'   => $product->designs,
             'shareLink' => $shareLink,
         ]);
+    }
+
+    public function verifyPassword(Request $request, $token)
+    {
+        $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        $shareLink = DesignShareLink::with('product.design', 'creator')
+            ->where('token', $token)
+            ->first();
+
+        if (!$shareLink) {
+            return response()->json(['message' => 'Invalid or expired link.'], 404);
+        }
+
+        if (!Hash::check($request->password, $shareLink->password_hash)) {
+            return response()->json(['message' => 'Incorrect password.'], 403);
+        }
+
+        // Password correct – return full data
+        return $this->jsonDesignData($shareLink);
     }
 }

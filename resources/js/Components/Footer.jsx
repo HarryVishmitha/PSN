@@ -14,7 +14,6 @@ const Footer = () => {
 
             if (data.success) {
                 setPopularProducts(data.data);
-                console.log('Popular products loaded:', data.data);
             } else {
                 setPopularError(data.message || 'Failed to load popular products.');
             }

@@ -16,8 +16,7 @@ import Footer from '@/Components/Footer';
 import Meta from '@/Components/Metaheads';
 gsap.registerPlugin(ScrollTrigger);
 import { router } from '@inertiajs/react';
-
-
+import axios from 'axios'
 
 
 const Home = () => {
@@ -104,6 +103,7 @@ const Home = () => {
             } else {
                 // Backend responded but with success: false
                 setCatError(data.message || 'Failed to load categories.');
+
             }
         } catch (err) {
             // Network or other axios error
@@ -113,53 +113,44 @@ const Home = () => {
         }
     };
 
+    const [trendingProducts, setTrendingProducts] = useState([]);
+    const [trendingLoading, setTrendingLoading] = useState(false);
+    const [trendingError, setTrendingError] = useState(null);
+
+    const fetchTrendingProducts = async () => {
+        setTrendingLoading(true);
+        setTrendingError(null);
+        try {
+            const response = await axios.get('/api/trending-products');
+            const data = response.data;
+
+            if (data.success) {
+                setTrendingProducts(data.data); // categories data
+            } else {
+                // Backend responded but with success: false
+                setTrendingError(data.message || 'Failed to load trending products.');
+                console.log('Trending products error1:', data.message);
+            }
+        } catch (err) {
+            // Network or other axios error
+            setTrendingError(err.message || 'Something went wrong.');
+            console.log('Trending products error:', err);
+        } finally {
+            setTrendingLoading(false);
+        }
+    };
+
 
     // Various data that needs in this component please call them once designs complete
     useEffect(() => {
         fetchCategories();
     }, []);
 
-    // Trending products data array
-    const trendingProducts = [
-        {
-            name: 'Custom Mugs',
-            desc: 'Your design, our quality. Your design, our quality. Your design, our quality. Your design, our quality.',
-            image: 'https://picsum.photos/id/1011/400/300',
-            badge: 'New',
-            price: '12.99',
-            rating: 4.5,
-            stock: 12,
-            tags: ['Customizable', 'Eco-friendly'],
-            views: 1280,
-            discount: '-10%',
-            link: '/products/custom-mugs',
-        },
-        {
-            name: 'Posters',
-            desc: 'Make a bold statement. Make a bold statement. Make a bold statement. Make a bold statement.',
-            image: 'https://picsum.photos/id/1018/400/300',
-            price: '7.99',
-            rating: 4.0,
-            stock: 5,
-            tags: ['Bold'],
-            views: 800,
-            discount: '',
-            link: '/products/posters',
-        },
-        {
-            name: 'Business Cards',
-            desc: 'Professional first impression. Professional first impression. Professional first impression. Professional first impression.',
-            image: 'https://picsum.photos/id/1025/400/300',
-            badge: 'Hot',
-            price: '19.99',
-            rating: 4.9,
-            stock: 2,
-            tags: ['Premium', 'Fast Delivery'],
-            views: 1895,
-            discount: '-15%',
-            link: '/products/business-cards',
-        },
-    ];
+    useEffect(() => {
+        fetchTrendingProducts();
+    }, []);
+
+
 
     const popularProducts = [
         { name: 'X-Banners', slug: 'x-banners' },
@@ -550,83 +541,124 @@ const Home = () => {
                         Trending Products
                     </h2>
 
-                    {/* Product Grid */}
-                    <div className="tw-grid tw-gap-8 sm:tw-grid-cols-2 lg:tw-grid-cols-3">
-                        {trendingProducts.map((product, idx) => (
-                            <div
-                                key={idx}
-                                className="tw-bg-white tw-rounded-xl tw-shadow-md hover:tw-shadow-xl tw-transition-all tw-flex tw-flex-col tw-h-full tw-border"
-                                data-aos="fade-up"
-                                data-aos-delay={idx * 150}
+                    {trendingError && (
+                        <div className="tw-text-center tw-text-red-600 tw-mb-6">
+                            <p>Oops! {trendingError}</p>
+                            <button
+                                onClick={fetchTrendingProducts}
+                                className="tw-underline tw-text-blue-600"
                             >
+                                Retry
+                            </button>
+                        </div>
+                    )}
 
-                                <a href={product.link} className="tw-block">
-                                    <div className="tw-relative tw-overflow-hidden">
-                                        <img
-                                            src={product.image}
-                                            alt={product.name}
-                                            className="tw-w-full tw-h-56 tw-object-cover tw-transition-transform tw-duration-300 hover:tw-scale-105"
-                                        />
-                                        {product.badge && (
-                                            <span className="tw-absolute tw-top-2 tw-left-2 tw-bg-red-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
-                                                {product.badge}
-                                            </span>
-                                        )}
-                                        {product.discount && (
-                                            <span className="tw-absolute tw-top-2 tw-right-2 tw-bg-green-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
-                                                {product.discount}
-                                            </span>
-                                        )}
-                                    </div>
-                                </a>
+                    {/* Product Grid */}
+                    <div className="tw-grid tw-gap-8 sm:tw-grid-cols-2 lg:tw-grid-cols-5">
 
-                                <div className="tw-p-5 tw-flex tw-flex-col tw-flex-1 tw-h-full">
-                                    <h3 className="tw-text-xl tw-font-semibold tw-leading-tight tw-mb-1 tw-line-clamp-1">
-                                        <Link href={product.link}>{product.name}</Link>
-                                    </h3>
-
-                                    <div className="tw-flex tw-items-center tw-mb-1">
-                                        {[...Array(5)].map((_, i) => (
-                                            <svg
-                                                key={i}
-                                                className={`tw-w-4 tw-h-4 tw-fill-current ${i < Math.floor(product.rating) ? 'tw-text-yellow-400' : 'tw-text-gray-300'}`}
-                                                viewBox="0 0 20 20"
-                                            >
-                                                <path d="M10 15l-5.878 3.09 1.123-6.545L.49 6.91l6.564-.955L10 0l2.946 5.955 6.564.955-4.755 4.635 1.123 6.545z" />
-                                            </svg>
+                        {trendingLoading ? (
+                            [...Array(5)].map((_, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tw-bg-white tw-rounded-xl tw-shadow-md tw-border tw-p-4 tw-space-y-4 tw-animate-pulse"
+                                >
+                                    <div className="tw-h-56 tw-bg-gray-200 tw-rounded-md" />
+                                    <div className="tw-h-4 tw-bg-gray-200 tw-rounded tw-w-3/4" />
+                                    <div className="tw-flex tw-items-center tw-gap-2">
+                                        {[...Array(5)].map((_, starIdx) => (
+                                            <div key={starIdx} className="tw-w-4 tw-h-4 tw-bg-gray-200 tw-rounded" />
                                         ))}
-                                        <span className="tw-text-sm tw-text-gray-500 tw-ml-2">({product.views.toLocaleString()} views)</span>
+                                        <div className="tw-h-3 tw-bg-gray-200 tw-rounded tw-w-16" />
                                     </div>
-
-                                    <p className="tw-text-gray-600 tw-text-sm tw-mb-2 tw-line-clamp-3">
-                                        {product.desc}
-                                    </p>
-                                    <div className="tw-flex tw-items-center tw-justify-between tw-mt-auto">
-                                        <div>
-                                            <span className="tw-font-bold tw-text-[#f44032] tw-text-sm">LKR {product.price}</span>
-                                            <span className="tw-text-xs tw-text-gray-400 tw-ml-2">{product.stock <= 5 ? `Only ${product.stock} left!` : 'In Stock'}</span>
-                                        </div>
-                                        <button className="tw-bg-[#f44032] tw-text-white tw-px-4 tw-py-2 tw-rounded hover:tw-bg-red-600 tw-text-sm tw-transition">
-                                            Order Now
-                                        </button>
+                                    <div className="tw-h-3 tw-bg-gray-200 tw-rounded tw-w-full" />
+                                    <div className="tw-h-3 tw-bg-gray-100 tw-rounded tw-w-5/6" />
+                                    <div className="tw-flex tw-justify-between tw-items-center">
+                                        <div className="tw-h-4 tw-bg-gray-200 tw-w-24 tw-rounded" />
+                                        <div className="tw-h-8 tw-w-20 tw-bg-gray-300 tw-rounded" />
                                     </div>
-
-                                    <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-1 tw-overflow-hidden tw-max-h-[50px]">
-                                        {product.tags.map((tag, i) => (
-                                            <span
-                                                key={i}
-                                                className="tw-bg-gray-100 tw-text-gray-600 tw-text-xs tw-px-2 tw-py-1 tw-rounded"
-                                            >
-                                                #{tag}
-                                            </span>
+                                    <div className="tw-flex tw-gap-2 tw-flex-wrap">
+                                        {[...Array(3)].map((_, tagIdx) => (
+                                            <div key={tagIdx} className="tw-h-5 tw-w-12 tw-bg-gray-200 tw-rounded" />
                                         ))}
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        ) : (
+                            trendingProducts.map((product, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tw-bg-white tw-rounded-xl tw-shadow-md hover:tw-shadow-xl tw-transition-all tw-flex tw-flex-col tw-h-full tw-border"
+
+                                >
+
+                                    <a href={product.link} className="tw-block">
+                                        <div className="tw-relative tw-overflow-hidden">
+                                            <img
+                                                src={product.image}
+                                                alt={product.name}
+                                                className="tw-w-full tw-object-cover tw-transition-transform tw-duration-300 hover:tw-scale-105"
+                                            />
+                                            {product.badge && (
+                                                <span className="tw-absolute tw-top-2 tw-left-2 tw-bg-red-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
+                                                    {product.badge}
+                                                </span>
+                                            )}
+                                            {product.discount && (
+                                                <span className="tw-absolute tw-top-2 tw-right-2 tw-bg-green-500 tw-text-white tw-text-xs tw-px-2 tw-py-1 tw-rounded">
+                                                    {product.discount}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </a>
+
+                                    <div className="tw-p-5 tw-flex tw-flex-col tw-flex-1 tw-h-full">
+                                        <h6 className="tw-text-xl tw-font-semibold tw-leading-tight tw-mb-1 tw-line-clamp-1">
+                                            <Link href={product.link}>{product.name}</Link>
+                                        </h6>
+
+                                        <div className="tw-flex tw-items-center tw-mb-1">
+                                            {[...Array(5)].map((_, i) => (
+                                                <svg
+                                                    key={i}
+                                                    className={`tw-w-4 tw-h-4 tw-fill-current ${i < Math.floor(product.rating) ? 'tw-text-yellow-400' : 'tw-text-gray-300'}`}
+                                                    viewBox="0 0 20 20"
+                                                >
+                                                    <path d="M10 15l-5.878 3.09 1.123-6.545L.49 6.91l6.564-.955L10 0l2.946 5.955 6.564.955-4.755 4.635 1.123 6.545z" />
+                                                </svg>
+                                            ))}
+                                            <span className="tw-text-sm tw-text-gray-500 tw-ml-2">({(product.views ?? 0).toLocaleString()} views)</span>
+                                        </div>
+
+                                        <p className="tw-text-gray-600 tw-text-sm tw-mb-2 tw-line-clamp-3">
+                                            {product.desc}
+                                        </p>
+                                        <div className="tw-flex tw-items-center tw-justify-between tw-mt-auto">
+                                            <div>
+                                                <span className="tw-font-bold tw-text-[#f44032] tw-text-sm">LKR {product.price}</span>
+                                                <span className="tw-text-xs tw-text-gray-400 tw-ml-2">{product.stock <= 5 ? `Only ${product.stock} left!` : 'In Stock'}</span>
+                                            </div>
+                                            <button className="tw-bg-[#f44032] tw-text-white tw-px-4 tw-py-2 tw-rounded hover:tw-bg-red-600 tw-text-sm tw-transition">
+                                                Order Now
+                                            </button>
+                                        </div>
+
+                                        <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-1 tw-overflow-hidden tw-max-h-[50px]">
+                                            {product.tags.map((tag, i) => (
+                                                <span
+                                                    key={i}
+                                                    className="tw-bg-gray-100 tw-text-gray-600 tw-text-xs tw-px-2 tw-py-1 tw-rounded"
+                                                >
+                                                    #{tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
-            </section>
+            </section >
 
 
 
