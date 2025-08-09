@@ -27,10 +27,11 @@ Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.cat
 Route::get('/requests/quotations', [Home::class, 'quotations'])->name('requests.quotations');
 Route::get('/api/most-popular-products', [Home::class, 'mostPProducts'])->name('mostPopularProducts');
 Route::get('/public/{id}/product/{name}', [Home::class, 'productDetail'])->name('productDetail');
-Route::get('/share/{token}', fn ($token) => Inertia::render('SharedDesigns', ['token' => $token]))->name('share.page');
+Route::get('/share/{token}', fn($token) => Inertia::render('SharedDesigns', ['token' => $token]))->name('share.page');
 Route::get('/api/share/{token}', [DesignShareLinkController::class, 'publicLinkInfo']);
 Route::post('/api/share/{token}/verify', [DesignShareLinkController::class, 'verifyPassword']);
 Route::get('/api/trending-products', [Home::class, 'trending'])->name('trending.products');
+Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap')->withoutMiddleware([\App\Http\Middleware\HandleInertiaRequests::class]);
 
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
