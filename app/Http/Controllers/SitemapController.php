@@ -74,6 +74,10 @@ class SitemapController extends Controller
             // === Products ===
             Product::query()
                 ->where('status', 'published')
+                ->whereHas('workingGroup', function ($query) {
+                    $query->whereIn('name', ['Public', 'public']);
+                })
+                ->whereNull('deleted_at')
                 ->orderBy('id')
                 ->chunk(500, function ($chunk) use (&$urls) {
                     foreach ($chunk as $p) {
