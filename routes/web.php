@@ -21,6 +21,7 @@ Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
 Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
 Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
+
 Route::get('/api/category/all', [Home::class, 'categories'])->name('categories.all');
 Route::get('/gallery/designs', [Home::class, 'designs'])->name('designs.all');
 Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.categories');
