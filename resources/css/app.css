@@ -5,7 +5,6 @@
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 @custom-variant dark (&:where(.dark, .dark *)); */
 
-
 body {
     font-family: 'Be Vietnam Pro', sans-serif;
 }
@@ -16,23 +15,27 @@ body {
 .alert-enter {
     opacity: 0;
     transform: translateX(120%);
-  }
+}
 
-  .alert-enter-active {
+.alert-enter-active {
     opacity: 1;
     transform: translateX(0);
-    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-  }
+    transition:
+        opacity 0.3s ease-out,
+        transform 0.3s ease-out;
+}
 
-  .alert-exit {
+.alert-exit {
     opacity: 1;
     transform: translateX(0);
-  }
+}
 
-  .alert-exit-active {
+.alert-exit-active {
     opacity: 0;
     transform: translateX(120%);
-    transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+    transition:
+        opacity 0.3s ease-in,
+        transform 0.3s ease-in;
 }
 
 [type='text'],
@@ -50,16 +53,18 @@ body {
 [multiple],
 textarea,
 select {
-  background-color: transparent !important;
-  border-color: var(--input-form-light) !important;
-  border-radius: 8px !important;
+    background-color: transparent !important;
+    border-color: var(--input-form-light) !important;
+    border-radius: 8px !important;
 }
-.form-control.is-invalid, .was-validated .form-control:invalid {
-  border-color: var(--danger-main) !important;
-  background-size: '' !important;
+.form-control.is-invalid,
+.was-validated .form-control:invalid {
+    border-color: var(--danger-main) !important;
+    background-size: '' !important;
 }
-.form-select.is-invalid, .was-validated .form-select:invalid {
-  border-color: var(--bs-form-invalid-border-color) !important;
+.form-select.is-invalid,
+.was-validated .form-select:invalid {
+    border-color: var(--bs-form-invalid-border-color) !important;
 }
 
 @keyframes tw-spin {
@@ -75,15 +80,26 @@ select {
     animation: tw-spin 2s linear infinite;
 }
 .tw-no-scrollbar::-webkit-scrollbar {
-  display: none;
+    display: none;
 }
 .tw-no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 @media (max-width: 576px) {
-    .pagination .page-item:not(:first-child):not(:last-child):not(:nth-child(2)):not(:nth-last-child(2)) {
+    .pagination
+        .page-item:not(:first-child):not(:last-child):not(:nth-child(2)):not(
+            :nth-last-child(2)
+        ) {
         display: none;
+    }
+}
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
     }
 }

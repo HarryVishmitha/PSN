@@ -635,12 +635,13 @@ const Home = () => {
                                         <div className="tw-flex tw-items-center tw-justify-between tw-mt-auto">
                                             <div>
                                                 <span className="tw-font-bold tw-text-[#f44032] tw-text-sm">LKR {product.price}</span>
-                                                <span className="tw-text-xs tw-text-gray-400 tw-ml-2">{product.stock <= 5 ? `Only ${product.stock} left!` : 'In Stock'}</span>
+
                                             </div>
                                             <button className="tw-bg-[#f44032] tw-text-white tw-px-4 tw-py-2 tw-rounded hover:tw-bg-red-600 tw-text-sm tw-transition">
                                                 Order Now
                                             </button>
                                         </div>
+                                        <span className="tw-text-xs tw-text-gray-400 tw-ml-2">{product.stock <= 5 ? `Only ${product.stock} left!` : 'In Stock'}</span>
 
                                         <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-1 tw-overflow-hidden tw-max-h-[50px]">
                                             {product.tags.map((tag, i) => (
