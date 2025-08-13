@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductView;
-
+use App\Models\Design;
 
 class Home extends Controller
 {
@@ -291,8 +291,9 @@ class Home extends Controller
                     'category:id,name',
                     'categories:id,name',
                     'images' => fn($q) => $q->select('id', 'product_id', 'image_url')->limit(1),
+
                 ])
-                ->withCount('views')
+                ->withCount(['views'])
                 ->select('*') // keep original columns
                 ->selectRaw("$effectivePriceSql as effective_price");
 
@@ -389,7 +390,7 @@ class Home extends Controller
                     $query->latest('id');
                     break;
                 case 'views':
-                    $query->orderBy('views_count', 'desc')->orderBy('id', 'desc');
+                    $query->orderBy('views', 'desc')->orderBy('id', 'desc');
                     break;
                 case 'rating':
                     $query->orderBy('rating', 'desc')->orderBy('id', 'desc');
@@ -428,7 +429,7 @@ class Home extends Controller
                     'starting_price'     => $price,             // backwards compatibility
                     'stock'              => $p->stock ?? null,  // or compute from inventories if you prefer
                     'rating'             => $p->rating ?? null,
-                    'views'              => (int)($p->views_count ?? 0),
+                    'views'              => ($p->views ?? 0),
                     'badge'              => $p->badge ?? null,
                     'discount'           => $p->discount ?? null,
                 ];
@@ -611,6 +612,7 @@ class Home extends Controller
             'product' => [
                 'id'             => $product->id,
                 'name'           => $product->name,
+                'meta_description' => $product->meta_description,
                 'description'    => $product->description,
                 'pricing_method' => $product->pricing_method,   // 'standard' | 'roll'
                 'price'          => $product->price,            // you use `price`
@@ -630,16 +632,45 @@ class Home extends Controller
             ],
 
             'similarProducts' => $similarProducts->map(function ($p) {
-                // choose primary image or first
+                // ---------- image (prefer primary, then by order, then default) ----------
                 $img = $p->images
                     ->sortBy([['is_primary', 'desc'], ['image_order', 'asc']])
                     ->first();
+                $imageUrl = optional($img)->image_url ?? optional($p->images->first())->image_url ?? '/images/default.png';
+
+                // ---------- price / unit / display ----------
+                $isRoll    = ($p->pricing_method === 'roll');
+                $price     = $isRoll ? $p->price_per_sqft : $p->price; // effective price
+                $priceUnit = $isRoll ? 'per sq.ft' : ($p->unit_of_measure ?: 'piece');
+
+                // format display price (or fallback)
+                $displayPrice = $price !== null
+                    ? ('Rs ' . number_format((float) $price, 2) . ' ' . $priceUnit)
+                    : 'Contact for price';
+
+                // ---------- views (support multiple columns/relations safely) ----------
+                // Prefer computed counts if present; else try relation count; else 0
+
+
                 return [
-                    'id'         => $p->id,
-                    'name'       => $p->name,
-                    'image'      => optional($img)->image_url,
-                    'base_price' => $p->price, // frontend label says "From", so ok
-                    'url'        => route('productDetail', [
+                    'id'                => $p->id,
+                    'name'              => $p->name,
+                    'image'             => $imageUrl,
+                    'short_description' => Str::limit($p->description ?? '', 120),
+                    'pricing_method'    => $p->pricing_method,
+                    'effective_price'   => $price,
+                    'price_unit'        => $priceUnit,
+                    'display_price'     => $displayPrice,
+                    'category'          => optional($p->category)->name,
+                    'starting_price'    => $price,            // for backwards compatibility
+                    'stock'             => $p->stock ?? null, // or compute from inventories
+                    'rating'            => $p->rating ?? null,
+                    'views'             => $p->views,
+                    'badge'             => $p->badge ?? null,
+                    'discount'          => $p->discount ?? null,
+
+                    // keep your URL builder
+                    'url' => route('productDetail', [
                         'id'   => $p->id,
                         'name' => Str::slug($p->name),
                     ]),
@@ -648,5 +679,21 @@ class Home extends Controller
 
             'seo' => $seo,
         ]);
+    }
+
+    public function DesignlistForProduct(Request $request, Product $product)
+    {
+        $designs = Design::query()
+            ->select(['id', 'name', 'description', 'width', 'height', 'image_url', 'product_id'])
+            ->where('product_id', $product->id)
+            ->where('status', 'active')
+            ->where('access_type', 'working_group')
+            ->whereHas('workingGroup', function ($q) {
+                $q->whereRaw('LOWER(name) = ?', ['public']);
+            })
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json($designs);
     }
 }

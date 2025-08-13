@@ -103,3 +103,13 @@ select {
         transform: translateX(100%);
     }
 }
+
+/* Hide number spinners (optional) */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type='number'] {
+    -moz-appearance: textfield;
+}

@@ -34,6 +34,7 @@ Route::get('/api/share/{token}', [DesignShareLinkController::class, 'publicLinkI
 Route::post('/api/share/{token}/verify', [DesignShareLinkController::class, 'verifyPassword']);
 Route::get('/api/trending-products', [Home::class, 'trending'])->name('trending.products');
 Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap')->withoutMiddleware([\App\Http\Middleware\HandleInertiaRequests::class]);
+Route::get('/api/products/{product}/designs', [Home::class, 'DesignlistForProduct']);
 
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {

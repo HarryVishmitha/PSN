@@ -10,6 +10,10 @@ class Design extends Model
 {
     use HasFactory, SoftDeletes;
 
+    // ---- NEW: helpful constants (optional) ----
+    public const ACCESS_PUBLIC  = 'working_group';
+    public const STATUS_ACTIVE  = 'active';
+
     protected $fillable = [
         'name',
         'description',
@@ -62,5 +66,40 @@ class Design extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /** Only “active” designs (string status column) */
+    public function scopeActive($q)
+    {
+        return $q->where('status', self::STATUS_ACTIVE);
+        // If status is tinyint(1): return $q->where('status', 1);
+    }
+
+    /** Only designs that are globally public (access_type = 'public') */
+    public function scopePublicAccess($q)
+    {
+        return $q->where('access_type', self::ACCESS_PUBLIC);
+    }
+
+    /** Restrict to ‘public’ working group by name (case-insensitive) */
+    public function scopeInPublicWorkingGroup($q)
+    {
+        return $q->whereHas('workingGroup', function ($wq) {
+            $wq->whereRaw('LOWER(name) = ?', ['public']);
+        });
+    }
+
+    /** Restrict to a given product (accepts id or model) */
+    public function scopeForProduct($q, $product)
+    {
+        $productId = $product instanceof Product ? $product->getKey() : $product;
+        return $q->where('product_id', $productId);
+    }
+
+    /** One-liner you can reuse anywhere the catalog needs public designs */
+    public function scopePublicCatalog($q)
+    {
+        return $q->active()->publicAccess()->inPublicWorkingGroup();
+        // SoftDeletes automatically excludes deleted rows unless withTrashed() is used.
     }
 }
