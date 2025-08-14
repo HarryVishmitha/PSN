@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Head, Link } from "@inertiajs/react";
 import { Icon } from "@iconify/react";
 import Footer from "@/Components/Footer";
@@ -8,6 +8,7 @@ import CookieConsent from "@/Components/CookieConsent";
 import Breadcrumb from "@/Components/BreadcrumbHome";
 import axios from "axios";
 import ProductCard from "@/Components/ProductCard";
+import DesignSelector from "@/Components/DesignSelector";
 
 /* --------------------------- Skeletons (unchanged) --------------------------- */
 const imgFallback = "/images/default.png";
@@ -290,6 +291,27 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
         setLightboxOpen(true);
     };
 
+
+    const designsDetailsRef = useRef(null);
+
+    const openDesignsSection = () => {
+        try {
+            if (designsDetailsRef.current) {
+                // Ensure <details> is open then scroll
+                designsDetailsRef.current.open = true;
+                designsDetailsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+                // Fallback: scroll by id
+                document.getElementById("product-designs")?.scrollIntoView({ behavior: "smooth" });
+            }
+        } catch (_) { }
+    };
+
+    // simple hire flow — adjust to your route/modal
+    const hireDesigner = () => {
+        const url = `/hire-designer?product_id=${encodeURIComponent(product.id)}&name=${encodeURIComponent(product.name)}`;
+        window.location.href = url;
+    };
 
 
     return (
@@ -585,6 +607,17 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                     <p className="tw-text-[11px] tw-text-gray-500">Tip: you can also type a number</p>
                                 </div>
 
+                                <DesignSelector
+                                    productId={product.id}
+                                    designsCount={designs.length}
+                                    onOpenGallery={openDesignsSection}
+                                    onHireDesigner={hireDesigner}
+                                    onUploaded={(res) => {
+                                        // e.g. show a toast, attach design id to your quote payload, etc.
+                                        // console.log('uploaded:', res);
+                                    }}
+                                />
+
                             </div>
 
                             {/* CTA: full-width on mobile */}
@@ -720,11 +753,12 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                 {(!loadingDesigns && designs.length === 0) ? null : (
                     <section id="product-designs" className="tw-mt-10 md:tw-mt-12">
                         <details
+                            ref={designsDetailsRef}
                             className="group tw-rounded-2xl tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-bg-white dark:tw:bg-gray-900"
                             // auto-open if there are very few items
                             open={designs.length > 0 && designs.length <= 4}
                         >
-                            <summary className="tw-cursor-pointer tw-select-none tw-list-none tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-4 tw-py-3 md:tw-px-5 md:tw-py-4">
+                            <summary className="tw-cursor-pointer tw-select-none tw-list-none tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-4 tw-py-3 md:tw-px-5 md:tw-py-6">
                                 <div className="tw-flex tw-items-center tw-gap-2">
                                     <Icon icon="mdi:palette-outline" className="tw-text-xl tw-text-gray-500" />
                                     <h4 className="tw-text-base md:tw-text-lg tw-font-bold">Designs for this product</h4>

@@ -17,6 +17,7 @@ import Meta from '@/Components/Metaheads';
 gsap.registerPlugin(ScrollTrigger);
 import { router } from '@inertiajs/react';
 import axios from 'axios'
+import ProductCard from '@/Components/ProductCard';
 
 
 const Home = () => {

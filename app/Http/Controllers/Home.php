@@ -597,8 +597,8 @@ class Home extends Controller
                 ->whereHas('categories', function ($q) use ($categoryIds) {
                     $q->whereIn('categories.id', $categoryIds);
                 })
-                ->limit(8)
-                ->get(['id', 'name', 'price']);
+                ->limit(4)
+                ->get();
         }
 
         // 7) SEO fallbacks (use your meta_title/meta_description)
