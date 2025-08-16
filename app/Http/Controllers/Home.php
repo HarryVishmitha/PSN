@@ -522,28 +522,28 @@ class Home extends Controller
 
     public function productDetail(Request $request, $id, $name)
     {
-        // 1) Fetch product (published) with relations
+        // 1) Fetch product (published) with relations, including subvariants
         $product = Product::query()
             ->with([
                 'images:id,product_id,image_url,image_order,is_primary,alt_text',
                 'categories:id,name',
-                'variants:id,product_id,variant_name,variant_value,price_adjustment',
+                // primary variants
+                'variants:id,product_id,variant_name,variant_value,price_adjustment,deleted_at',
+                // nested subvariants
+                'variants.subvariants:id,product_variant_id,subvariant_name,subvariant_value,price_adjustment,deleted_at',
                 'tags:id,name',
             ])
             ->whereKey($id)
             ->where('status', 'published')
             ->firstOrFail();
 
-        // 2) Canonical slug redirect if slug mismatches
+        // 2) Canonical slug redirect
         $expectedSlug = Str::slug($product->name);
         if ($name !== $expectedSlug) {
-            return redirect()->route('productDetail', [
-                'id'   => $product->id,
-                'name' => $expectedSlug,
-            ], 301);
+            return redirect()->route('productDetail', ['id' => $product->id, 'name' => $expectedSlug], 301);
         }
 
-        // 3) Log a product view (your ProductView allows only these fields)
+        // 3) Log a product view (non-blocking)
         try {
             ProductView::create([
                 'product_id' => $product->id,
@@ -557,36 +557,74 @@ class Home extends Controller
             ]);
         }
 
-        // 4) Build variant groups to fit the frontend (variant → options[])
-        // Your table stores one row per option, so group by variant_name.
+        // 4) Build variant groups
+        // Input rows: ProductVariant (variant_name, variant_value)
+        // Children:   ProductSubvariant (subvariant_name, subvariant_value)
+        // Output shape expected by UI:
+        // [
+        //   { name: "Size", options: [
+        //       {
+        //         id, label, value, price_adjustment,
+        //         subgroups: [
+        //           { name: "Finish", options: [{id,label,value,price_adjustment}, ...] },
+        //           { name: "Color",  options: [...] }
+        //         ]
+        //       },
+        //       ...
+        //   ]},
+        //   ...
+        // ]
         $variantGroups = [];
         foreach ($product->variants as $v) {
-            $key = (string) $v->variant_name;
-            if (!isset($variantGroups[$key])) {
-                $variantGroups[$key] = [
-                    'id'     => md5($key),     // synthetic id for the group
-                    'name'   => $key,
+            $groupKey = (string) $v->variant_name;
+
+            if (!isset($variantGroups[$groupKey])) {
+                $variantGroups[$groupKey] = [
+                    'id'      => md5($groupKey),  // synthetic id for the group
+                    'name'    => $groupKey,
                     'options' => [],
                 ];
             }
-            $variantGroups[$key]['options'][] = [
+
+            // Base option
+            $option = [
                 'id'               => $v->id,
                 'label'            => $v->variant_value,
                 'value'            => $v->variant_value,
-                'price_adjustment' => $v->price_adjustment,
+                'price_adjustment' => (float) ($v->price_adjustment ?? 0),
             ];
-        }
-        $variantGroups = array_values($variantGroups); // reindex
 
-        // 5) Sort images: primary first, then by image_order
+            // Attach subgroups if present
+            if ($v->relationLoaded('subvariants') && $v->subvariants->isNotEmpty()) {
+                // Group children by their subvariant_name
+                $byName = [];
+                foreach ($v->subvariants as $sv) {
+                    $byName[$sv->subvariant_name][] = [
+                        'id'               => $sv->id,
+                        'label'            => $sv->subvariant_value,
+                        'value'            => $sv->subvariant_value,
+                        'price_adjustment' => (float) ($sv->price_adjustment ?? 0),
+                    ];
+                }
+
+                // Normalize to array of { name, options: [...] }
+                $option['subgroups'] = array_map(
+                    fn($name, $opts) => ['name' => $name, 'options' => array_values($opts)],
+                    array_keys($byName),
+                    array_values($byName)
+                );
+            }
+
+            $variantGroups[$groupKey]['options'][] = $option;
+        }
+        $variantGroups = array_values($variantGroups); // reindex for the UI
+
+        // 5) Sort images: primary first, then by order
         $images = $product->images
-            ->sortBy([
-                ['is_primary', 'desc'],
-                ['image_order', 'asc'],
-            ])
+            ->sortBy([['is_primary', 'desc'], ['image_order', 'asc']])
             ->values();
 
-        // 6) Similar products (shares any category, only published)
+        // 6) Similar products (shares any category)
         $categoryIds = $product->categories->pluck('id');
         $similarProducts = collect();
         if ($categoryIds->isNotEmpty()) {
@@ -594,63 +632,54 @@ class Home extends Controller
                 ->with(['images:id,product_id,image_url,is_primary,image_order'])
                 ->where('id', '!=', $product->id)
                 ->where('status', 'published')
-                ->whereHas('categories', function ($q) use ($categoryIds) {
-                    $q->whereIn('categories.id', $categoryIds);
-                })
+                ->whereHas('categories', fn($q) => $q->whereIn('categories.id', $categoryIds))
                 ->limit(4)
                 ->get();
         }
 
-        // 7) SEO fallbacks (use your meta_title/meta_description)
+        // 7) SEO fallbacks
         $seo = [
             'title'       => $product->meta_title ?? ($product->name . ' | Printair'),
-            'description' => $product->meta_description ?? Str::limit(strip_tags((string) $product->description), 160),
+            'description' => $product->meta_description
+                ?? Str::limit(strip_tags((string) $product->description), 160),
         ];
 
-        // 8) Send to Inertia page with fields that match your frontend
+        // 8) Return page payload
         return Inertia::render('ProductDetails', [
             'product' => [
-                'id'             => $product->id,
-                'name'           => $product->name,
+                'id'               => $product->id,
+                'name'             => $product->name,
                 'meta_description' => $product->meta_description,
-                'description'    => $product->description,
-                'pricing_method' => $product->pricing_method,   // 'standard' | 'roll'
-                'price'          => $product->price,            // you use `price`
-                'price_per_sqft' => $product->price_per_sqft,   // for roll
-                'images'         => $images->map(function ($img) {
-                    return [
-                        'id'         => $img->id,
-                        'image_url'  => $img->image_url,
-                        'alt'        => $img->alt_text,
-                        'sort_order' => $img->image_order,
-                        'is_primary' => (bool) $img->is_primary,
-                    ];
-                }),
-                'categories'     => $product->categories->map->only(['id', 'name']),
-                'variants'       => $variantGroups,             // grouped for UI
-                'tags'           => $product->tags->map->only(['id', 'name']),
+                'description'      => $product->description,
+                'pricing_method'   => $product->pricing_method,  // 'standard' | 'roll'
+                'price'            => $product->price,
+                'price_per_sqft'   => $product->price_per_sqft,
+                'images'           => $images->map(fn($img) => [
+                    'id'         => $img->id,
+                    'image_url'  => $img->image_url,
+                    'alt'        => $img->alt_text,
+                    'sort_order' => $img->image_order,
+                    'is_primary' => (bool) $img->is_primary,
+                ]),
+                'categories'       => $product->categories->map->only(['id', 'name']),
+                'variants'         => $variantGroups,             // <-- grouped + nested
+                'tags'             => $product->tags->map->only(['id', 'name']),
             ],
 
             'similarProducts' => $similarProducts->map(function ($p) {
-                // ---------- image (prefer primary, then by order, then default) ----------
                 $img = $p->images
                     ->sortBy([['is_primary', 'desc'], ['image_order', 'asc']])
                     ->first();
-                $imageUrl = optional($img)->image_url ?? optional($p->images->first())->image_url ?? '/images/default.png';
+                $imageUrl = optional($img)->image_url
+                    ?? optional($p->images->first())->image_url
+                    ?? '/images/default.png';
 
-                // ---------- price / unit / display ----------
                 $isRoll    = ($p->pricing_method === 'roll');
-                $price     = $isRoll ? $p->price_per_sqft : $p->price; // effective price
+                $price     = $isRoll ? $p->price_per_sqft : $p->price;
                 $priceUnit = $isRoll ? 'per sq.ft' : ($p->unit_of_measure ?: 'piece');
-
-                // format display price (or fallback)
                 $displayPrice = $price !== null
                     ? ('Rs ' . number_format((float) $price, 2) . ' ' . $priceUnit)
                     : 'Contact for price';
-
-                // ---------- views (support multiple columns/relations safely) ----------
-                // Prefer computed counts if present; else try relation count; else 0
-
 
                 return [
                     'id'                => $p->id,
@@ -661,16 +690,13 @@ class Home extends Controller
                     'effective_price'   => $price,
                     'price_unit'        => $priceUnit,
                     'display_price'     => $displayPrice,
-                    'category'          => optional($p->category)->name,
-                    'starting_price'    => $price,            // for backwards compatibility
-                    'stock'             => $p->stock ?? null, // or compute from inventories
+                    'starting_price'    => $price,
+                    'stock'             => $p->stock ?? null,
                     'rating'            => $p->rating ?? null,
-                    'views'             => $p->views,
+                    'views'             => method_exists($p, 'views') ? $p->views : null,
                     'badge'             => $p->badge ?? null,
                     'discount'          => $p->discount ?? null,
-
-                    // keep your URL builder
-                    'url' => route('productDetail', [
+                    'url'               => route('productDetail', [
                         'id'   => $p->id,
                         'name' => Str::slug($p->name),
                     ]),
@@ -680,6 +706,7 @@ class Home extends Controller
             'seo' => $seo,
         ]);
     }
+
 
     public function DesignlistForProduct(Request $request, Product $product)
     {

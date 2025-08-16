@@ -15,6 +15,8 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\DesignShareLinkController;
 use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Http\Controllers\UserDesignUploadController;
+use App\Http\Controllers\CartController;
 
 
 Route::get('/', [Home::class, 'index'])->name('home');
@@ -35,7 +37,24 @@ Route::post('/api/share/{token}/verify', [DesignShareLinkController::class, 'ver
 Route::get('/api/trending-products', [Home::class, 'trending'])->name('trending.products');
 Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap')->withoutMiddleware([\App\Http\Middleware\HandleInertiaRequests::class]);
 Route::get('/api/products/{product}/designs', [Home::class, 'DesignlistForProduct']);
+Route::post('/api/design-uploads', [UserDesignUploadController::class, 'storeFile'])->name('userUploadDesign');
+Route::post('/api/design-links', [UserDesignUploadController::class, 'storeLink'])->name('userLinkDesign');
+Route::post('/api/design-hire',    [UserDesignUploadController::class, 'storeHire']);
 
+Route::get('/api/cart', [CartController::class, 'show']);
+Route::post('/api/cart/merge', [CartController::class, 'mergeGuestCartOnLogin'])->middleware('auth');
+
+Route::post('/api/cart/items', [CartController::class, 'addItem']);
+Route::put('/api/cart/items/{item}', [CartController::class, 'updateItem']);
+Route::delete('/api/cart/items/{item}', [CartController::class, 'removeItem']);
+Route::delete('/api/cart', [CartController::class, 'clear']);
+
+Route::post('/api/cart/shipping', [CartController::class, 'setShippingMethod']);
+Route::post('/api/cart/offer', [CartController::class, 'applyOffer']);
+Route::delete('/api/cart/offer', [CartController::class, 'removeOffer']);
+
+Route::post('/api/cart/addresses', [CartController::class, 'setAddresses']);
+Route::post('/api/cart/items/{item}/attach-upload', [CartController::class, 'attachUpload']);
 
 Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
     // eager load relations:

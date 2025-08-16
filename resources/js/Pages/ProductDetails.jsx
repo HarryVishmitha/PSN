@@ -51,6 +51,8 @@ const CardSkeleton = () => (
     </div>
 );
 
+
+
 /* ------------------------------ Helpers ------------------------------ */
 const formatMoney = (num) =>
     (typeof num === "number" ? num : Number(num || 0)).toLocaleString(undefined, {
@@ -95,7 +97,27 @@ const Lightbox = ({ images = [], startIndex = 0, onClose }) => {
             <img
                 src={safeImg(images[idx]?.image_url || images[idx])}
                 alt={`Image ${idx + 1}`}
-                className="tw-max-h-[85vh] tw-max-w-[90vw] tw-object-contain tw-rounded-xl tw-shadow-2xl"
+                className="tw-max-h-[85vh] tw-max-w-[90vw] tw-object-contain tw-rounded-xl tw-shadow-2xl tw-select-none"
+                draggable={false}
+                onContextMenu={(e) => e.preventDefault()}
+                onDragStart={(e) => e.preventDefault()}
+                style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
+            />
+            <div
+                aria-hidden
+                className="tw-absolute tw-inset-0 tw-pointer-events-none tw-opacity-35"
+                style={{
+                    backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(
+                        `<svg xmlns='http://www.w3.org/2000/svg' width='260' height='200'>
+        <text x='0' y='140' font-size='36' font-family='sans-serif'
+              fill='rgba(255,255,255,0.65)' transform='rotate(-25 130 100)'>
+          PRINTAIR • SAMPLE
+        </text>
+      </svg>`
+                    )}")`,
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '260px 200px'
+                }}
             />
             <button
                 aria-label="Next"
@@ -109,27 +131,34 @@ const Lightbox = ({ images = [], startIndex = 0, onClose }) => {
 };
 
 // Masonry card for a single design (natural aspect ratio)
-const DesignCard = ({ d, i, onPreview }) => {
+const DesignCard = ({ d, i, onPreview, isSelected, onSelect }) => {
     const [loaded, setLoaded] = React.useState(false);
 
     return (
         <figure
-            className="tw-inline-block tw-w-full tw-mb-4 tw-rounded-2xl tw-overflow-hidden tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-bg-white tw-relative tw-group tw-break-inside-avoid"
+            className={[
+                "tw-inline-block tw-w-full tw-mb-4 tw-rounded-2xl tw-overflow-hidden",
+                "tw-border tw-bg-white tw-relative tw-group tw-break-inside-avoid",
+                isSelected ? "tw-border-[#f44032] tw-ring-2 tw-ring-[#f44032]/30"
+                    : "tw-border-gray-200 dark:tw-border-gray-800",
+            ].join(" ")}
             title={d?.name || "Design"}
+            aria-selected={!!isSelected}
         >
-            {/* Image keeps natural ratio: width 100%, height auto */}
             <img
                 src={safeImg(d?.image_url)}
                 alt={d?.name || "Design"}
                 loading="lazy"
                 onLoad={() => setLoaded(true)}
-                className="tw-block tw-w-full tw-h-auto"
+                className="tw-block tw-w-full tw-h-auto tw-select-none"
+                draggable={false}
+                onContextMenu={(e) => e.preventDefault()}
+                onDragStart={(e) => e.preventDefault()}
+                style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
             />
-            {!loaded && (
-                <div className="tw-absolute tw-inset-0 tw-bg-gray-100 dark:tw-bg-gray-800 tw-animate-pulse" />
-            )}
+            {!loaded && <div className="tw-absolute tw-inset-0 tw-bg-gray-100 dark:tw-bg-gray-800 tw-animate-pulse" />}
 
-            {/* Top-right preview button (shows on hover / always on touch) */}
+            {/* Preview */}
             <button
                 type="button"
                 onClick={() => onPreview(i)}
@@ -139,20 +168,51 @@ const DesignCard = ({ d, i, onPreview }) => {
                 <Icon icon="mdi:magnify-plus-outline" className="tw-text-lg" />
             </button>
 
-            {/* Bottom gradient caption (Unsplash-style) */}
+            {/* Select / Selected (ensure above gradient) */}
+            <button
+                type="button"
+                onClick={() => onSelect?.(d)}
+                className={[
+                    "tw-absolute tw-bottom-2 tw-right-2 tw-rounded-xl tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-shadow tw-z-10",
+                    isSelected ? "tw-bg-[#f44032] tw-text-white"
+                        : "tw-bg-white/90 hover:tw-bg-white tw-text-gray-800",
+                ].join(" ")}
+                aria-pressed={!!isSelected}
+            >
+                {isSelected ? "Selected" : "Select"}
+            </button>
+
+            <div
+                aria-hidden
+                className="tw-absolute tw-inset-0 tw-pointer-events-none tw-opacity-35 tw-mix-blend-multiply"
+                style={{
+                    backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(
+                        `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='160'>
+        <text x='0' y='120' font-size='28' font-family='sans-serif'
+              fill='rgba(255,255,255,0.7)' transform='rotate(-25 110 80)'>
+          PRINTAIR • SAMPLE
+        </text>
+      </svg>`
+                    )}")`,
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '220px 160px'
+                }}
+            />
+
+            {/* Caption gradient (pointer-events none, under the pill) */}
             <figcaption className="tw-pointer-events-none tw-absolute tw-inset-x-0 tw-bottom-0 tw-px-3 tw-py-2 tw-flex tw-items-center tw-justify-between tw-text-white tw-text-xs tw-bg-gradient-to-t tw-from-black/80 tw-to-transparent">
-                <span className="tw-truncate tw-font-medium">
-                    {d?.name || "Untitled"}
-                </span>
-                {(d?.width || d?.height) && (
-                    <span className="tw-ml-2 tw-shrink-0 tw-opacity-90">
-                        {(d?.width ?? "—")}×{(d?.height ?? "—")}
-                    </span>
-                )}
+                <span className="tw-truncate tw-font-medium tw-text-center">{d?.name || "Untitled"} <br /> {(d?.width || d?.height) && (
+                    <span className="tw-ml-2 tw-shrink-0 tw-opacity-90">{(d?.width ?? "—")} in ×{(d?.height ?? "—")} in</span>
+                )}</span>
+                {/* {(d?.width || d?.height) && (
+                    <span className="tw-ml-2 tw-shrink-0 tw-opacity-90">{(d?.width ?? "—")}×{(d?.height ?? "—")}</span>
+                )} */}
             </figcaption>
         </figure>
     );
 };
+
+
 
 
 /* ------------------------------- Main Page -------------------------------- */
@@ -171,6 +231,27 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
     const [imgLoading, setImgLoading] = useState(true);
     const [descOpen, setDescOpen] = useState(false); // NEW: collapsible description on mobile
 
+    // design choice coming from <DesignSelector />
+    const [selectedDesign, setSelectedDesign] = useState(null);
+
+
+    // CART states
+    const [cartBusy, setCartBusy] = useState(false);
+    const [cartAdded, setCartAdded] = useState(false);
+    const [cartMsg, setCartMsg] = useState(null);
+    const [cartErr, setCartErr] = useState(null);
+
+    // QUOTE states
+    const [quoteBusy, setQuoteBusy] = useState(false);
+    const [quoteRequested, setQuoteRequested] = useState(false);
+    const [quoteMsg, setQuoteMsg] = useState(null);
+    const [quoteErr, setQuoteErr] = useState(null);
+
+    // 'gallery' | 'file' | 'link' | 'hire' | null
+    const [designSource, setDesignSource] = useState(null);
+
+
+
     useEffect(() => {
         const t = setTimeout(() => setPageReady(true), 250);
         return () => clearTimeout(t);
@@ -185,8 +266,52 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
         );
     }
 
+    const chooseVariant = (groupName, opt) => {
+        setSelectedOptions(prev => ({
+            ...prev,
+            [groupName]: { id: opt.id, value: opt.value, sub: {} }, // reset subs when parent changes
+        }));
+    };
+
+    const chooseSubvariant = (groupName, subGroupName, opt) => {
+        setSelectedOptions(prev => ({
+            ...prev,
+            [groupName]: {
+                ...(prev[groupName] || {}),
+                sub: {
+                    ...((prev[groupName] || {}).sub || {}),
+                    [subGroupName]: { id: opt.id, value: opt.value },
+                }
+            }
+        }));
+    };
+
     const images = product?.images || [];
     const activeImage = images[activeIndex]?.image_url ?? imgFallback;
+
+    const variantAdj = useMemo(() => {
+        if (!Array.isArray(product?.variants)) return 0;
+        let adj = 0;
+
+        for (const group of product.variants) {
+            const pick = selectedOptions[group.name];
+            if (!pick) continue;
+
+            const parent = (group.options || []).find(o => o.value === pick.value || o.id === pick.id);
+            if (parent?.price_adjustment) adj += Number(parent.price_adjustment || 0);
+
+            if (parent?.subgroups && pick.sub) {
+                for (const sg of parent.subgroups) {
+                    const chosen = pick.sub[sg.name];
+                    if (!chosen) continue;
+                    const subOpt = (sg.options || []).find(o => o.value === chosen.value || o.id === chosen.id);
+                    if (subOpt?.price_adjustment) adj += Number(subOpt.price_adjustment || 0);
+                }
+            }
+        }
+        return adj;
+    }, [product?.variants, selectedOptions]);
+
 
     /* ------------------------------- Price Calc ------------------------------- */
     const computed = useMemo(() => {
@@ -201,16 +326,19 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
             const wFeet = sizeUnit === "in" ? (w / 12) : w;
             const hFeet = sizeUnit === "in" ? (h / 12) : h;
             const area = Math.max(wFeet * hFeet, 0);
-            const unit = area * pricePerSqft;
-            const total = Math.max(unit, 0) * Math.max(Number(quantity || 1), 1);
+            // base per-unit price is area * rate, then add variant adjustments (per unit)
+            const unit = Math.max(area * pricePerSqft + Number(variantAdj || 0), 0);
+            const total = unit * Math.max(Number(quantity || 1), 1);
             return { total, area };
         }
 
-        // STANDARD PRICING → use product.price (not base_price)
-        const unit = Number(product.price || 0);
-        const total = Math.max(unit, 0) * Math.max(Number(quantity || 1), 1);
+        // STANDARD
+        const unitBase = Number(product.price || 0);
+        const unit = Math.max(unitBase + Number(variantAdj || 0), 0);
+        const total = unit * Math.max(Number(quantity || 1), 1);
         return { total, area: 0 };
-    }, [product, width, height, sizeUnit, quantity]);
+    }, [product, width, height, sizeUnit, quantity, variantAdj]);
+
 
 
     const isRoll = product.pricing_method === "roll";
@@ -219,7 +347,139 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
 
     const changeQuantity = (delta) => setQuantity((q) => Math.max(1, Number(q || 1) + delta));
     const handleSelectThumb = (i) => { setActiveIndex(i); setImgLoading(true); };
-    const handleAddToQuote = () => { /* router.post(...) */ };
+
+    const buildPayload = (intent /* 'cart' | 'quote' */) => {
+        const payload = {
+            product_id: product.id,
+            quantity: Math.max(1, Number(quantity || 1)),
+            intent,
+        };
+
+        if (product.pricing_method === "roll") {
+            if (width) payload.width = Number(width);
+            if (height) payload.height = Number(height);
+            payload.size_unit = sizeUnit;
+        }
+
+        if (selectedOptions && Object.keys(selectedOptions).length) {
+            payload.selected_options = selectedOptions;
+        }
+
+        if (selectedDesign?.type === "file" || selectedDesign?.type === "link") {
+            payload.user_design_upload_id = selectedDesign.upload_id;
+        } else if (selectedDesign?.type === "hire") {
+            payload.hire_designer = true;
+        } else if (selectedDesign?.type === "gallery") {
+            const ids = Array.isArray(selectedDesign.ids) ? selectedDesign.ids : [];
+            if (ids.length === 1) payload.product_design_id = ids[0];
+            if (ids.length > 1) payload.product_design_ids = ids; // <— add array key your API expects
+        }
+
+
+        return payload;
+    };
+
+    const handleAddToCart = async () => {
+        if (!selectedDesign && designs.length > 0) {
+            setCartErr("Please select or upload a design first.");
+            return;
+        }
+
+
+        if (rollNeedsSize || cartBusy || cartAdded) return;
+
+        setCartBusy(true);
+        setCartMsg(null);
+        setCartErr(null);
+
+        try {
+            const payload = buildPayload('cart');
+            const { data } = await axios.post('/api/cart/items', payload, {
+                headers: { Accept: 'application/json' },
+                validateStatus: s => s >= 200 && s < 500,
+            });
+
+            if (data?.ok) {
+                setCartAdded(true);
+                setCartMsg('Added to cart.');
+            } else {
+                setCartErr(data?.message || 'Could not add to cart.');
+            }
+        } catch (e) {
+            setCartErr(e?.response?.data?.message || 'Could not add to cart.');
+        } finally {
+            setCartBusy(false);
+        }
+    };
+
+    const handleAddToQuote = async () => {
+        if (quoteBusy || quoteRequested) return;
+
+        setQuoteBusy(true);
+        setQuoteMsg(null);
+        setQuoteErr(null);
+
+        try {
+            // If you use a dedicated endpoint for quotes, change the URL below.
+            // Option A (same endpoint, flagged by intent):
+            const payload = buildPayload('quote');
+            const { data } = await axios.post('/api/cart/items', payload, {
+                headers: { Accept: 'application/json' },
+                validateStatus: s => s >= 200 && s < 500,
+            });
+
+            // Option B (separate endpoint):
+            // const { data } = await axios.post('/api/quotes', buildPayload('quote'), { ... });
+
+            if (data?.ok) {
+                setQuoteRequested(true);
+                setQuoteMsg('Quote request sent.');
+            } else {
+                setQuoteErr(data?.message || 'Could not send quote request.');
+            }
+        } catch (e) {
+            setQuoteErr(e?.response?.data?.message || 'Could not send quote request.');
+        } finally {
+            setQuoteBusy(false);
+        }
+    };
+
+
+    // when user chooses from the gallery
+    const selectGalleryDesign = (d) =>
+        setSelectedDesign({ type: "gallery", id: d?.id, name: d?.name, image_url: d?.image_url });
+
+    const [selectedGallery, setSelectedGallery] = useState([]);
+
+    const clearSelectedDesign = () => setSelectedDesign(null);
+
+    const toggleGalleryDesign = (d) => {
+        // ensure we're in gallery mode and the accordion is open
+        if (designSource !== 'gallery') setDesignSource('gallery');
+        openDesignsSection();
+
+        setSelectedGallery((prev) => {
+            const exists = prev.some(x => x.id === d.id);
+            const next = exists ? prev.filter(x => x.id !== d.id)
+                : [...prev, { id: d.id, name: d.name, image_url: d.image_url }];
+
+            setSelectedDesign(next.length ? { type: "gallery", ids: next.map(x => x.id) } : null);
+            setQuantity(next.length > 0 ? next.length : 1);
+            return next;
+        });
+    };
+
+
+
+    // Clear gallery selection (and keep quantity >=1)
+    const clearGallerySelection = () => {
+
+        setSelectedGallery([]);
+        if (selectedDesign?.type === "gallery") setSelectedDesign(null);
+        setQuantity(1);
+    };
+
+
 
     /* ------------------------------ Meta ------------------------------ */
     const slug = toSlug(product?.name || "");
@@ -309,9 +569,45 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
 
     // simple hire flow — adjust to your route/modal
     const hireDesigner = () => {
+        clearGallerySelection();
         const url = `/hire-designer?product_id=${encodeURIComponent(product.id)}&name=${encodeURIComponent(product.name)}`;
         window.location.href = url;
+        clearAllDesigns();
+        setDesignSource('hire');
     };
+
+    useEffect(() => {
+        if (selectedDesign?.type === "gallery") {
+            setQuantity(selectedGallery.length > 0 ? selectedGallery.length : 1);
+        }
+    }, [selectedGallery, selectedDesign?.type]);
+
+    const clearAllDesigns = () => {
+        setSelectedGallery([]);
+        setSelectedDesign(null);
+        setDesignSource(null);
+        setQuantity(1); // ← back to 1
+    };
+
+    useEffect(() => {
+        // if the selector/tab is not "gallery", wipe gallery picks & reset qty
+        if (designSource && designSource !== 'gallery') {
+            if (selectedGallery.length || selectedDesign?.type === 'gallery') {
+                setSelectedGallery([]);
+                setSelectedDesign(null);
+                setQuantity(1);
+            }
+        }
+    }, [designSource]);
+
+    useEffect(() => {
+        // keep qty in sync with gallery count, otherwise reset to 1
+        if (selectedDesign?.type === 'gallery') {
+            setQuantity(selectedGallery.length || 1);
+        } else if (!selectedDesign || selectedDesign?.type !== 'gallery') {
+            setQuantity(1);
+        }
+    }, [selectedDesign?.type, selectedGallery.length]);
 
 
     return (
@@ -403,7 +699,7 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                         </section>
 
                         {/* ---------------------------- Right Column ---------------------------- */}
-                        <section>
+                        <section className="tw-bg-white tw-p-7 tw-rounded-md">
                             {/* Title: smaller on mobile */}
                             <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-leading-snug md:tw-leading-[1.25] tw-tracking-tight tw-break-words tw-max-w-[40ch]">
                                 {product.name}
@@ -419,8 +715,14 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                 {isRoll && product.price_per_sqft && (
                                     <span className="tw-text-sm tw-text-gray-500">({formatMoney(product.price_per_sqft)} / sq.ft)</span>
                                 )}
-                            </div>
 
+
+                            </div>
+                            {variantAdj !== 0 && (
+                                <div className="tw-text-xs tw-text-gray-500">
+                                    Includes option adjustments: {variantAdj > 0 ? '+' : ''}Rs. {formatMoney(variantAdj)} per unit
+                                </div>
+                            )}
                             {/* Categories (your improved version) */}
                             {product.categories?.length > 0 && (
                                 <div className="tw-mt-4">
@@ -434,7 +736,7 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                             <li key={c.id}>
                                                 <Link
                                                     href={`/products/all?category_id=${c.id}`}
-                                                    className="tw-group tw-inline-flex tw-items-center tw-gap-1.5 tw-text-xs tw-font-medium tw-px-3 tw-py-1.5 tw-rounded-full tw-border tw-border-gray-200 tw-bg-white tw-text-gray-700 hover:tw-border-[#f44032] hover:tw-text-[#f44032] dark:tw-bg-gray-900 dark:tw-border-gray-700"
+                                                    className="tw-group tw-inline-flex tw-items-center tw-gap-1.5 tw-text-xs tw-font-medium tw-px-3 tw-py-1.5 tw-rounded-full border tw-border-gray-200 tw-bg-white tw-text-gray-700 hover:tw-border-[#f44032] hover:tw-text-[#f44032] dark:tw-bg-gray-900 dark:tw-border-gray-700"
                                                     title={`See more ${c.name}`}
                                                     aria-label={`See more "${c.name}" products`}
                                                 >
@@ -467,32 +769,82 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                             {/* Variants (unchanged logic) */}
                             {Array.isArray(product.variants) && product.variants.length > 0 && (
                                 <div className="tw-mt-6 tw-space-y-4">
-                                    {product.variants.map((v) => (
-                                        <div key={v.id} className="tw-space-y-2">
-                                            <label className="tw-text-sm tw-font-medium">{v.name}</label>
-                                            <div className="tw-flex tw-flex-wrap tw-gap-2">
-                                                {Array.isArray(v.options) &&
-                                                    v.options.map((opt) => {
-                                                        const active = selectedOptions[v.name] === opt.value;
+                                    {product.variants.map((group) => {
+                                        const current = selectedOptions[group.name];
+                                        return (
+                                            <div key={group.id ?? group.name} className="tw-space-y-3">
+                                                <label className="tw-text-sm tw-font-medium">{group.name}</label>
+
+                                                {/* Parent options */}
+                                                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                                    {(group.options || []).map((opt) => {
+                                                        const active = current?.value === opt.value || current?.id === opt.id;
                                                         return (
                                                             <button
                                                                 key={opt.id ?? opt.value}
                                                                 type="button"
-                                                                onClick={() => setSelectedOptions((prev) => ({ ...prev, [v.name]: opt.value }))}
-                                                                className={`tw-px-3 tw-py-2 tw-rounded-xl tw-border ${active
-                                                                    ? "tw-border-[#f44032] tw-text-[#f44032] tw-bg-[#f44032]/5"
-                                                                    : "tw-border-gray-300 dark:tw-border-gray-700 hover:tw-border-[#f44032]"
-                                                                    } tw-text-sm`}
+                                                                onClick={() => chooseVariant(group.name, opt)}
+                                                                className={`tw-px-3 tw-py-2 tw-rounded-xl tw-text-sm border transition
+                    ${active
+                                                                        ? "tw-border-[#f44032] tw-text-[#f44032] tw-bg-[#f44032]/5"
+                                                                        : "tw-border-gray-300 dark:tw-border-gray-700 hover:tw-border-[#f44032]"}
+                  `}
+                                                                title={opt.price_adjustment ? `+Rs ${formatMoney(opt.price_adjustment)}` : undefined}
                                                             >
                                                                 {opt.label ?? opt.value}
+                                                                {opt.price_adjustment
+                                                                    ? <span className="tw-ml-1 tw-text-xs tw-text-gray-500">(+{formatMoney(opt.price_adjustment)})</span>
+                                                                    : null}
                                                             </button>
                                                         );
                                                     })}
+                                                </div>
+
+                                                {/* Subgroups for the active parent option */}
+                                                {(() => {
+                                                    const parent = (group.options || []).find(o =>
+                                                        current && (o.value === current.value || o.id === current.id)
+                                                    );
+                                                    if (!parent?.subgroups?.length) return null;
+
+                                                    return parent.subgroups.map((sg) => {
+                                                        const chosen = current?.sub?.[sg.name];
+                                                        return (
+                                                            <div key={`${group.name}-${sg.name}`} className="tw-pt-1">
+                                                                <div className="tw-text-xs tw-font-medium tw-mb-1">{sg.name}</div>
+                                                                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                                                    {(sg.options || []).map(opt => {
+                                                                        const active = chosen && (chosen.value === opt.value || chosen.id === opt.id);
+                                                                        return (
+                                                                            <button
+                                                                                key={opt.id ?? opt.value}
+                                                                                type="button"
+                                                                                onClick={() => chooseSubvariant(group.name, sg.name, opt)}
+                                                                                className={`tw-px-3 tw-py-2 tw-rounded-xl tw-text-sm border transition
+                            ${active
+                                                                                        ? "tw-border-[#f44032] tw-text-[#f44032] tw-bg-[#f44032]/5"
+                                                                                        : "tw-border-gray-300 dark:tw-border-gray-700 hover:tw-border-[#f44032]"}
+                          `}
+                                                                                title={opt.price_adjustment ? `+Rs ${formatMoney(opt.price_adjustment)}` : undefined}
+                                                                            >
+                                                                                {opt.label ?? opt.value}
+                                                                                {opt.price_adjustment
+                                                                                    ? <span className="tw-ml-1 tw-text-xs tw-text-gray-500">(+{formatMoney(opt.price_adjustment)})</span>
+                                                                                    : null}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    });
+                                                })()}
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
+
 
                             {/* Pricing Controls: stacked & larger tap targets on mobile */}
                             <div className="tw-mt-6">
@@ -607,40 +959,97 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                     <p className="tw-text-[11px] tw-text-gray-500">Tip: you can also type a number</p>
                                 </div>
 
+
                                 <DesignSelector
                                     productId={product.id}
                                     designsCount={designs.length}
-                                    onOpenGallery={openDesignsSection}
+                                    onOpenGallery={() => { setDesignSource('gallery'); openDesignsSection(); }}
                                     onHireDesigner={hireDesigner}
                                     onUploaded={(res) => {
-                                        // e.g. show a toast, attach design id to your quote payload, etc.
-                                        // console.log('uploaded:', res);
+                                        clearAllDesigns();
+                                        setDesignSource(res?.type === 'link' ? 'link' : 'file');
+                                        setSelectedDesign({ type: res?.type, upload_id: res?.upload_id ?? null });
+                                    }}
+                                    // NEW (make DesignSelector controlled; see next block)
+                                    source={designSource}
+                                    onChangeSource={(src) => {
+                                        setDesignSource(src);
+                                        if (src !== 'gallery') clearAllDesigns();
+                                        if (src === 'gallery') openDesignsSection();
                                     }}
                                 />
 
                             </div>
 
                             {/* CTA: full-width on mobile */}
+
                             <div className="tw-mt-6 tw-flex tw-flex-col md:tw-flex-row tw-gap-3 tw-items-stretch md:tw-items-center">
+                                {/* Add to Cart */}
                                 <button
                                     type="button"
-                                    onClick={handleAddToQuote}
-                                    disabled={rollNeedsSize}
-                                    className={`tw-w-full md:tw-w-auto tw-inline-flex tw-justify-center tw-items-center tw-gap-2 tw-font-semibold tw-px-5 tw-py-3 tw-rounded-2xl tw-transition ${rollNeedsSize ? "tw-bg-gray-300 tw-text-gray-500 cursor-not-allowed" : "tw-bg-[#f44032] tw-text-white hover:tw-scale-[1.01]"
+                                    onClick={handleAddToCart}
+                                    disabled={rollNeedsSize || cartBusy || cartAdded}
+                                    className={`tw-w-full md:tw-w-auto tw-inline-flex tw-justify-center tw-items-center tw-gap-2 tw-font-semibold tw-px-5 tw-py-3 tw-rounded-2xl tw-transition ${rollNeedsSize || cartBusy || cartAdded
+                                        ? 'tw-bg-gray-300 tw-text-gray-500 cursor-not-allowed'
+                                        : 'tw-bg-[#f44032] tw-text-white hover:tw-scale-[1.01]'
                                         }`}
                                 >
                                     <Icon icon="mdi:cart-outline" className="tw-text-xl" />
-                                    Add to Quote
+                                    {cartAdded ? 'Added to Cart' : cartBusy ? 'Adding…' : 'Add to Cart'}
                                 </button>
 
+                                {/* Request Quote */}
+                                <button
+                                    type="button"
+                                    onClick={handleAddToQuote}
+                                    disabled={quoteBusy || quoteRequested}
+                                    className={[
+                                        "tw-w-full md:tw-w-auto tw-inline-flex tw-justify-center tw-items-center tw-gap-2 tw-font-semibold tw-px-5 tw-py-3 tw-rounded-2xl tw-transition border",
+                                        "focus-visible:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-inset focus-visible:tw-ring-[#f44032] focus-visible:tw-ring-offset-2",
+                                        (quoteBusy || quoteRequested)
+                                            ? "tw-bg-gray-300 tw-text-gray-500 tw-border-gray-300 tw-cursor-not-allowed disabled:tw-pointer-events-none"
+                                            : "tw-bg-white tw-text-black tw-border-gray-900 hover:tw-bg-black hover:tw-text-white hover:tw-border-black hover:tw-scale-[1.01]"
+                                    ].join(" ")}
+
+                                >
+                                    <Icon icon="mdi:file-document-edit-outline" className="tw-text-xl" />
+                                    {quoteRequested ? 'Quote Requested' : quoteBusy ? 'Sending…' : 'Request Quote'}
+                                </button>
+
+                                {/* Running total display (unchanged) */}
                                 <div className="md:tw-ml-2 tw-flex tw-justify-center md:tw-justify-start tw-items-center tw-gap-2 tw-text-gray-600">
                                     <Icon icon="mdi:cash-multiple" className="tw-text-xl" />
                                     <span className="tw-text-sm">
                                         Current total: Rs. {formatMoney(computed.total)}
-                                        {isRoll && computed.area > 0 && <span className="tw-text-xs tw-text-gray-500">  •  {formatMoney(computed.area)} sq.ft</span>}
+                                        {isRoll && computed.area > 0 && (
+                                            <span className="tw-text-xs tw-text-gray-500">  •  {formatMoney(computed.area)} sq.ft</span>
+                                        )}
                                     </span>
                                 </div>
                             </div>
+
+                            {/* One banner per action, independent */}
+                            {cartMsg && !cartErr && (
+                                <div className="tw-mt-2 tw-rounded-xl tw-border tw-border-emerald-300 tw-bg-emerald-50 tw-text-emerald-900 tw-p-3 tw-text-sm">
+                                    {cartMsg}
+                                </div>
+                            )}
+                            {cartErr && !cartMsg && (
+                                <div className="tw-mt-2 tw-rounded-xl tw-border tw-border-rose-300 tw-bg-rose-50 tw-text-rose-900 tw-p-3 tw-text-sm">
+                                    {cartErr}
+                                </div>
+                            )}
+                            {quoteMsg && !quoteErr && (
+                                <div className="tw-mt-2 tw-rounded-xl tw-border tw-border-sky-300 tw-bg-sky-50 tw-text-sky-900 tw-p-3 tw-text-sm">
+                                    {quoteMsg}
+                                </div>
+                            )}
+                            {quoteErr && !quoteMsg && (
+                                <div className="tw-mt-2 tw-rounded-xl tw-border tw-border-rose-300 tw-bg-rose-50 tw-text-rose-900 tw-p-3 tw-text-sm">
+                                    {quoteErr}
+                                </div>
+                            )}
+
                             {isRoll && (
                                 <div
                                     role="alert"
@@ -760,7 +1169,7 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                         >
                             <summary className="tw-cursor-pointer tw-select-none tw-list-none tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-4 tw-py-3 md:tw-px-5 md:tw-py-6">
                                 <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Icon icon="mdi:palette-outline" className="tw-text-xl tw-text-gray-500" />
+                                    <Icon icon="mdi:palette-outline" className="tw-text-3xl tw-text-red-500" />
                                     <h4 className="tw-text-base md:tw-text-lg tw-font-bold">Designs for this product</h4>
                                     {designs.length > 0 && (
                                         <span className="tw-text-xs tw-text-gray-500">({designs.length})</span>
@@ -779,6 +1188,24 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                     </div>
                                 )}
 
+
+                                {selectedGallery.length > 0 && (
+                                    <div className="tw-flex tw-items-center tw-gap-2 tw-px-4 md:tw-px-5 tw-mb-3">
+                                        <span className="tw-text-sm tw-font-medium">Selected designs: {selectedGallery.length}</span>
+                                        <div className="tw-flex -tw-space-x-2">
+                                            {selectedGallery.slice(0, 5).map(s => (
+                                                <img key={s.id} src={safeImg(s.image_url)} alt="" className="tw-w-7 tw-h-7 tw-rounded-md tw-object-cover tw-border tw-border-white tw-shadow" />
+                                            ))}
+                                            {selectedGallery.length > 5 && <span className="tw-text-xs tw-ml-2">+{selectedGallery.length - 5}</span>}
+                                        </div>
+                                        <button type="button" onClick={clearGallerySelection} className="tw-ml-auto tw-text-xs tw-underline tw-text-gray-600 hover:tw-text-[#f44032]">
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
+
+
+
                                 {loadingDesigns ? (
                                     <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-4 lg:tw-grid-cols-5 tw-gap-4">
                                         {[...Array(8)].map((_, i) => (
@@ -794,8 +1221,16 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                     designs.length > 0 && (
                                         <div className="tw-columns-2 sm:tw-columns-3 lg:tw-columns-4 tw-gap-4">
                                             {designs.map((d, i) => (
-                                                <DesignCard key={d.id || i} d={d} i={i} onPreview={openDesignPreview} />
+                                                <DesignCard
+                                                    key={d.id || i}
+                                                    d={d}
+                                                    i={i}
+                                                    onPreview={openDesignPreview}
+                                                    isSelected={selectedGallery.some(x => x.id === d.id)}
+                                                    onSelect={toggleGalleryDesign}
+                                                />
                                             ))}
+
                                         </div>
                                     )
                                 )}
@@ -832,23 +1267,30 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
             </div >
 
             {/* Sticky mobile CTA bar (space already reserved via pb-24) */}
-            < div className="md:tw-hidden tw-fixed tw-bottom-0 tw-inset-x-0 tw-z-40 tw-bg-white tw-border-t tw-border-gray-200 tw-p-3" >
+            <div className="md:tw-hidden tw-fixed tw-bottom-0 tw-inset-x-0 tw-z-40 tw-bg-white tw-border-t tw-border-gray-200 tw-p-3">
                 <div className="tw-container tw-mx-auto tw-flex tw-items-center tw-gap-2">
-                    <div className="tw-flex-1 tw-text-xs tw-text-gray-600">
-                        Total: <span className="tw-font-semibold tw-text-gray-800">Rs. {formatMoney(computed.total)}</span>
-                        {isRoll && computed.area > 0 && <span className="tw-text-[11px] tw-text-gray-500">  •  {formatMoney(computed.area)} sq.ft</span>}
-                    </div>
                     <button
-                        onClick={handleAddToQuote}
-                        disabled={rollNeedsSize}
-                        className={`tw-flex-1 tw-inline-flex tw-justify-center tw-items-center tw-gap-2 tw-h-11 tw-rounded-full tw-font-semibold tw-text-sm tw-shadow-sm ${rollNeedsSize ? "tw-bg-gray-300 tw-text-gray-500" : "tw-bg-[#f44032] tw-text-white"
+                        onClick={handleAddToCart}
+                        disabled={rollNeedsSize || cartBusy || cartAdded}
+                        className={`tw-flex-1 tw-inline-flex tw-justify-center tw-items-center tw-gap-2 tw-h-11 tw-rounded-full tw-font-semibold tw-text-sm tw-shadow-sm ${rollNeedsSize || cartBusy || cartAdded ? 'tw-bg-gray-300 tw-text-gray-500' : 'tw-bg-[#f44032] tw-text-white'
                             }`}
                     >
                         <Icon icon="mdi:cart-outline" className="tw-text-lg" />
-                        Add to Quote
+                        {cartAdded ? 'Added' : cartBusy ? 'Adding…' : 'Add to Cart'}
+                    </button>
+
+                    <button
+                        onClick={handleAddToQuote}
+                        disabled={quoteBusy || quoteRequested}
+                        className={`tw-flex-1 tw-inline-flex tw-justify-center tw-items-center tw-gap-2 tw-h-11 tw-rounded-full tw-font-semibold tw-text-sm tw-shadow-sm ${quoteBusy || quoteRequested ? 'tw-bg-gray-300 tw-text-gray-500' : 'tw-bg-black tw-text-white'
+                            }`}
+                    >
+                        <Icon icon="mdi:file-document-edit-outline" className="tw-text-lg" />
+                        {quoteRequested ? 'Requested' : quoteBusy ? 'Sending…' : 'Quote'}
                     </button>
                 </div>
-            </div >
+            </div>
+
 
             {lightboxOpen && (
                 <Lightbox
