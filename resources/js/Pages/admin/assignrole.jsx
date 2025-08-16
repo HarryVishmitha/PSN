@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AdminDashboard from '../../Layouts/AdminDashboard';
-import Breadcrumb from "@/components/Breadcrumb";
+import Breadcrumb from "@/Components/Breadcrumb";
 import { Icon } from "@iconify/react";
 import CookiesV from '@/Components/CookieConsent';
 import Alert from '@/Components/Alert';

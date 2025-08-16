@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import axios from 'axios';
 import { Head, Link } from '@inertiajs/react';
-import Header from '../components/Header';
+import Header from '../Components/Header';
 import CookieConsent from '@/Components/CookieConsent';
 import Meta from '@/Components/Metaheads';
 import Breadcrumb from '@/Components/BreadcrumbHome';

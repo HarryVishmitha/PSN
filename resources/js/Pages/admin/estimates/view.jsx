@@ -5,7 +5,7 @@ import 'datatables.net';
 // import 'datatables.net-dt/css/jquery.dataTables.css';
 import 'datatables.net-dt/js/dataTables.dataTables.js';
 import AdminDashboard from '@/Layouts/AdminDashboard';
-import Breadcrumb from '@/components/Breadcrumb';
+import Breadcrumb from '@/Components/Breadcrumb';
 import { Icon } from '@iconify/react';
 import CookiesV from '@/Components/CookieConsent';
 import Alert from '@/Components/Alert';

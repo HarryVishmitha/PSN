@@ -3,7 +3,7 @@ import { Head, Link } from "@inertiajs/react";
 import { Icon } from "@iconify/react";
 import Footer from "@/Components/Footer";
 import Meta from "@/Components/Metaheads";
-import Header from "@/components/Header";
+import Header from "@/Components/Header";
 import CookieConsent from "@/Components/CookieConsent";
 import Breadcrumb from "@/Components/BreadcrumbHome";
 import axios from "axios";

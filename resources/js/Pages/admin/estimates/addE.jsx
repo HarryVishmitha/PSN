@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AdminDashboard from '@/Layouts/AdminDashboard';
-import Breadcrumb from '@/components/Breadcrumb';
+import Breadcrumb from '@/Components/Breadcrumb';
 import { Icon } from '@iconify/react';
 import CookiesV from '@/Components/CookieConsent';
 import Meta from '@/Components/Metaheads';

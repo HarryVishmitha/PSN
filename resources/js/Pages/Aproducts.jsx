@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
+import Header from '@/Components/Header';
+import Footer from '@/Components/Footer';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 import ProductCard from '@/Components/ProductCard';

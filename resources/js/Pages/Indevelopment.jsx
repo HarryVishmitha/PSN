@@ -1,6 +1,6 @@
 import React from 'react';
 import { Head, Link } from '@inertiajs/react';
-import Header from '@/components/Header';
+import Header from '@/Components/Header';
 import CookieConsent from '@/Components/CookieConsent';
 import { useLayoutEffect, useState, useEffect, useRef } from 'react';
 import { Icon } from "@iconify/react";

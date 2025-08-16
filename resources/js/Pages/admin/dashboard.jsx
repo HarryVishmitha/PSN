@@ -5,7 +5,7 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import CookiesV from '@/Components/CookieConsent';
 import { Icon } from "@iconify/react";
 import AdminDashboard from '../../Layouts/AdminDashboard';
-import Breadcrumb from "@/components/Breadcrumb";
+import Breadcrumb from "@/Components/Breadcrumb";
 // import Metrics from '@/Components/Metrics';
 import Meta from '@/Components/Metaheads';
 

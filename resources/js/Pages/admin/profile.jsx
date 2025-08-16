@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import { Icon } from "@iconify/react";
 import AdminDashboard from '../../Layouts/AdminDashboard';
-import Breadcrumb from "@/components/Breadcrumb";
+import Breadcrumb from "@/Components/Breadcrumb";
 import CookiesV from '@/Components/CookieConsent';
 import axios from 'axios';
 import Alert from '@/Components/Alert';

@@ -5,7 +5,7 @@ import AdminNav from '@/Components/AdminNav';
 import CookiesV from '@/Components/CookieConsent';
 import { Icon } from "@iconify/react";
 import AdminDashboard from '../../Layouts/AdminDashboard';
-import Breadcrumb from "@/components/Breadcrumb";
+import Breadcrumb from "@/Components/Breadcrumb";
 import Alert from "@/Components/Alert";
 import Meta from '@/Components/Metaheads';
 

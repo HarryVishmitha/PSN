@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
 import UserDashboard from '@/Layouts/UserDashboard';
-import Breadcrumb from '@/components/Breadcrumb';
+import Breadcrumb from '@/Components/Breadcrumb';
 import { Icon } from '@iconify/react';
 import Alert from '@/Components/Alert';
 import Meta from '@/Components/Metaheads';

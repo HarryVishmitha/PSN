@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { Head, router } from '@inertiajs/react'
 import UserDashboard from '@/Layouts/UserDashboard'
-import Breadcrumb from "@/components/Breadcrumb"
+import Breadcrumb from "@/Components/Breadcrumb"
 import { Icon } from "@iconify/react"
 import CookiesV from '@/Components/CookieConsent'
 import Alert from "@/Components/Alert"
