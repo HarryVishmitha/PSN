@@ -39,14 +39,19 @@ export default function DesignSelector({
     onHireDesigner,  // () => void
     onUploaded,      // (payload) => void (optional) -- used for both uploads & links
     maxSizeMb = 25,
+    source,           // 'upload' | 'gallery' | 'hire' | 'link' | null
+    onChangeSource,   // (next) => void
 }) {
-    const [mode, setMode] = useState(null); // 'upload' | 'gallery' | 'hire' | 'link'
+    const [mode, setMode] = useState(null);
+    const controlled = source !== undefined;
+    const currentMode = controlled ? source : mode;
     const [file, setFile] = useState(null);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null);
     const [error, setError] = useState(null);
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const handleSelectMode = (key) => changeMode(key);
 
     // link state
     const [linkUrl, setLinkUrl] = useState("");
@@ -73,6 +78,13 @@ export default function DesignSelector({
 
     const isImage = (name = "") => /\.(png|jpe?g|webp|gif)$/i.test(name.trim());
 
+    const changeMode = useCallback((key) => {
+        onChangeSource?.(key);
+        if (!controlled) setMode(key);
+        if (key === "gallery") onOpenGallery?.();
+        if (key === "hire") onHireDesigner?.();
+    }, [onChangeSource, controlled, onOpenGallery, onHireDesigner]);
+
     const clearState = () => {
         setFile(null);
         setProgress(0);
@@ -91,9 +103,11 @@ export default function DesignSelector({
                 if (inputRef.current) inputRef.current.value = "";
                 return;
             }
+            // setFile(f);
+            if (currentMode !== "upload") changeMode("upload");
             setFile(f);
         },
-        [maxSizeMb]
+        [maxSizeMb, currentMode, changeMode]
     );
 
     const onPickFile = (e) => pickFile(e.target.files?.[0]);
@@ -194,6 +208,7 @@ export default function DesignSelector({
             if (data?.ok) {
                 payload = data;
                 setMessage("Link received. Make sure the file is publicly accessible.");
+                if (currentMode !== "link") changeMode("link");
             } else {
                 setError(data?.message || "Could not save the link. Please try again.");
             }
@@ -211,13 +226,14 @@ export default function DesignSelector({
     };
 
 
-    const handleSelectMode = (key) => {
-        setMode(key);
-        if (key === "gallery") onOpenGallery?.();
-        if (key === "hire") {
-            onUploaded?.({ ok: true, type: "hire" });
-        }
-    };
+    // const handleSelectMode = (key) => {
+    //     setMode(key);
+    //     if (key === "gallery") onOpenGallery?.();
+    //     if (key === "hire") {
+    //         onUploaded?.({ ok: true, type: "hire" });
+    //     }
+    // };
+
 
     return (
         <section aria-labelledby="select-design-title" className="tw-mt-6">
@@ -231,7 +247,7 @@ export default function DesignSelector({
             {/* Card radios */}
             <div role="radiogroup" aria-label="Design options" className="tw-grid md:tw-grid-cols-2 tw-gap-2">
                 {MODE_CARDS.map((c) => {
-                    const selected = mode === c.key;
+                    const selected = currentMode === c.key;
                     return (
                         <button
                             key={c.key}
@@ -282,7 +298,7 @@ export default function DesignSelector({
             </div>
 
             {/* Upload panel */}
-            {mode === "upload" && (
+            {currentMode === "upload" && (
                 <div className="tw-mt-3 tw-rounded-2xl tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-bg-white dark:tw-bg-gray-900 tw-p-4">
                     <div
                         onDrop={onDrop}
@@ -396,7 +412,7 @@ export default function DesignSelector({
             )}
 
             {/* Share a link panel */}
-            {mode === "link" && (
+            {currentMode === "link" && (
                 <div className="tw-mt-3 tw-rounded-2xl tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-bg-white dark:tw-bg-gray-900 tw-p-4">
                     <div className="tw-space-y-2">
                         <label className="tw-text-sm tw-font-medium">Paste your public file link</label>

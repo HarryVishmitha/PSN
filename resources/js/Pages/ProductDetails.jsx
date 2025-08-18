@@ -9,6 +9,7 @@ import Breadcrumb from "@/Components/BreadcrumbHome";
 import axios from "axios";
 import ProductCard from "@/Components/ProductCard";
 import DesignSelector from "@/Components/DesignSelector";
+import { addCartItem } from "@/lib/cartApi";
 
 /* --------------------------- Skeletons (unchanged) --------------------------- */
 const imgFallback = "/images/default.png";
@@ -247,7 +248,7 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
     const [quoteMsg, setQuoteMsg] = useState(null);
     const [quoteErr, setQuoteErr] = useState(null);
 
-    // 'gallery' | 'file' | 'link' | 'hire' | null
+    // 'gallery' | 'upload' | 'link' | 'hire' | null
     const [designSource, setDesignSource] = useState(null);
 
 
@@ -348,7 +349,7 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
     const changeQuantity = (delta) => setQuantity((q) => Math.max(1, Number(q || 1) + delta));
     const handleSelectThumb = (i) => { setActiveIndex(i); setImgLoading(true); };
 
-    const buildPayload = (intent /* 'cart' | 'quote' */) => {
+    const buildPayload = (intent /* 'cart' | 'quote' */, opts = {}) => {
         const payload = {
             product_id: product.id,
             quantity: Math.max(1, Number(quantity || 1)),
@@ -365,14 +366,15 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
             payload.selected_options = selectedOptions;
         }
 
-        if (selectedDesign?.type === "file" || selectedDesign?.type === "link") {
+        // Treat both "upload" and legacy "file" as uploads
+        if (selectedDesign?.type === "upload" || selectedDesign?.type === "file" || selectedDesign?.type === "link") {
             payload.user_design_upload_id = selectedDesign.upload_id;
         } else if (selectedDesign?.type === "hire") {
             payload.hire_designer = true;
         } else if (selectedDesign?.type === "gallery") {
-            const ids = Array.isArray(selectedDesign.ids) ? selectedDesign.ids : [];
-            if (ids.length === 1) payload.product_design_id = ids[0];
-            if (ids.length > 1) payload.product_design_ids = ids; // <— add array key your API expects
+            // For gallery, we set a single ID here; multi-select handled in handleAddToCart
+            const singleId = opts.singleGalleryId ?? (Array.isArray(selectedDesign.ids) ? selectedDesign.ids[0] : selectedDesign.id);
+            if (singleId) payload.product_design_id = singleId;
         }
 
 
@@ -384,8 +386,6 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
             setCartErr("Please select or upload a design first.");
             return;
         }
-
-
         if (rollNeedsSize || cartBusy || cartAdded) return;
 
         setCartBusy(true);
@@ -393,20 +393,27 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
         setCartErr(null);
 
         try {
-            const payload = buildPayload('cart');
-            const { data } = await axios.post('/api/cart/items', payload, {
-                headers: { Accept: 'application/json' },
-                validateStatus: s => s >= 200 && s < 500,
-            });
-
-            if (data?.ok) {
+            // If user selected multiple gallery designs, add one line per design id.
+            if (selectedDesign?.type === "gallery" && Array.isArray(selectedDesign.ids) && selectedDesign.ids.length > 1) {
+                for (const gid of selectedDesign.ids) {
+                    const payload = buildPayload("cart", { singleGalleryId: gid });
+                    await addCartItem(payload); // emits cart:updated each time
+                }
                 setCartAdded(true);
-                setCartMsg('Added to cart.');
+                setCartMsg(`Added ${selectedDesign.ids.length} designs to cart.`);
             } else {
-                setCartErr(data?.message || 'Could not add to cart.');
+                // Single design (gallery single, upload/link, hire, or no-design products)
+                const payload = buildPayload("cart");
+                const data = await addCartItem(payload); // emits cart:updated
+                if (data?.ok !== false) {
+                    setCartAdded(true);
+                    setCartMsg("Added to cart.");
+                } else {
+                    setCartErr(data?.message || "Could not add to cart.");
+                }
             }
         } catch (e) {
-            setCartErr(e?.response?.data?.message || 'Could not add to cart.');
+            setCartErr(e?.response?.data?.message || e?.message || "Could not add to cart.");
         } finally {
             setCartBusy(false);
         }
@@ -570,10 +577,9 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
     // simple hire flow — adjust to your route/modal
     const hireDesigner = () => {
         clearGallerySelection();
-        const url = `/hire-designer?product_id=${encodeURIComponent(product.id)}&name=${encodeURIComponent(product.name)}`;
-        window.location.href = url;
-        clearAllDesigns();
+        setSelectedDesign({ type: 'hire' }); // so buildPayload adds { hire_designer: true }
         setDesignSource('hire');
+        // No redirect
     };
 
     useEffect(() => {
@@ -966,17 +972,23 @@ export default function ProductDetails({ product, similarProducts = [], seo }) {
                                     onOpenGallery={() => { setDesignSource('gallery'); openDesignsSection(); }}
                                     onHireDesigner={hireDesigner}
                                     onUploaded={(res) => {
-                                        clearAllDesigns();
-                                        setDesignSource(res?.type === 'link' ? 'link' : 'file');
+                                        // Only clear gallery picks; keep current mode & selection
+                                        clearGallerySelection();
+                                        setDesignSource(res?.type === 'link' ? 'link' : 'upload');
                                         setSelectedDesign({ type: res?.type, upload_id: res?.upload_id ?? null });
                                     }}
                                     // NEW (make DesignSelector controlled; see next block)
                                     source={designSource}
                                     onChangeSource={(src) => {
                                         setDesignSource(src);
-                                        if (src !== 'gallery') clearAllDesigns();
-                                        if (src === 'gallery') openDesignsSection();
+                                        if (src === 'gallery') {
+                                            openDesignsSection();
+                                        } else {
+                                            // Only clear gallery picks, not the whole state
+                                            clearGallerySelection();
+                                        }
                                     }}
+
                                 />
 
                             </div>

@@ -112,14 +112,14 @@ class CartItem extends Model
     }
 
     // Optional: if you have variant models, uncomment these:
-    // public function variant()
-    // {
-    //     return $this->belongsTo(ProductVariant::class, 'variant_id');
-    // }
-    // public function subvariant()
-    // {
-    //     return $this->belongsTo(ProductVariant::class, 'subvariant_id');
-    // }
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+    public function subvariant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'subvariant_id');
+    }
 
     /* ----------------------------------------------------------------------
      |  Model events: keep fingerprint (& area) in sync automatically
@@ -251,22 +251,35 @@ class CartItem extends Model
      */
     public static function fingerprintOptions($options): ?string
     {
-        if (!$options || !is_array($options)) return null;
+        if (empty($options) || !is_array($options)) return null;
 
-        $norm = [];
-        foreach ($options as $k => $v) {
-            $key = strtolower(trim((string) $k));
-            if (is_array($v)) {
-                $vals = array_map(fn($x) => strtolower(trim((string) $x)), $v);
-                sort($vals, SORT_NATURAL);
-                $val = implode('|', $vals);
-            } else {
-                $val = strtolower(trim((string) $v));
+        $normalize = function ($value) use (&$normalize) {
+            if (is_array($value)) {
+                // Sort associative arrays for canonical order
+                if (CartItem::isAssoc($value)) {
+                    ksort($value);
+                }
+                // Recurse into children
+                foreach ($value as $k => $v) {
+                    $value[$k] = $normalize($v);
+                }
+                return $value;
             }
-            $norm[$key] = $val;
-        }
-        ksort($norm, SORT_NATURAL);
+            // Normalize scalars to strings
+            if (is_bool($value)) return $value ? 'true' : 'false';
+            if ($value === null)  return 'null';
+            return (string) $value;
+        };
 
-        return substr(hash('sha256', json_encode($norm, JSON_UNESCAPED_UNICODE)), 0, 40);
+        $normalized = $normalize($options);
+        $json = json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        // 64-hex sha256; matches VARCHAR(64) nicely
+        return hash('sha256', $json);
+    }
+
+    protected static function isAssoc(array $arr): bool
+    {
+        return array_keys($arr) !== range(0, count($arr) - 1);
     }
 }

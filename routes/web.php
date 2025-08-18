@@ -17,7 +17,8 @@ use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Http\Controllers\UserDesignUploadController;
 use App\Http\Controllers\CartController;
-
+use Illuminate\Support\Facades\DB;
+use App\Models\Product;
 
 Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
@@ -40,6 +41,40 @@ Route::get('/api/products/{product}/designs', [Home::class, 'DesignlistForProduc
 Route::post('/api/design-uploads', [UserDesignUploadController::class, 'storeFile'])->name('userUploadDesign');
 Route::post('/api/design-links', [UserDesignUploadController::class, 'storeLink'])->name('userLinkDesign');
 Route::post('/api/design-hire',    [UserDesignUploadController::class, 'storeHire']);
+
+Route::get('/api/product-summaries', function (\Illuminate\Http\Request $req) {
+    $ids = collect(explode(',', (string)$req->query('ids')))
+        ->map(fn($x) => (int)$x)
+        ->filter()
+        ->unique()
+        ->values();
+
+    if ($ids->isEmpty()) {
+        return response()->json(['ok' => true, 'items' => new \stdClass()]);
+    }
+
+    $products = Product::whereIn('id', $ids)->get(['id', 'name', 'meta_description', 'pricing_method'])->keyBy('id');
+    $primaries = DB::table('product_images')
+        ->select('product_id', 'image_url')
+        ->whereIn('product_id', $ids)
+        ->where('is_primary', 1)
+        ->get()
+        ->keyBy('product_id');
+
+    $map = [];
+    foreach ($ids as $id) {
+        $p = $products->get($id);
+        $map[$id] = $p ? [
+            'id' => $p->id,
+            'name' => $p->name,
+            'meta_description' => $p->meta_description,
+            'pricing_method' => $p->pricing_method,
+            'primary_image_url' => optional($primaries->get($id))->image_url,
+        ] : null;
+    }
+
+    return response()->json(['ok' => true, 'items' => $map]);
+});
 
 Route::get('/api/cart', [CartController::class, 'show']);
 Route::post('/api/cart/merge', [CartController::class, 'mergeGuestCartOnLogin'])->middleware('auth');

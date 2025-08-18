@@ -28,6 +28,7 @@ import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot, hydrateRoot } from 'react-dom/client';
+import { CartProvider } from "./context/CartContext";
 
 const appName = import.meta.env.VITE_APP_NAME || 'Printair';
 
@@ -46,7 +47,9 @@ createInertiaApp({
 
         createRoot(el).render(
             <BrowserRouter>
-                <App {...props} />
+                <CartProvider>
+                    <App {...props} />
+                </CartProvider>
             </BrowserRouter>
         );
     },

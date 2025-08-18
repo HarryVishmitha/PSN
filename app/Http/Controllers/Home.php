@@ -503,7 +503,7 @@ class Home extends Controller
     public function cart()
     {
 
-        return Inertia::render('Indevelopment');
+        return Inertia::render('Cart');
         // return Inertia::render('Cart');
     }
 

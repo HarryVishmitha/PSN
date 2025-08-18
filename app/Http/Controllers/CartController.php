@@ -118,7 +118,7 @@ class CartController extends Controller
             $cart->save();
         }
 
-        return $cart->fresh(['items', 'adjustments']);
+        return $cart->fresh(['items.userDesignUpload', 'adjustments']);
     }
 
     public function mergeGuestCartOnLogin(Request $req)
@@ -202,7 +202,7 @@ class CartController extends Controller
     public function show(Request $req)
     {
         $cart = $this->getOrCreateCart($req);
-        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart)]);
+        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items.userDesignUpload', 'adjustments']))]);
     }
 
     /* ============================================================
@@ -377,10 +377,10 @@ class CartController extends Controller
             }
         });
 
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
-        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items', 'adjustments']))]);
+        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items.userDesignUpload', 'adjustments']))]);
     }
 
     public function updateItem(Request $req, CartItem $item)
@@ -482,10 +482,10 @@ class CartController extends Controller
 
         $item->save();
 
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
-        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items', 'adjustments']))]);
+        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items.userDesignUpload', 'adjustments']))]);
     }
 
     public function removeItem(Request $req, CartItem $item)
@@ -496,10 +496,10 @@ class CartController extends Controller
         }
 
         $item->delete();
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
-        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items', 'adjustments']))]);
+        return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart->fresh(['items.userDesignUpload', 'adjustments']))]);
     }
 
     public function clear(Request $req)
@@ -541,7 +541,7 @@ class CartController extends Controller
             $adj->save();
         });
 
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
         return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart)]);
@@ -598,7 +598,7 @@ class CartController extends Controller
             $adj->save();
         });
 
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
         return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart)]);
@@ -611,7 +611,7 @@ class CartController extends Controller
         $cart = $this->getOrCreateCart($req);
         $cart->adjustments()->where('type', 'discount')->where('code', trim(Str::upper($data['code'])))->delete();
 
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
         return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart)]);
@@ -644,7 +644,7 @@ class CartController extends Controller
             $cart->save();
         }
 
-        $cart->refresh()->load(['items', 'adjustments']);
+        $cart->refresh()->load(['items.userDesignUpload', 'adjustments']);
         $this->recalculate($cart);
 
         return response()->json(['ok' => true, 'cart' => $this->buildSummary($cart)]);
@@ -762,37 +762,102 @@ class CartController extends Controller
 
     protected function buildSummary(Cart $cart): array
     {
+        // Ensure relations are ready (avoids N+1 no matter who called us)
+        $cart->loadMissing(['items.userDesignUpload', 'adjustments']);
+
         $cols      = $this->cartTotalCols();
         $designCol = $this->designCol();
         $totalCol  = $this->itemTotalCol();
         $hasVar    = $this->hasVariantCols();
         $hasOpt    = $this->hasOptionsCols();
 
+        // Products map
+        $productIds = $cart->items->pluck('product_id')->unique()->all();
+        $products = \App\Models\Product::whereIn('id', $productIds)
+            ->get(['id', 'name', 'meta_description', 'pricing_method'])
+            ->keyBy('id');
+
+        // Primary images map
+        $primaries = \Illuminate\Support\Facades\DB::table('product_images')
+            ->select('product_id', 'image_url')
+            ->whereIn('product_id', $productIds)
+            ->where('is_primary', 1)
+            ->get()
+            ->keyBy('product_id');
+
+        // (Optional) Gallery design map (for thumbnails/names when a gallery design is selected)
+        $designIds = $cart->items->pluck($designCol)->filter()->unique()->all();
+        $designs = [];
+        if (!empty($designIds)) {
+            $designs = \Illuminate\Support\Facades\DB::table('designs')
+                ->select('id', 'name', 'image_url')
+                ->whereIn('id', $designIds)
+                ->get()
+                ->keyBy('id');
+        }
+
         return [
             'id'       => $cart->id,
             'status'   => $cart->status,
             'currency' => $cart->currency_code,
-            'items'    => $cart->items->map(function (CartItem $i) use ($designCol, $totalCol, $hasVar, $hasOpt) {
+
+            'items'    => $cart->items->map(function (\App\Models\CartItem $i) use ($products, $primaries, $designCol, $totalCol, $hasVar, $hasOpt, $designs) {
+                $p   = $products->get($i->product_id);
+                $img = optional($primaries->get($i->product_id))->image_url;
+
+                $galleryDesign = null;
+                $dId = $i->{$designCol};
+                if ($dId && isset($designs[$dId])) {
+                    $gd = $designs[$dId];
+                    $galleryDesign = [
+                        'id'        => $gd->id,
+                        'name'      => $gd->name,
+                        'image_url' => $gd->image_url,
+                    ];
+                }
+
                 return array_filter([
-                    'id'                    => $i->id,
-                    'product_id'            => $i->product_id,
-                    'design_id'             => $i->{$designCol},
-                    'user_design_upload_id' => $i->user_design_upload_id,
-                    'quantity'              => $i->quantity,
-                    'unit_price'            => (float)$i->unit_price,
-                    'subtotal'              => (float)$i->{$totalCol},
-                    'size_unit'             => $i->size_unit,
-                    'width'                 => $i->width,
-                    'height'                => $i->height,
-                    'area'                  => $i->area ?? null,
-                    // variants
-                    'variant_id'            => $hasVar ? $i->variant_id    : null,
-                    'subvariant_id'         => $hasVar ? $i->subvariant_id : null,
-                    'variant_sku'           => $hasVar ? $i->variant_sku   : null,
-                    // options
-                    'options'               => $hasOpt ? $i->options : (($i->meta['options'] ?? null) ?: null),
+                    'id'                        => $i->id,
+                    'product_id'                => $i->product_id,
+                    'product_name'              => optional($p)->name,
+                    'product_primary_image'     => $img,
+                    'product_meta_description'  => optional($p)->meta_description,
+                    'pricing_method'            => optional($p)->pricing_method,
+
+                    // Design references
+                    'design_id'                 => $dId,
+                    'design'                    => $galleryDesign, // <- optional, for gallery designs
+                    'user_design_upload_id'     => $i->user_design_upload_id,
+                    'user_design_upload'        => $i->userDesignUpload ? [
+                        'type'              => $i->userDesignUpload->type,        // 'file' | 'link' | 'hire'
+                        'status'            => $i->userDesignUpload->status,      // 'pending' | 'approved' | ...
+                        'file_path'         => $i->userDesignUpload->file_path,
+                        'external_url'      => $i->userDesignUpload->external_url,
+                        'image_url'         => $i->userDesignUpload->image_url,   // handy for a preview
+                        'original_filename' => $i->userDesignUpload->original_filename,
+                    ] : null,
+
+                    // Pricing & quantity
+                    'quantity'                  => $i->quantity,
+                    'unit_price'                => (float)$i->unit_price,
+                    'subtotal'                  => (float)$i->{$totalCol},
+
+                    // Size (roll)
+                    'size_unit'                 => $i->size_unit,
+                    'width'                     => $i->width,
+                    'height'                    => $i->height,
+                    'area'                      => $i->area ?? null,
+
+                    // Variants
+                    'variant_id'                => $hasVar ? $i->variant_id    : null,
+                    'subvariant_id'             => $hasVar ? $i->subvariant_id : null,
+                    'variant_sku'               => $hasVar ? $i->variant_sku   : null,
+
+                    // Options
+                    'options'                   => $hasOpt ? $i->options : (($i->meta['options'] ?? null) ?: null),
                 ], fn($v) => $v !== null);
             })->values(),
+
             'adjustments' => $cart->adjustments->map(fn($a) => [
                 'id'     => $a->id,
                 'type'   => $a->type,
@@ -801,6 +866,7 @@ class CartController extends Controller
                 'code'   => $a->code,
                 'meta'   => $a->meta,
             ])->values(),
+
             'totals' => [
                 'subtotal' => (float)$cart->{$cols['subtotal']},
                 'discount' => (float)$cart->{$cols['discount']},

@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, usePage } from '@inertiajs/react';
+import axios from "axios";
+import { useCart } from "@/context/CartContext";
+
 
 const Header = () => {
     const { auth } = usePage().props;
+    const { count } = useCart();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [openCategory, setOpenCategory] = useState(null);
     const overlayRef = useRef();
+    const [cartCount, setCartCount] = useState(0);
+
 
     const navLinks = [
         'Business Stationery',
@@ -60,6 +66,19 @@ const Header = () => {
         return () => clearTimeout(timer);
     }, []);
 
+    // in Header.jsx
+    useEffect(() => {
+        const h = (e) => {
+            // prefer qtyCount if you want total items; use linesCount for unique lines
+            setCartCount(e.detail?.qtyCount ?? 0);
+        };
+        window.addEventListener("cart:updated", h);
+        // optionally prime it once on mount:
+        import("@/lib/cartApi").then(({ getCart }) => getCart());
+        return () => window.removeEventListener("cart:updated", h);
+    }, []);
+
+
     return (
         <header className="tw-bg-white tw-shadow-md tw-sticky tw-top-0 tw-z-50">
             {/* Top Bar */}
@@ -73,8 +92,16 @@ const Header = () => {
                     <Link href={route('requests.quotations')} className="tw-text-gray-500 hover:tw-text-[#f44032]">
                         <i className="fa-solid fa-file-pen tw-me-1"></i> Ask for Quote
                     </Link>
-                    <Link href={route('cart')} className="tw-relative tw-text-gray-500 hover:tw-text-[#f44032]">
+                    {/* <Link href={route('cart')} className="tw-relative tw-text-gray-500 hover:tw-text-[#f44032]">
                         <span className="tw-absolute tw-text-xs tw-bg-red-500 tw-text-white tw-rounded-full tw-px-1.5 tw--top-2 tw--right-2">5</span>
+                        <i className="fa-solid fa-cart-shopping tw-me-1"></i> Cart
+                    </Link> */}
+                    <Link href={route('cart')} className="tw-relative tw-text-gray-500 hover:tw-text-[#f44032]">
+                        {count > 0 && (
+                            <span className="tw-absolute tw-text-[10px] tw-bg-red-500 tw-text-white tw-rounded-full tw-px-1.5 tw-py-[1px] tw--top-2 tw--right-2">
+                                {count}
+                            </span>
+                        )}
                         <i className="fa-solid fa-cart-shopping tw-me-1"></i> Cart
                     </Link>
                     {!auth.user ? (
@@ -287,7 +314,15 @@ const Header = () => {
                                 className="tw-text-gray-600 hover:tw-text-[#f44032] tw-flex tw-items-center tw-gap-2"
                                 onClick={() => setMobileNavOpen(false)}
                             >
-                                <i className="fa-solid fa-cart-shopping"></i> Cart
+                                <span className="tw-relative tw-inline-flex tw-items-center">
+                                    <i className="fa-solid fa-cart-shopping"></i>
+                                    {count > 0 && (
+                                        <span className="tw-ml-1 tw-text-xs tw-font-semibold tw-inline-block tw-bg-red-500 tw-text-white tw-rounded-full tw-px-2 tw-leading-5">
+                                            {count}
+                                        </span>
+                                    )}
+                                </span>
+                                <span>Cart</span>
                             </Link>
                             {!auth.user ? (
                                 <Link
