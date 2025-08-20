@@ -73,7 +73,7 @@ const ProductCard = ({
     const safeViews = Number.isFinite(views) ? views : 0;
 
     return (
-        <div className="tw-group tw-rounded-2xl tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-bg-white tw-overflow-hidden tw-shadow-sm hover:tw-shadow-md focus-within:tw-ring-2 focus-within:tw-ring-[#f44032]/70 tw-transition">
+        <div className="not-prose tw-group tw-rounded-2xl tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-bg-white tw-overflow-hidden tw-shadow-sm hover:tw-shadow-md focus-within:tw-ring-2 focus-within:tw-ring-[#f44032]/70 tw-transition">
             {/* ---------- Media ---------- */}
             <Link href={href} aria-label={`View ${name}`} className="tw-block tw-relative tw-aspect-[4/3] tw-overflow-hidden">
                 {/* Badges */}
