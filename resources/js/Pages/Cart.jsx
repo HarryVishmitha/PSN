@@ -150,52 +150,181 @@ function DesignGalleryModal({ open, productId, initialSelected = [], onClose, on
     const [designs, setDesigns] = useState([]);
     const [selected, setSelected] = useState(() => new Set(initialSelected));
 
+    const MasonryDesignCard = ({ d, isSelected, onClick }) => {
+        return (
+            <figure
+                className={[
+                    "tw-mb-4 tw-rounded-2xl tw-overflow-hidden tw-border tw-bg-white",
+                    "tw-break-inside-avoid", // <-- masonry helper
+                    isSelected
+                        ? "tw-border-[#f44032] tw-ring-2 tw-ring-[#f44032]/30"
+                        : "tw-border-gray-200 dark:tw-border-gray-800",
+                ].join(" ")}
+                title={d?.name || "Design"}
+            >
+                <img
+                    src={d.image_url || IMG_FALLBACK}
+                    alt={d.name || "Design"}
+                    className="tw-w-full tw-h-auto tw-block"  // natural ratio
+                    loading="lazy"
+                />
+
+                {/* Footer bar + select pill */}
+                <figcaption className="tw-relative tw-p-2">
+                    <div className="tw-absolute tw-bottom-2 tw-right-2">
+                        <button
+                            type="button"
+                            onClick={onClick}
+                            className={[
+                                "tw-rounded-xl tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-shadow",
+                                isSelected ? "tw-bg-[#f44032] tw-text-white" : "tw-bg-white tw-border tw-border-gray-200",
+                            ].join(" ")}
+                        >
+                            {isSelected ? "Selected" : "Select"}
+                        </button>
+                    </div>
+                    <div className="tw-text-xs tw-text-gray-700 tw-pr-24 tw-truncate">{d?.name || "Design"}</div>
+                </figcaption>
+            </figure>
+        );
+    };
+
     const toggle = (id) => setSelected((prev) => {
         const n = new Set(prev);
         n.has(id) ? n.delete(id) : n.add(id);
         return n;
     });
 
-    useEffect(() => {
-        if (!open) return;
-        setLoading(true);
-        setErr(null);
-        axios.get(`/api/products/${productId}/designs`, { params: { per_page: 18 }, headers: { Accept: "application/json" } })
-            .then((res) => setDesigns(Array.isArray(res?.data?.data) ? res.data.data : (res?.data?.designs || [])))
-            .catch((error) => {
-                const errorMessage = error?.response?.data?.message || "Could not load designs";
-                setErr(errorMessage);
-                console.error(errorMessage);
-            })
-            .finally(() => setLoading(false));
-    }, [open, productId]);
+    // helpers at top of file (near other utils)
+    const unwrapDesigns = (payload) => {
+        // accept many common API shapes
+        if (!payload) return [];
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload.data)) return payload.data;
+        if (Array.isArray(payload.designs)) return payload.designs;
+        if (Array.isArray(payload.items)) return payload.items;
+        if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+        return [];
+    };
 
+    // inside DesignGalleryModal
+    useEffect(() => {
+        let cancelled = false;
+
+        const run = async () => {
+            if (!open) return;
+            if (!productId) {
+                setDesigns([]);
+                setErr("Missing product id for gallery.");
+                return;
+            }
+
+            setLoading(true);
+            setErr(null);
+
+            try {
+                const res = await axios.get(`/api/products/${productId}/designs`, {
+                    params: { per_page: 18 },
+                    // keep Accept for Laravel/JSON; include cookies if your API needs auth
+                    headers: { Accept: "application/json" },
+                    withCredentials: true,
+                    validateStatus: (s) => s >= 200 && s < 500, // we’ll inspect body/status
+                });
+
+                // Log what we got so you can inspect shapes in devtools
+                console.debug("[Gallery] fetch designs", {
+                    status: res.status,
+                    productId,
+                    raw: res.data,
+                });
+
+                // common soft errors
+                if (res.status === 401 || res.status === 419) {
+                    !cancelled && setErr("You’re not signed in (401/419). Please log in.");
+                    !cancelled && setDesigns([]);
+                    return;
+                }
+                if (res.status === 404) {
+                    !cancelled && setErr("No designs found for this product (404).");
+                    !cancelled && setDesigns([]);
+                    return;
+                }
+
+                const list = unwrapDesigns(res.data).map((d) => ({
+                    // normalize a few possible field names
+                    id: d.id ?? d.design_id,
+                    name: d.name ?? d.title ?? "Design",
+                    image_url: d.image_url ?? d.image ?? d.thumbnail_url ?? null,
+                    ...d,
+                }));
+
+                if (!cancelled) {
+                    setDesigns(list);
+                    if (!list.length) setErr("No designs available for this product.");
+                }
+            } catch (e) {
+                console.error("[Gallery] designs error", e);
+                if (!cancelled) {
+                    setErr(
+                        e?.response?.data?.message ||
+                        e?.message ||
+                        "Could not load designs."
+                    );
+                    setDesigns([]);
+                }
+            } finally {
+                !cancelled && setLoading(false);
+            }
+        };
+
+        run();
+        return () => { cancelled = true; };
+    }, [open, productId]);
 
     const confirm = () => onConfirm?.(Array.from(selected));
 
     return (
-        <ModalShell open={open} onClose={onClose}>
-            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                <h3 className="tw-text-lg tw-font-semibold">Choose design(s)</h3>
-                <button onClick={onClose} className="tw-p-2 tw-rounded-xl tw-bg-gray-100"><Icon icon="mdi:close" /></button>
+        <ModalShell open={open} onClose={onClose} widthClass="tw-max-w-[min(1100px,95vw)]">
+            <div className="tw-sticky tw-top-2 tw-z-10 tw-bg-white tw-rounded-xl tw-pb-2">
+                <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+                    <h3 className="tw-text-2xl tw-font-extrabold">Choose design(s)</h3>
+                    <button onClick={onClose} className="tw-p-2 tw-rounded-xl tw-bg-gray-100">
+                        <Icon icon="mdi:close" />
+                    </button>
+                </div>
             </div>
+            {selected.size > 0 && (
+                <div className="tw-text-xs tw-text-gray-600 tw-mt-2">
+                    {selected.size} selected
+                </div>
+            )}
             {err && <div className="tw-mb-3 tw-text-sm tw-text-rose-600">{err}</div>}
-            {loading ? (
+            {!loading && !err && designs.length === 0 && (
+                <div className="tw-text-sm tw-text-gray-500 tw-py-6 tw-text-center">
+                    No designs for this product yet.
+                </div>
+            )}
 
-                <div className="tw-grid tw-grid-cols-3 sm:tw-grid-cols-4 md:tw-grid-cols-6 tw-gap-3">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                        <div key={i} className="tw-aspect-square tw-rounded-xl tw-animate-pulse tw-bg-gray-200" />
+            {loading ? (
+                // Skeleton in masonry style (vary heights a bit)
+                <div className="tw-columns-2 sm:tw-columns-3 lg:tw-columns-4 tw-gap-4">
+                    {Array.from({ length: 10 }).map((_, i) => (
+                        <div
+                            key={i}
+                            className="tw-mb-4 tw-rounded-2xl tw-animate-pulse tw-bg-gray-200"
+                            style={{ height: 140 + (i % 3) * 40 }}
+                        />
                     ))}
                 </div>
-
             ) : (
-                <div className="tw-grid tw-grid-cols-3 sm:tw-grid-cols-4 md:tw-grid-cols-6 tw-gap-3">
+                <div className="tw-columns-2 sm:tw-columns-3 lg:tw-columns-4 tw-gap-4">
                     {designs.map((d) => (
-                        console.log(d),
-                        <button key={d.id} type="button" onClick={() => toggle(d.id)} className={`tw-relative tw-aspect-square tw-rounded-xl tw-overflow-hidden tw-border ${selected.has(d.id) ? "tw-border-[#f44032] tw-ring-2 tw-ring-[#f44032]/30" : "tw-border-gray-200"}`}>
-                            <img src={d.image_url || IMG_FALLBACK} alt={d.name || "Design"} className="tw-w-full tw-h-full tw-object-cover" />
-                            <span className="tw-absolute tw-bottom-1 tw-right-1 tw-rounded-lg tw-px-2 tw-py-0.5 tw-text-xs tw-font-semibold tw-bg-white/90">{selected.has(d.id) ? "Selected" : "Select"}</span>
-                        </button>
+                        <MasonryDesignCard
+                            key={d.id}
+                            d={d}
+                            isSelected={selected.has(d.id)}
+                            onClick={() => toggle(d.id)}
+                        />
                     ))}
                 </div>
             )}
@@ -311,13 +440,20 @@ function CartRow({ line, onUpdate, onRemoveAsk, onAttachUpload, productInfo, ope
     const productName = line.product_name || info.name || `Product #${line.product_id}`;
     const metaDesc = (line.product_meta_description || info.meta_description || "").toString();
 
-    const hasDesign = !!line.user_design_upload_id || !!line.design_id;
+    const hasDesign = !!line.user_design_upload_id || !!line.design_id || !!line.hire_designer;
 
     // Attach upload/link to this cart line
     const handleUploaded = async (payload) => {
         const uploadId = payload?.upload_id || payload?.id;
         if (!uploadId) return;
         await onAttachUpload(line.id, uploadId);      // updates DB + refreshes cart
+        try {
+            await updateCartItem(line.id, {
+                user_design_upload_id: uploadId,
+                product_design_id: null,
+                hire_designer: false,
+            });
+        } catch (_) { }
         setEditingDesign(false);                      // close panel after success
         // keep source to reflect last action (upload/link)
         setDesignSource(payload?.type === "link" ? "link" : "upload");
@@ -325,6 +461,8 @@ function CartRow({ line, onUpdate, onRemoveAsk, onAttachUpload, productInfo, ope
 
     // Human readable design source
     const getDesignSourceLabel = () => {
+        if (line.hire_designer) return "Hire a designer";
+
         const upload = line.user_design_upload;
         if (upload) {
             switch (upload.type) {
@@ -340,19 +478,28 @@ function CartRow({ line, onUpdate, onRemoveAsk, onAttachUpload, productInfo, ope
 
     // Best-effort preview URL
     const getDesignPreviewUrl = () => {
+        if (line.hire_designer) return null; // hard stop for hire
+
         const upload = line.user_design_upload;
+        // Never preview for link/hire
+        if (upload?.type === "link" || upload?.type === "hire") return null;
         if (upload?.image_url) return upload.image_url;
         if (upload?.file_path) return `/storage/${upload.file_path}`; // adjust if your paths differ
-        if (line.design?.image_url) return line.design.image_url;
+        // Only show gallery image when there is no upload and not hiring
+        if (!line.user_design_upload_id && !line.hire_designer && line.design?.image_url) {
+            return line.design.image_url;
+        }
         return null;
     };
     const designPreviewUrl = getDesignPreviewUrl();
 
     // If cart updates (user picked gallery or uploaded), auto-close the editor
     useEffect(() => {
-        if (line.user_design_upload_id || line.design_id) setEditingDesign(false);
+        if (line.user_design_upload_id || line.design_id || line.hire_designer) {
+            setEditingDesign(false);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [line.user_design_upload_id, line.design_id]);
+    }, [line.user_design_upload_id, line.design_id, line.hire_designer]);
 
     return (
         <div className="tw-flex tw-gap-3 tw-border tw-border-gray-200 dark:tw-border-gray-800 tw-rounded-2xl tw-p-3 tw-bg-white">
@@ -437,7 +584,11 @@ function CartRow({ line, onUpdate, onRemoveAsk, onAttachUpload, productInfo, ope
                                         }}
                                         onHireDesigner={async () => {
                                             try {
-                                                const { ok, message } = await updateCartItem(line.id, { hire_designer: true });
+                                                const { ok, message } = await updateCartItem(line.id, {
+                                                    hire_designer: true,
+                                                    product_design_id: null,
+                                                    user_design_upload_id: null,
+                                                });
                                                 if (!ok) throw new Error(message || "Could not start hire request");
                                                 setDesignSource("hire");
                                                 setEditingDesign(false);
@@ -726,10 +877,18 @@ export default function CartPage() {
             if (ids.length === 0) return;
             if (ids.length === 1) {
                 // update current line
-                await updateCartItem(line.id, { product_design_id: ids[0] });
+                await updateCartItem(line.id, {
+                    product_design_id: ids[0],
+                    user_design_upload_id: null,
+                    hire_designer: false,
+                });
             } else {
                 // set the first on current line, others as new items (mimics ProductDetails behaviour)
-                await updateCartItem(line.id, { product_design_id: ids[0] });
+                await updateCartItem(line.id, {
+                    product_design_id: ids[0],
+                    user_design_upload_id: null,
+                    hire_designer: false,
+                });
                 for (let i = 1; i < ids.length; i++) {
                     const payload = {
                         product_id: line.product_id,
@@ -744,7 +903,12 @@ export default function CartPage() {
                     }
                     // carry over options if your API supports it
                     if (line.options) payload.selected_options = line.options;
-                    await addCartItem(payload);
+                    await addCartItem({
+                        ...payload,
+                        // safety: make new lines unambiguously "gallery"
+                        user_design_upload_id: null,
+                        hire_designer: false,
+                    });
                 }
             }
             pushToast({ type: "ok", title: `${ids.length} design${ids.length > 1 ? "s" : ""} applied` });
