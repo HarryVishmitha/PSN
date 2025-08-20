@@ -10,7 +10,6 @@ import { Icon } from '@iconify/react';
 import Meta from '@/Components/Metaheads';
 import Breadcrumb from '@/Components/BreadcrumbHome';
 import { Link } from "@inertiajs/react";
-
 /* ---------------------- helpers ---------------------- */
 const unwrapArray = (payload) => {
     if (Array.isArray(payload)) return payload;
