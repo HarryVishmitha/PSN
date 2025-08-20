@@ -42,7 +42,7 @@ const ProductCard = ({
         link,
     } = product;
 
-    const href = link || `/public/${id}/product/${slugify(name)}`;
+    const href = link || `/product/${id}/${slugify(name)}`;
 
     // images (enable hover swap if second exists)
     const primaryImg = useMemo(() => safe(images?.[0]?.image_url || image), [images, image]);

@@ -132,7 +132,7 @@ const QuickView = ({ product, onClose }) => {
 
     const url =
         product?.url ??
-        `/public/${product?.id}/product/${String(product?.name || "")
+        `/product/${product?.id}/${String(product?.name || "")
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")}`;
 

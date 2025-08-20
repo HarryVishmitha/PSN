@@ -31,7 +31,7 @@ Route::get('/gallery/designs', [Home::class, 'designs'])->name('designs.all');
 Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.categories');
 Route::get('/requests/quotations', [Home::class, 'quotations'])->name('requests.quotations');
 Route::get('/api/most-popular-products', [Home::class, 'mostPProducts'])->name('mostPopularProducts');
-Route::get('/public/{id}/product/{name}', [Home::class, 'productDetail'])->name('productDetail');
+Route::get('/product/{id}/{name}', [Home::class, 'productDetail'])->name('productDetail');
 Route::get('/share/{token}', fn($token) => Inertia::render('SharedDesigns', ['token' => $token]))->name('share.page');
 Route::get('/api/share/{token}', [DesignShareLinkController::class, 'publicLinkInfo']);
 Route::post('/api/share/{token}/verify', [DesignShareLinkController::class, 'verifyPassword']);
