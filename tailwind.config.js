@@ -10,6 +10,7 @@ export default {
         './resources/views/**/*.blade.php',
         './resources/js/**/*.jsx',
         './resources/views/pdfs/**/*.blade.php',
+        './resources/js/**/*.js',
     ],
 
     theme: {

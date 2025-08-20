@@ -124,7 +124,7 @@ const ProductCard = ({
                 {/* Title */}
                 <Link href={href} className="tw-no-underline">
                     <h4 className="tw-text-[15px] md:tw-text-[16px] tw-font-semibold tw-leading-snug tw-text-gray-900 tw-line-clamp-2 tw-min-h-[2.3rem]">
-                        {name}
+                        {name} hi
                     </h4>
                 </Link>
 
