@@ -420,7 +420,7 @@ class Home extends Controller
                     'id'                 => $p->id,
                     'name'               => $p->name,
                     'image'              => optional($p->images->first())->image_url ?? '/images/default.png',
-                    'short_description'  => Str::limit($p->description ?? '', 120),
+                    'short_description'  => Str::limit($p->meta_description ?? '', 120),
                     'pricing_method'     => $p->pricing_method,
                     'effective_price'    => $price,
                     'price_unit'         => $priceUnit,
