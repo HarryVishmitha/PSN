@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Routing\Controller;
 use Inertia\Inertia;
 use App\Models\User;
@@ -39,6 +40,7 @@ use Tes\LaravelGoogleDriveStorage\GoogleDriveService;
 use Intervention\Image\ImageManager;
 use function Illuminate\Log\log;
 use function Termwind\render;
+use App\Services\Admin\AdminDashboardMetricsService;
 // use Intervention\Image\ImageManagerStatic as Image;
 use Intervention\Image\Laravel\Facades\Image;
 // Chunk-upload classes
@@ -51,8 +53,7 @@ use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Encoders\AutoEncoder;
 use App\Services\EstimatePdfService;
 use App\Models\Tag;
-
-
+use Illuminate\Http\JsonResponse; 
 
 class AdminController extends Controller
 {
@@ -2083,245 +2084,288 @@ class AdminController extends Controller
     // }
 
     public function storeDesign(Request $request)
-    {
-        Log::debug('storeDesign called', ['all_input' => $request->all()]);
+{
+    // Hostinger-friendly guards (don’t crash if disallowed)
+    @ini_set('memory_limit', '512M');
+    @set_time_limit(60);
 
-        // A) Initialize Pion chunk receiver
-        $receiver = new FileReceiver('file', $request, HandlerFactory::classFromRequest($request));
-        Log::debug('Receiver initialized', [
-            'isUploaded' => $receiver->isUploaded(),
-            // 'handler'    => get_class($receiver->getHandler()),
-        ]);
+    Log::debug('storeDesign called', ['meta' => [
+        'user_id' => Auth::id(),
+        'ip'      => $request->ip(),
+    ]]);
 
-        if (! $receiver->isUploaded()) {
-            Log::warning('No chunk uploaded');
-            return response()->json(['message' => 'No file uploaded'], 400);
-        }
-
-        // B) Receive this chunk (or the full file if it’s the last one)
-        $save = $receiver->receive();
-        Log::debug('Chunk received', [
-            'isFinished' => $save->isFinished(),
-            'percentage' => $save->handler()->getPercentageDone(),
-        ]);
-
-        // C) If not yet the last chunk, return current progress
-        if (! $save->isFinished()) {
-            $pct = $save->handler()->getPercentageDone();
-            Log::info('Returning intermediate chunk progress', ['done' => $pct]);
-            return response()->json(['done' => $pct], 200);
-        }
-
-        // D) Full file is assembled—grab it
-        /** @var \Illuminate\Http\UploadedFile $file */
-        $file = $save->getFile();
-        Log::info('Assembled file ready', [
-            'original_name' => $file->getClientOriginalName(),
-            'size'          => $file->getSize(),
-            'mime'          => $file->getMimeType(),
-        ]);
-
-        // E) Validate your other inputs
-        $data = validator($request->all(), [
-            'working_group_id' => 'required|exists:working_groups,id',
-            'product_id'       => 'required|exists:products,id',
-            'width'            => 'required|numeric',
-            'height'           => 'required|numeric',
-        ])->validate();
-        Log::debug('Input data validated', $data);
-
-        // F) Generate a unique 8-char ID
-        do {
-            $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
-        } while (Design::where('name', $uniqueId)->exists());
-        Log::info('Generated uniqueId', ['uniqueId' => $uniqueId]);
-
-        // G) Prep destination paths
-        $extension = $file->getClientOriginalExtension();
-        $filename  = "{$uniqueId}.{$extension}";
-        $publicDir = public_path('images/designs');
-        if (! is_dir($publicDir)) {
-            mkdir($publicDir, 0755, true);
-            Log::debug('Created publicDir', ['path' => $publicDir]);
-        }
-
-        // H) Move the assembled file into public/images/designs
-        //    (Pion will auto-remove the temp chunk file for you)
-        try {
-            $movedFile = $file->move($publicDir, $filename);
-            Log::info('File moved', [
-                'destination' => $movedFile->getPathname(),
-                'size'        => $movedFile->getSize(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Failed to move assembled file', ['exception' => $e->getMessage()]);
-            return response()->json(['message' => 'Failed to move file'], 500);
-        }
-
-        // I) Image manipulation with debug
-        // 1) Instantiate GD driver & manager
-        $driver  = new GdDriver();
-        $manager = new ImageManager($driver);
-        Log::debug('ImageManager initialized', ['driver' => get_class($driver)]);
-
-        try {
-            $image = Image::read($movedFile->getPathname());
-            Log::info('Image loaded', [
-                'width'  => $image->width(),
-                'height' => $image->height(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Image read() failed', ['exception' => $e->getMessage()]);
-            return response()->json(['message' => 'Image processing error', 'error' => $e->getMessage()], 500);
-        }
-        Log::info('hi');
-        // Get original dimensions
-        $originalWidth  = $image->width();
-        $originalHeight = $image->height();
-
-        // Define maximum dimensions
-        $maxWidth  = 2048;
-        $maxHeight = 2048;
-
-        // Determine if resizing is needed
-        if ($originalWidth > $maxWidth || $originalHeight > $maxHeight) {
-            $ratio = $originalWidth / $originalHeight;
-            if ($maxWidth / $maxHeight > $ratio) {
-                // Height is the limiting factor
-                $newWidth = $maxHeight * $ratio;
-                $newHeight = $maxHeight;
-            } else {
-                // Width is the limiting factor
-                $newWidth = $maxWidth;
-                $newHeight = $maxWidth / $ratio;
-            }
-            $image->resize((int)$newWidth, (int)$newHeight);
-        } else {
-            // No resizing needed; keep original dimensions
-            // Optionally, you can still call resize() if you wish to enforce integer values
-            $image->resize($originalWidth, $originalHeight);
-        }
-        Log::debug('Image resized to', ['w' => $image->width(), 'h' => $image->height()]);
-
-        // Optional resize
-        // $image->resize(1024, 1024, fn($c) => $c->aspectRatio()->upsize());
-
-        // Watermark
-        $watermark = public_path('images/watermark.png');
-        if (file_exists($watermark)) {
-            $image->place($watermark, 'center', 50, 50, 50);
-            Log::debug('Watermark applied', ['watermark' => $watermark]);
-        } else {
-            Log::warning('Watermark file not found', ['path' => $watermark]);
-        }
-
-        // Encode to JPEG at 50% quality and save
-        Log::debug('Starting image re-encoding process', [
-            'filename'  => $filename,
-            'publicDir' => $publicDir,
-        ]);
-        $jpegData  = $image->toJpeg(50);
-        $finalPath = "{$publicDir}/{$filename}";
-        file_put_contents($finalPath, $jpegData);
-        Log::info('Image re-encoded & saved', [
-            'path'  => $finalPath,
-            'bytes' => filesize($finalPath),
-        ]);
-        Log::debug('Re-encoded image details', [
-            'dimensions' => getimagesize($finalPath),
-        ]);
-
-        $imageUrl = "/images/designs/{$filename}";
-
-        // J) Persist to database + activity log
-        DB::beginTransaction();
-        try {
-            $design = Design::create([
-                'name'             => $uniqueId,
-                'description'      => '',
-                'width'            => $data['width'],
-                'height'           => $data['height'],
-                'product_id'       => $data['product_id'],
-                'image_url'        => $imageUrl,
-                'access_type'      => 'working_group',
-                'working_group_id' => $data['working_group_id'],
-                'status'           => 'active',
-                'created_by'       => Auth::id(),
-                'updated_by'       => Auth::id(),
-            ]);
-            ActivityLog::create([
-                'user_id'     => Auth::id(),
-                'action_type' => 'design_upload',
-                'description' => "Uploaded design {$design->id} (path: {$imageUrl})",
-                'ip_address'  => $request->ip(),
-            ]);
-            DB::commit();
-
-            Log::info('Design record created', ['design_id' => $design->id]);
-
-            return response()->json([
-                'message'   => 'Design uploaded successfully',
-                'design_id' => $design->id,
-                'image_url' => $imageUrl,
-            ], 201);
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Database error on design create', ['exception' => $e->getMessage()]);
-            return response()->json([
-                'message' => 'Upload failed, please try again.',
-                'error'   => substr($e->getMessage(), 0, 200),
-            ], 500);
-        }
+    // ---- A) Chunk receiver ----
+    $receiver = new FileReceiver('file', $request, HandlerFactory::classFromRequest($request));
+    if (!$receiver->isUploaded()) {
+        return response()->json(['message' => 'No file uploaded'], 400);
     }
 
+    $save = $receiver->receive();
+    $pct  = $save->handler()->getPercentageDone();
 
-    public function designs(Request $request)
-    {
-        // 1️⃣ Log the view
+    // Not the last chunk yet → 202 Accepted with progress
+    if (!$save->isFinished()) {
+        return response()->json(['done' => $pct], 202);
+    }
+
+    // ---- B) Final chunk assembled → validate fields ----
+    $validated = $request->validate([
+        'working_group_id' => ['required','exists:working_groups,id'],
+        'product_id'       => ['required','exists:products,id'],
+        'width'            => ['required','numeric','gt:0'],
+        'height'           => ['required','numeric','gt:0'],
+        'access_type' => 'nullable|in:public,working_group,restricted',
+        // Only needed if restricted (we’ll check conditionally)
+        'restricted_user_ids' => ['nullable','array'],
+        'restricted_user_ids.*' => ['integer','exists:users,id'],
+    ]);
+
+    $accessType = $validated['access_type'] ?? 'working_group';
+
+    // ---- C) Assembled file
+    /** @var \Illuminate\Http\UploadedFile $assembled */
+    $assembled = $save->getFile();
+
+    Log::info('Assembled file ready', [
+        'original_name' => $assembled->getClientOriginalName(),
+        'size'          => $assembled->getSize(),
+        'mime'          => $assembled->getMimeType(),
+    ]);
+
+    // ---- D) Create preview (resize + watermark) ----
+    $publicDir = public_path('images/designs');
+    if (!is_dir($publicDir)) {
+        @mkdir($publicDir, 0755, true);
+    }
+
+    // Unique ID / file name
+    do {
+        $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
+    } while (Design::where('name', $uniqueId)->exists());
+
+    $ext      = 'jpg'; // force JPEG preview
+    $filename = "{$uniqueId}.{$ext}";
+    $finalPath = $publicDir . DIRECTORY_SEPARATOR . $filename;
+
+    // Load image with Intervention GD (you’re already using GD)
+    $manager = new ImageManager(new GdDriver());
+
+    try {
+        $image = Image::read($assembled->getPathname());
+    } catch (\Throwable $e) {
+        Log::error('Image read failed', ['e' => $e->getMessage()]);
+        return response()->json(['message' => 'Invalid or unsupported image.'], 422);
+    }
+
+    // Hostinger-safe cap: max edge 2560 px, quality ~75 (sharper text)
+    $origW = $image->width();
+    $origH = $image->height();
+
+    // Hard reject truly massive images (prevents memory death)
+    if ($origW > 12000 || $origH > 12000) {
+        return response()->json([
+            'message' => 'Image is too large. Please export a smaller preview.',
+            'hint'    => 'Max 12,000 px on either edge.'
+        ], 422);
+    }
+
+    $MAX_EDGE = 2560;
+    if ($origW > $MAX_EDGE || $origH > $MAX_EDGE) {
+        // scaleDown keeps aspect ratio
+        $image->scaleDown($MAX_EDGE, $MAX_EDGE);
+    }
+
+    // Consistent watermark (optional but encouraged)
+    $wmPath = public_path('images/watermark.png');
+    if (is_file($wmPath)) {
+        try {
+            $wm = Image::read($wmPath);
+
+            // Scale watermark to ~14% of image width (looks right for most)
+            $targetW = max(100, (int) round($image->width() * 0.14));
+            $wm->scaleDown($targetW, $targetW);
+
+            // Place bottom-right with ~3% padding, alpha ~80
+            $pad = max(8, (int) round(min($image->width(), $image->height()) * 0.03));
+            $alpha = 80; // 0..100
+            $image->place($wm, 'center-center', $pad, $pad, $alpha);
+        } catch (\Throwable $e) {
+            Log::warning('Watermark failed; continuing without', ['e' => $e->getMessage()]);
+        }
+    } else {
+        Log::warning('Watermark PNG missing', ['path' => $wmPath]);
+    }
+
+    // Encode preview JPEG (quality 75)
+    try {
+        $jpeg = $image->toJpeg(75);
+        file_put_contents($finalPath, $jpeg);
+    } catch (\Throwable $e) {
+        Log::error('Failed to write preview', ['e' => $e->getMessage()]);
+        return response()->json(['message' => 'Failed to save preview image.'], 500);
+    } finally {
+        // Drop memory refs ASAP
+        unset($image, $wm, $jpeg);
+    }
+
+    $previewUrl = "/images/designs/{$filename}";
+    $dim = @getimagesize($finalPath);
+    $previewW = $dim[0] ?? null;
+    $previewH = $dim[1] ?? null;
+    $previewBytes = @filesize($finalPath) ?: null;
+
+    // ---- E) Persist DB and optional restricted access list
+    DB::beginTransaction();
+    try {
+        $design = Design::create([
+            'name'             => $uniqueId,
+            'description'      => '',
+            'width'            => $validated['width'],
+            'height'           => $validated['height'],
+            'product_id'       => $validated['product_id'],
+            'working_group_id' => $validated['working_group_id'],
+            'access_type'      => $accessType,
+            'status'           => 'active',
+            // Preview fields
+            'preview_url'      => $previewUrl,
+            'preview_width'    => $previewW,
+            'preview_height'   => $previewH,
+            'preview_bytes'    => $previewBytes,
+            // Backward compatibility for old UI:
+            'image_url'        => $previewUrl,
+            'created_by'       => Auth::id(),
+            'updated_by'       => Auth::id(),
+        ]);
+
+        // If restricted, require at least one user
+        if ($accessType === 'restricted') {
+            $ids = array_filter($request->input('restricted_user_ids', []));
+            if (empty($ids)) {
+                DB::rollBack();
+                // Clean the preview file since record not created
+                @unlink($finalPath);
+                return response()->json([
+                    'message' => 'Select at least one user for restricted designs.',
+                    'code'    => 'RESTRICTED_NEEDS_USERS'
+                ], 422);
+            }
+            // Insert into pivot; ignore duplicates if constraint exists
+            $rows = [];
+            foreach ($ids as $uid) {
+                $rows[] = ['design_id' => $design->id, 'user_id' => (int)$uid];
+            }
+            DB::table('design_access')->upsert($rows, ['design_id','user_id']);
+        }
+
         ActivityLog::create([
             'user_id'     => Auth::id(),
-            'action_type' => 'design_view',
-            'description' => 'Admin viewed designs list',
+            'action_type' => 'design_upload',
+            'description' => "Uploaded preview for design {$design->id} ({$previewUrl})",
             'ip_address'  => $request->ip(),
         ]);
 
-        // 2️⃣ Grab filter & pagination inputs
-        $perPage = $request->input('per_page', 10);
-        $search  = $request->input('search');
-        $status  = $request->input('status');
-
-        // 3️⃣ Base query
-        $query = Design::with(['product', 'workingGroup'])
-            ->whereNull('deleted_at');
-
-        // 4️⃣ Apply search
-        if ($search) {
-            $query->where('name', 'like', "%{$search}%");
-        }
-
-        // 5️⃣ Apply status filter
-        if (in_array($status, ['active', 'inactive'])) {
-            $query->where('status', $status);
-        }
-
-        // 6️⃣ Paginate with query string so filters persist
-        $designs = $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage)
-            ->withQueryString();
-
-        // 7️⃣ Return to Inertia
-        return Inertia::render('admin/designs', [
-            'userDetails' => Auth::user(),
-            'designs'     => $designs,
-            'filters'     => [
-                'search'   => $search,
-                'status'   => $status,
-                'per_page' => (int)$perPage,
-            ],
-            'workingGroups' => WorkingGroup::where('status', 'active')->with('products')->get(),
-        ]);
+        DB::commit();
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        Log::error('DB error creating design', ['e' => $e->getMessage()]);
+        // attempt cleanup
+        @unlink($finalPath);
+        return response()->json(['message' => 'Upload failed, please try again.'], 500);
     }
+
+    return response()->json([
+        'message'    => 'Design preview uploaded successfully.',
+        'design_id'  => $design->id,
+        'image_url'  => $previewUrl,     // BC for your current frontend
+        'preview'    => [
+            'url'   => $previewUrl,
+            'w'     => $previewW,
+            'h'     => $previewH,
+            'bytes' => $previewBytes,
+        ],
+    ], 201);
+}
+
+
+    public function designs(Request $request)
+{
+    // 1) Log the view
+    ActivityLog::create([
+        'user_id'     => Auth::id(),
+        'action_type' => 'design_view',
+        'description' => 'Admin viewed designs list',
+        'ip_address'  => $request->ip(),
+    ]);
+
+    // 2) Validate incoming list filters (keeps things safe + avoids the Rule-not-found error)
+    //    Make sure you have: use Illuminate\Validation\Rule;  at the top of the controller.
+    $validated = $request->validate([
+        'per_page'          => ['nullable', 'integer', Rule::in([5,10,20,25,50,100])],
+        'search'            => ['nullable', 'string', 'max:255'],
+        'status'            => ['nullable', Rule::in(['active','inactive'])],
+        'working_group_id'  => ['nullable', 'integer', 'exists:working_groups,id'],
+        'access_type'       => ['nullable', Rule::in(['public','working_group','restricted'])],
+    ]);
+
+    $perPage         = $validated['per_page']         ?? 10;
+    $search          = $validated['search']           ?? null;
+    $status          = $validated['status']           ?? null;
+    $workingGroupId  = $validated['working_group_id'] ?? null;
+    $accessType      = $validated['access_type']      ?? null;
+
+    // 3) Base query
+    $query = Design::with(['product', 'workingGroup'])
+        ->whereNull('deleted_at');
+
+    // 4) Search across name, product, and working group
+    if ($search) {
+        $query->where(function ($q) use ($search) {
+            $q->where('name', 'like', "%{$search}%")
+              ->orWhereHas('product', function ($q2) use ($search) {
+                  $q2->where('name', 'like', "%{$search}%");
+              })
+              ->orWhereHas('workingGroup', function ($q3) use ($search) {
+                  $q3->where('name', 'like', "%{$search}%");
+              });
+        });
+    }
+
+    // 5) Status filter
+    if ($status) {
+        $query->where('status', $status);
+    }
+
+    // 6) Working group filter
+    if ($workingGroupId) {
+        $query->where('working_group_id', $workingGroupId);
+    }
+
+    // 7) Access type filter
+    if ($accessType) {
+        $query->where('access_type', $accessType);
+    }
+
+    // 8) Paginate with query string so filters persist
+    $designs = $query
+        ->orderBy('created_at', 'desc')
+        ->paginate($perPage)
+        ->withQueryString();
+
+    // 9) Send to Inertia (include the new filters so the UI keeps them selected)
+    return Inertia::render('admin/designs', [
+        'userDetails'    => Auth::user(),
+        'designs'        => $designs,
+        'filters'        => [
+            'search'           => $search,
+            'status'           => $status,
+            'per_page'         => (int) $perPage,
+            'working_group_id' => $workingGroupId,
+            'access_type'      => $accessType,
+        ],
+        'workingGroups'  => WorkingGroup::where('status', 'active')->with('products')->get(),
+    ]);
+}
+
 
     public function deleteDesign(Design $design)
     {
@@ -3241,5 +3285,15 @@ class AdminController extends Controller
                 'error' => 'Failed to update categories.',
             ]);
         }
+    }
+
+    public function fetchTopMetricsV1(AdminDashboardMetricsService $svc): JsonResponse
+    {
+        $data = $svc->computeTopMetrics_2025_08();
+
+        return response()->json([
+            'ok'   => true,
+            'data' => $data,
+        ]);
     }
 }

@@ -191,6 +191,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/site-settings/topnav-categories/manage', [AdminController::class, 'topnavCategories'])->name('topnavCategories');
     Route::post('/api/top-nav-category/reorder', [AdminController::class, 'reorderTopNavCategories'])->name('topnavCategories.reorder');
     Route::get('/api/json-tags', [AdminController::class, 'jsonTags'])->name('getTags');
+    Route::get('/api/dashboard/metrics', [AdminController::class, 'fetchTopMetricsV1'])->name('admin.api.dashboard.metrics');
     // Add more admin routes here
 });
 
