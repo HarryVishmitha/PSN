@@ -7,9 +7,12 @@ import Breadcrumb from "@/Components/Breadcrumb";
 import Meta from "@/Components/Metaheads";
 import MetricCard from "@/Components/MetricCard";
 import { Icon } from "@iconify/react";
-import WidgetSettings from "@/Dashboard/WidgetSettings";
-import { WIDGETS, WIDGET_MAP } from "@/Dashboard/widgets/registry.jsx";
 
+// ✅ Advanced bottom-section pieces
+import DashboardWidgetsGrid from "@/Dashboard/DashboardWidgetsGrid";
+import WidgetGallery from "@/Dashboard/WidgetGallery";
+import WidgetSettingsPanel from "@/Dashboard/WidgetSettingsPanel";
+import { WIDGET_MAP } from "@/Dashboard/widgets/registry.jsx";
 
 const TinySpark = ({ points = [] }) => {
   const max = Math.max(1, ...points);
@@ -24,9 +27,11 @@ const TinySpark = ({ points = [] }) => {
   );
 };
 
-const BOTTOM_OFFCANVAS_ID = "dashboardWidgetsOffcanvas";
+const GALLERY_ID = "widgetGalleryModal";
+const SETTINGS_ID = "widgetSettingsCanvas";
 
 const Dashboard = ({ userDetails }) => {
+  // ---------------- Top metrics (unchanged secure hydrate) ----------------
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     totalUsers: 0,
@@ -40,32 +45,6 @@ const Dashboard = ({ userDetails }) => {
   });
   const [error, setError] = useState(null);
 
-  const userId = userDetails?.id || null;
-  const storageKey = useMemo(
-    () => `printair.dashboard.widgets:v1:u${userId || "guest"}`,
-    [userId]
-  );
-  const [widgetKeys, setWidgetKeys] = useState([]);
-
-  // load saved selection on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const parsed = raw ? JSON.parse(raw) : null;
-      // default selection if empty — choose a few good ones
-      setWidgetKeys(Array.isArray(parsed) ? parsed : ["sales", "tasks", "activity"]);
-    } catch {
-      setWidgetKeys(["sales", "tasks", "activity"]);
-    }
-  }, [storageKey]);
-
-  // simple renderer
-  const renderWidget = (key) => {
-    const W = WIDGET_MAP[key]?.component;
-    if (!W) return null;
-    return <W />;
-  };
-
   const breadcrumbs = useMemo(
     () => [
       { label: "Home", url: route("home"), icon: "fluent:home-48-regular" },
@@ -74,9 +53,7 @@ const Dashboard = ({ userDetails }) => {
     []
   );
 
-  // ——— SECURE DEFAULTS (per-request) ———
   const secureGet = useCallback(async (url, opts = {}) => {
-    // Ensure CSRF + XHR header for Laravel
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
     const headers = {
       "X-Requested-With": "XMLHttpRequest",
@@ -86,27 +63,84 @@ const Dashboard = ({ userDetails }) => {
     return axios.get(url, { withCredentials: true, headers, signal: opts.signal });
   }, []);
 
-  const fetchTopMetrics = useCallback(async (signal) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await secureGet("/admin/api/dashboard/metrics", { signal });
-      setMetrics(data?.data ?? {});
-    } catch (e) {
-      if (e.name !== "CanceledError" && e.name !== "AbortError") {
-        setError(e?.response?.data?.message || "Failed to load metrics.");
+  const fetchTopMetrics = useCallback(
+    async (signal) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data } = await secureGet("/admin/api/dashboard/metrics", { signal });
+        setMetrics(data?.data ?? {});
+      } catch (e) {
+        if (e.name !== "CanceledError" && e.name !== "AbortError") {
+          setError(e?.response?.data?.message || "Failed to load metrics.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [secureGet]);
+    },
+    [secureGet]
+  );
 
   useEffect(() => {
-    // render immediately, then hydrate
     const ac = new AbortController();
     fetchTopMetrics(ac.signal);
     return () => ac.abort();
   }, [fetchTopMetrics]);
+
+  // ---------------- Bottom: drag/drop layout + gallery + per-widget settings ----------------
+  const userId = userDetails?.id || "guest";
+  const layoutKey = `printair.dashboard.layout:v1:${userId}`;
+
+  // layout: [{ key, size: 'md'|'lg', settings: {} }]
+  const [layout, setLayout] = useState([]);
+  const [activeKey, setActiveKey] = useState(null);
+
+  // load saved layout (or sensible defaults)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(layoutKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      setLayout(
+        Array.isArray(parsed)
+          ? parsed
+          : [
+            { key: "sales", size: "lg", settings: { days: 7 } },
+            { key: "tasks", size: "md", settings: {} },
+            { key: "activity", size: "md", settings: {} },
+          ]
+      );
+    } catch {
+      setLayout([
+        { key: "sales", size: "lg", settings: { days: 7 } },
+        { key: "tasks", size: "md", settings: {} },
+        { key: "activity", size: "md", settings: {} },
+      ]);
+    }
+  }, [layoutKey]);
+
+  // persist on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(layoutKey, JSON.stringify(layout));
+    } catch { }
+  }, [layout, layoutKey]);
+
+  const currentKeys = useMemo(() => layout.map((w) => w.key), [layout]);
+
+  const addWidget = (key) => {
+    if (!WIDGET_MAP[key] || currentKeys.includes(key)) return;
+    setLayout((prev) => [...prev, { key, size: "md", settings: {} }]);
+  };
+
+  const openSettings = (key) => {
+    setActiveKey(key);
+    const el = document.getElementById(SETTINGS_ID);
+    if (el) new window.bootstrap.Offcanvas(el).show();
+  };
+
+  const saveSettings = (key, settings) => {
+    setLayout((prev) => prev.map((w) => (w.key === key ? { ...w, settings } : w)));
+  };
 
   return (
     <>
@@ -126,145 +160,169 @@ const Dashboard = ({ userDetails }) => {
 
         {/* ===================== TOP (fixed for all backend users) ===================== */}
         <div className="row row-cols-xxxl-5 row-cols-lg-3 row-cols-sm-2 row-cols-1 gy-4 tw-gap-y-6">
-  <div className="col">
-    <MetricCard
-      label="Total Users"
-      value={metrics.totalUsers}
-      icon="gridicons:multiple-users"
-      tone="cyan"
-      subtitle="All registered accounts"
-      loading={loading}
-      rightNode={<div className="tw-text-cyan-600"><TinySpark points={metrics.trends?.users || []} /></div>}
-      delta={loading ? null : { value: 8, dir: "up" }}
-    />
-  </div>
-
-  <div className="col">
-    <MetricCard
-      label="Admins"
-      value={metrics.adminUsers}
-      icon="mdi:shield-account"
-      tone="violet"
-      subtitle="Active admin accounts"
-      loading={loading}
-    />
-  </div>
-
-  <div className="col">
-    <MetricCard
-      label="Designers"
-      value={metrics.designers}
-      icon="mdi:account-tie"
-      tone="amber"
-      subtitle="Design staff"
-      loading={loading}
-    />
-  </div>
-
-  <div className="col">
-    <MetricCard
-      label="Working Groups"
-      value={metrics.workingGroups}
-      icon="mdi:account-group"
-      tone="teal"
-      subtitle="Available groups"
-      loading={loading}
-    />
-  </div>
-
-  <div className="col">
-    <MetricCard
-      label="Daily Active (Today)"
-      value={metrics.dailyCustomers}
-      icon="mdi:account-clock"
-      tone="rose"
-      subtitle="Unique active users"
-      loading={loading}
-      delta={loading ? null : { value: 4, dir: "up" }}
-    />
-  </div>
-
-  {/* Optional business metrics */}
-  <div className="col">
-    <MetricCard
-      label="Orders Today"
-      value={metrics.ordersToday}
-      icon="mdi:cart"
-      tone="slate"
-      subtitle="Placed within last 24h"
-      loading={loading}
-      rightNode={<div className="tw-text-slate-600"><TinySpark points={metrics.trends?.orders || []} /></div>}
-    />
-  </div>
-
-  <div className="col">
-    <MetricCard
-      label="Revenue Today"
-      value={
-        typeof metrics.revenueToday === "number"
-          ? `Rs ${metrics.revenueToday.toLocaleString()}`
-          : (metrics.revenueToday ?? "-")
-      }
-      icon="mdi:cash-multiple"
-      tone="slate"
-      subtitle="Confirmed payments"
-      loading={loading}
-      rightNode={<div className="tw-text-slate-600"><TinySpark points={metrics.trends?.revenue || []} /></div>}
-    />
-  </div>
-</div>
-        {/* ===================== /TOP ===================== */}
-
-        {/* Bottom customizable section comes next */}
-        <div className="tw-mt-10">
-          <div className="d-flex justify-content-between align-items-center tw-mb-4">
-            <h5 className="tw-font-semibold tw-m-0">Your Custom Dashboard</h5>
-
-            {/* Settings trigger (gear icon) */}
-            <button
-              className="btn btn-light tw-rounded-full tw-flex tw-items-center tw-gap-2"
-              type="button"
-              data-bs-toggle="offcanvas"
-              data-bs-target={`#${BOTTOM_OFFCANVAS_ID}`}
-              aria-controls={BOTTOM_OFFCANVAS_ID}
-              title="Customize widgets"
-            >
-              <Icon icon="mdi:cog-outline" className="tw-text-lg" />
-              Customize
-            </button>
+          <div className="col">
+            <MetricCard
+              label="Total Users"
+              value={metrics.totalUsers}
+              icon="gridicons:multiple-users"
+              tone="cyan"
+              subtitle="All registered accounts"
+              loading={loading}
+              rightNode={
+                <div className="tw-text-cyan-600">
+                  <TinySpark points={metrics.trends?.users || []} />
+                </div>
+              }
+              delta={loading ? null : { value: 8, dir: "up" }}
+            />
           </div>
 
-          <div className="row gy-4">
-            {widgetKeys.length === 0 ? (
-              <div className="col-12">
-                <div className="alert alert-info d-flex align-items-center justify-content-between">
-                  <span>No widgets selected. Click “Customize” to add widgets.</span>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    data-bs-toggle="offcanvas"
-                    data-bs-target={`#${BOTTOM_OFFCANVAS_ID}`}
-                  >
-                    Add Widgets
-                  </button>
+          <div className="col">
+            <MetricCard
+              label="Admins"
+              value={metrics.adminUsers}
+              icon="mdi:shield-account"
+              tone="violet"
+              subtitle="Active admin accounts"
+              loading={loading}
+            />
+          </div>
+
+          <div className="col">
+            <MetricCard
+              label="Designers"
+              value={metrics.designers}
+              icon="mdi:account-tie"
+              tone="amber"
+              subtitle="Design staff"
+              loading={loading}
+            />
+          </div>
+
+          <div className="col">
+            <MetricCard
+              label="Working Groups"
+              value={metrics.workingGroups}
+              icon="mdi:account-group"
+              tone="teal"
+              subtitle="Available groups"
+              loading={loading}
+            />
+          </div>
+
+          <div className="col">
+            <MetricCard
+              label="Daily Active (Today)"
+              value={metrics.dailyCustomers}
+              icon="mdi:account-clock"
+              tone="rose"
+              subtitle="Unique active users"
+              loading={loading}
+              delta={loading ? null : { value: 4, dir: "up" }}
+            />
+          </div>
+
+          {/* Optional business metrics */}
+          <div className="col">
+            <MetricCard
+              label="Orders Today"
+              value={metrics.ordersToday}
+              icon="mdi:cart"
+              tone="slate"
+              subtitle="Placed within last 24h"
+              loading={loading}
+              rightNode={
+                <div className="tw-text-slate-600">
+                  <TinySpark points={metrics.trends?.orders || []} />
                 </div>
-              </div>
-            ) : (
-              widgetKeys.map((k) => (
-                <div key={k} className="col-12 col-lg-6">
-                  {renderWidget(k)}
+              }
+            />
+          </div>
+
+          <div className="col">
+            <MetricCard
+              label="Revenue Today"
+              value={
+                typeof metrics.revenueToday === "number"
+                  ? `Rs ${metrics.revenueToday.toLocaleString()}`
+                  : metrics.revenueToday ?? "-"
+              }
+              icon="mdi:cash-multiple"
+              tone="slate"
+              subtitle="Confirmed payments"
+              loading={loading}
+              rightNode={
+                <div className="tw-text-slate-600">
+                  <TinySpark points={metrics.trends?.revenue || []} />
                 </div>
-              ))
-            )}
+              }
+            />
           </div>
         </div>
+        {/* ===================== /TOP ===================== */}
+
+        {/* ===================== BOTTOM (customizable) ===================== */}
+        <div className="tw-mt-10">
+          <div className="d-flex justify-content-between align-items-center tw-mb-4">
+            <h6 className="tw-font-semibold tw-m-0">Site Overview</h6>
+
+            <div className="d-flex tw-gap-2">
+              {/* Quick presets */}
+              <div className="btn-group">
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() =>
+                    setLayout([
+                      { key: "sales", size: "lg", settings: { days: 7 } },
+                      { key: "customers", size: "md", settings: {} },
+                      { key: "activity", size: "md", settings: {} },
+                    ])
+                  }
+                >
+                  Preset: Analytics
+                </button>
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() =>
+                    setLayout([
+                      { key: "tasks", size: "md", settings: {} },
+                      { key: "calendar", size: "lg", settings: {} },
+                      { key: "activity", size: "md", settings: {} },
+                    ])
+                  }
+                >
+                  Preset: Team
+                </button>
+              </div>
+
+              {/* FAB Add Widget */}
+              <button
+                className="btn btn-primary tw-rounded-full tw-flex tw-items-center tw-gap-2"
+                data-bs-toggle="modal"
+                data-bs-target={`#${GALLERY_ID}`}
+              >
+                <Icon icon="mdi:plus" className="tw-text-lg" />
+                Add Widget
+              </button>
+            </div>
+          </div>
+
+          {/* Drag & drop grid */}
+          <DashboardWidgetsGrid layout={layout} setLayout={setLayout} onOpenSettings={openSettings} />
+        </div>
       </AdminDashboard>
-      {/* Offcanvas settings */}
-      <WidgetSettings
-        userId={userId}
-        currentKeys={widgetKeys}
-        onSave={setWidgetKeys}
-        offcanvasId={BOTTOM_OFFCANVAS_ID}
+
+      {/* Gallery modal (visual picker) */}
+      <WidgetGallery modalId={GALLERY_ID} onAdd={addWidget} currentKeys={currentKeys} />
+
+      {/* Per-widget settings offcanvas */}
+      <WidgetSettingsPanel
+        offcanvasId={SETTINGS_ID}
+        activeKey={activeKey}
+        initialSettings={layout.find((w) => w.key === activeKey)?.settings}
+        onSave={saveSettings}
       />
+
       <CookiesV />
     </>
   );

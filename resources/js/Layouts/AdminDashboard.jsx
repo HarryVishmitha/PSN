@@ -433,6 +433,15 @@ const AdminDashboard = ({ children, userDetails }) => {
                                             All Quotations
                                         </Link>
                                     </li>
+                                    <li>
+                                        <Link
+                                            href={route('admin.estimates')}
+                                            className={url === '/admin/estimates' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
+                                            All Quotations
+                                        </Link>
+                                    </li>
                                 </ul>
                             </li>
 

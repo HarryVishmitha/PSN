@@ -53,7 +53,7 @@
         "@testing-library/user-event": "^13.5.0",
         "animate.css": "^4.1.1",
         "aos": "^2.3.4",
-        "apexcharts": "^4.3.0",
+        "apexcharts": "^4.7.0",
         "bootstrap": "^5.3.7",
         "datatables.net": "^2.3.2",
         "datatables.net-dt": "^2.3.2",
