@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use App\Models\Estimate;
 use App\Policies\EstimatePolicy;
+use Illuminate\Support\Facades\Gate;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -28,5 +29,9 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
         //
+        Gate::define('manage-payment-methods', function ($user) {
+            // Adjust role check to your app
+            return $user && in_array($user->role->name ?? '', ['admin', 'superadmin']);
+        });
     }
 }

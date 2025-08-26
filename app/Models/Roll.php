@@ -25,4 +25,10 @@ class Roll extends Model
     {
         return $this->belongsTo(Provider::class);
     }
+    public function products()
+    {
+        return $this->belongsToMany(Product::class, 'product_rolls')
+            ->withTimestamps()
+            ->withPivot('is_default');
+    }
 }

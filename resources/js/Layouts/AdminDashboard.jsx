@@ -426,11 +426,11 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     </li>
                                     <li>
                                         <Link
-                                            href={route('admin.estimates')}
-                                            className={url === '/admin/estimates' ? 'active-page' : ''}
+                                            href={route('admin.payment_methods.index')}
+                                            className={url === '/admin/payment-methods' ? 'active-page' : ''}
                                         >
-                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
-                                            All Quotations
+                                            <i className='ri-circle-fill circle-icon tw-text-orange-500 w-auto' />{" "}
+                                            Payment Settings
                                         </Link>
                                     </li>
                                     <li>

@@ -76,23 +76,80 @@ class WidgetDataService
     }
 
     // RECENT ACTIVITY: last N entries from activity_logs
+
     public function fetchRecentActivity_2025_08(int $limit = 20): array
     {
         if (!Schema::hasTable('activity_logs')) return ['items' => []];
 
-        $rows = DB::table('activity_logs')
-            ->orderByDesc('created_at')
-            ->limit($limit)
-            ->get(['id', 'user_id', 'action', 'meta', 'created_at']);
+        // Detect columns that exist
+        $cols = Schema::getColumnListing('activity_logs');
+
+        // Common possibilities
+        $idCol        = in_array('id', $cols) ? 'id' : (in_array('log_id', $cols) ? 'log_id' : null);
+        $userIdCol    = in_array('user_id', $cols) ? 'user_id' : (in_array('causer_id', $cols) ? 'causer_id' : (in_array('actor_id', $cols) ? 'actor_id' : null));
+        $actionCol    = in_array('action', $cols) ? 'action' : (in_array('description', $cols) ? 'description' : (in_array('event', $cols) ? 'event' : (in_array('type', $cols) ? 'type' : (in_array('activity', $cols) ? 'activity' : null))));
+        $metaCol      = in_array('meta', $cols) ? 'meta' : (in_array('properties', $cols) ? 'properties' : (in_array('data', $cols) ? 'data' : (in_array('payload', $cols) ? 'payload' : null)));
+        $createdAtCol = in_array('created_at', $cols) ? 'created_at' : (in_array('logged_at', $cols) ? 'logged_at' : (in_array('occurred_at', $cols) ? 'occurred_at' : null));
+
+        // Build select list safely
+        $select = [];
+        if ($idCol)        $select[] = "al.$idCol as id";
+        if ($userIdCol)    $select[] = "al.$userIdCol as user_id";
+        if ($actionCol)    $select[] = "al.$actionCol as action";
+        if ($metaCol)      $select[] = "al.$metaCol as meta";
+        if ($createdAtCol) $select[] = "al.$createdAtCol as created_at";
+
+        // Minimal fallback if table is unusual
+        if (empty($select)) {
+            $rows = DB::table('activity_logs')->orderByDesc('id')->limit($limit)->get();
+            return ['items' => $rows->map(function ($r) {
+                return [
+                    'id'         => $r->id ?? null,
+                    'user_id'    => $r->user_id ?? null,
+                    'user_name'  => null,
+                    'action'     => $r->description ?? $r->event ?? $r->type ?? 'activity',
+                    'meta'       => null,
+                    'created_at' => (string)($r->created_at ?? now()),
+                ];
+            })->all()];
+        }
+
+        // Join users if we can, to show a friendly name
+        $q = DB::table('activity_logs as al');
+        if ($userIdCol && Schema::hasTable('users')) {
+            $q->leftJoin('users as u', "u.id", "=", "al.$userIdCol");
+            $select[] = "u.name as user_name";
+            $select[] = "u.email as user_email";
+        }
+
+        if ($createdAtCol) {
+            $q->orderByDesc("al.$createdAtCol");
+        } else {
+            $q->orderByDesc("al.$idCol");
+        }
+
+        $rows = $q->limit($limit)->get($select);
 
         return [
             'items' => $rows->map(function ($r) {
+                // Normalize meta to array if it’s JSON, otherwise keep as string/null
+                $meta = null;
+                if (isset($r->meta)) {
+                    if (is_string($r->meta)) {
+                        $decoded = json_decode($r->meta, true);
+                        $meta = json_last_error() === JSON_ERROR_NONE ? $decoded : $r->meta;
+                    } elseif (is_array($r->meta) || is_object($r->meta)) {
+                        $meta = (array)$r->meta;
+                    }
+                }
                 return [
-                    'id'         => $r->id,
-                    'user_id'    => $r->user_id,
+                    'id'         => $r->id ?? null,
+                    'user_id'    => $r->user_id ?? null,
+                    'user_name'  => $r->user_name ?? null,
+                    'user_email' => $r->user_email ?? null,
                     'action'     => $r->action ?? 'activity',
-                    'meta'       => $r->meta ? (is_string($r->meta) ? @json_decode($r->meta, true) ?: $r->meta : $r->meta) : null,
-                    'created_at' => (string) $r->created_at,
+                    'meta'       => $meta,
+                    'created_at' => isset($r->created_at) ? (string)$r->created_at : null,
                 ];
             })->all()
         ];
@@ -125,7 +182,7 @@ class WidgetDataService
             $rows = DB::table('users')
                 ->orderByDesc('created_at')
                 ->limit($limit)
-                ->get(['id','name','email','created_at']);
+                ->get(['id', 'name', 'email', 'created_at']);
 
             return [
                 'items' => $rows->map(fn($r) => [
@@ -152,7 +209,7 @@ class WidgetDataService
         if ($status && Schema::hasColumn('tasks', 'status')) {
             $q->where('status', $status);
         }
-        $rows = $q->limit($limit)->get(['id','title','status','due_date','created_at']);
+        $rows = $q->limit($limit)->get(['id', 'title', 'status', 'due_date', 'created_at']);
         return [
             'items' => $rows->map(fn($r) => [
                 'id'         => $r->id,
@@ -175,7 +232,7 @@ class WidgetDataService
         $rows = DB::table('events')
             ->whereBetween('start_at', [$fromDate, $toDate])
             ->orderBy('start_at')
-            ->get(['id','title','start_at','end_at','location']);
+            ->get(['id', 'title', 'start_at', 'end_at', 'location']);
 
         return [
             'items' => $rows->map(fn($r) => [
@@ -192,38 +249,41 @@ class WidgetDataService
     {
         $since = now()->subDays($days);
         // OrderItem + Product expected
-        if (!Schema::hasTable('order_items') || !Schema::hasTable('products')) return ['items'=>[]];
+        if (!Schema::hasTable('order_items') || !Schema::hasTable('products')) return ['items' => []];
 
         $rows = DB::table('order_items as oi')
-            ->join('products as p','p.id','=','oi.product_id')
-            ->join('orders as o','o.id','=','oi.order_id')
-            ->where('o.created_at','>=',$since)
+            ->join('products as p', 'p.id', '=', 'oi.product_id')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->where('o.created_at', '>=', $since)
             ->selectRaw('p.id, p.name, SUM(oi.quantity) as qty, SUM(oi.total) as revenue')
-            ->groupBy('p.id','p.name')
+            ->groupBy('p.id', 'p.name')
             ->orderByDesc('revenue')
             ->limit($limit)
             ->get();
 
-        return ['items'=>$rows->map(fn($r)=>[
-            'product_id'=>$r->id, 'name'=>$r->name, 'qty'=>(int)$r->qty, 'revenue'=>(float)$r->revenue
+        return ['items' => $rows->map(fn($r) => [
+            'product_id' => $r->id,
+            'name' => $r->name,
+            'qty' => (int)$r->qty,
+            'revenue' => (float)$r->revenue
         ])->all()];
     }
 
     public function categoryBreakdown_2025_08(int $days = 30): array
     {
         $since = now()->subDays($days);
-        if (!Schema::hasTable('order_items') || !Schema::hasTable('products') || !Schema::hasTable('categories')) return ['items'=>[]];
+        if (!Schema::hasTable('order_items') || !Schema::hasTable('products') || !Schema::hasTable('categories')) return ['items' => []];
 
         $rows = DB::table('order_items as oi')
-            ->join('products as p','p.id','=','oi.product_id')
-            ->join('categories as c','c.id','=','p.category_id')
-            ->join('orders as o','o.id','=','oi.order_id')
-            ->where('o.created_at','>=',$since)
+            ->join('products as p', 'p.id', '=', 'oi.product_id')
+            ->join('categories as c', 'c.id', '=', 'p.category_id')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->where('o.created_at', '>=', $since)
             ->selectRaw('c.id, c.name, SUM(oi.total) as revenue')
-            ->groupBy('c.id','c.name')
+            ->groupBy('c.id', 'c.name')
             ->orderByDesc('revenue')->get();
 
-        return ['items'=>$rows->map(fn($r)=>['category_id'=>$r->id,'name'=>$r->name,'revenue'=>(float)$r->revenue])->all()];
+        return ['items' => $rows->map(fn($r) => ['category_id' => $r->id, 'name' => $r->name, 'revenue' => (float)$r->revenue])->all()];
     }
 
     public function lowStock_2025_08(int $limit = 10): array
@@ -231,20 +291,20 @@ class WidgetDataService
         // Use ProductInventory or products.stock if available
         if (Schema::hasTable('product_inventory')) {
             $rows = DB::table('product_inventory as pi')
-                ->join('products as p','p.id','=','pi.product_id')
-                ->select('p.id','p.name','pi.stock','pi.reorder_level')
+                ->join('products as p', 'p.id', '=', 'pi.product_id')
+                ->select('p.id', 'p.name', 'pi.stock', 'pi.reorder_level')
                 ->orderBy('pi.stock')->limit($limit)->get();
-        } elseif (Schema::hasTable('products') && Schema::hasColumn('products','stock')) {
-            $rows = DB::table('products')->select('id','name','stock')->orderBy('stock')->limit($limit)->get();
-        } else return ['items'=>[]];
+        } elseif (Schema::hasTable('products') && Schema::hasColumn('products', 'stock')) {
+            $rows = DB::table('products')->select('id', 'name', 'stock')->orderBy('stock')->limit($limit)->get();
+        } else return ['items' => []];
 
-        return ['items'=>$rows->map(function($r){
+        return ['items' => $rows->map(function ($r) {
             return [
-                'product_id'=>$r->id,
-                'name'=>$r->name,
-                'stock'=>(int)($r->stock ?? 0),
-                'reorder_level'=>(int)($r->reorder_level ?? 0),
-                'is_low'=> ($r->reorder_level ?? 0) > 0 ? ((int)$r->stock <= (int)$r->reorder_level) : ((int)$r->stock <= 5)
+                'product_id' => $r->id,
+                'name' => $r->name,
+                'stock' => (int)($r->stock ?? 0),
+                'reorder_level' => (int)($r->reorder_level ?? 0),
+                'is_low' => ($r->reorder_level ?? 0) > 0 ? ((int)$r->stock <= (int)$r->reorder_level) : ((int)$r->stock <= 5)
             ];
         })->all()];
     }
@@ -252,46 +312,48 @@ class WidgetDataService
     public function paymentsByMethod_2025_08(int $days = 30): array
     {
         $since = now()->subDays($days);
-        if (!Schema::hasTable('payments')) return ['items'=>[]];
+        if (!Schema::hasTable('payments')) return ['items' => []];
 
         $rows = DB::table('payments')
-            ->when(Schema::hasColumn('payments','paid_at'), fn($q)=>$q->where('paid_at','>=',$since))
+            ->when(Schema::hasColumn('payments', 'paid_at'), fn($q) => $q->where('paid_at', '>=', $since))
             ->selectRaw('COALESCE(method,"unknown") as method, COUNT(*) as cnt, SUM(amount) as sum')
             ->groupBy('method')
             ->orderByDesc('sum')->get();
 
-        return ['items'=>$rows->map(fn($r)=>[
-            'method'=>$r->method, 'count'=>(int)$r->cnt, 'amount'=>(float)$r->sum
+        return ['items' => $rows->map(fn($r) => [
+            'method' => $r->method,
+            'count' => (int)$r->cnt,
+            'amount' => (float)$r->sum
         ])->all()];
     }
 
     public function refunds_2025_08(int $days = 30): array
     {
         $since = now()->subDays($days);
-        if (!Schema::hasTable('refunds')) return ['items'=>[]];
+        if (!Schema::hasTable('refunds')) return ['items' => []];
 
         $rows = DB::table('refunds')
-            ->where('created_at','>=',$since)
+            ->where('created_at', '>=', $since)
             ->selectRaw('DATE(created_at) as d, COUNT(*) as cnt, SUM(amount) as sum')
             ->groupBy('d')->orderBy('d')->get();
 
         return [
-            'labels'=>$rows->pluck('d')->all(),
-            'counts'=>$rows->pluck('cnt')->map(fn($v)=>(int)$v)->all(),
-            'amounts'=>$rows->pluck('sum')->map(fn($v)=>(float)$v)->all(),
+            'labels' => $rows->pluck('d')->all(),
+            'counts' => $rows->pluck('cnt')->map(fn($v) => (int)$v)->all(),
+            'amounts' => $rows->pluck('sum')->map(fn($v) => (float)$v)->all(),
         ];
     }
 
     public function shipmentsStatus_2025_08(int $days = 7): array
     {
         $since = now()->subDays($days);
-        if (!Schema::hasTable('shipments')) return ['items'=>[]];
+        if (!Schema::hasTable('shipments')) return ['items' => []];
 
         $rows = DB::table('shipments')
-            ->where('created_at','>=',$since)
+            ->where('created_at', '>=', $since)
             ->selectRaw('status, COUNT(*) as cnt')
             ->groupBy('status')->get();
 
-        return ['items'=>$rows->map(fn($r)=>['status'=>$r->status ?? 'unknown','count'=>(int)$r->cnt])->all()];
+        return ['items' => $rows->map(fn($r) => ['status' => $r->status ?? 'unknown', 'count' => (int)$r->cnt])->all()];
     }
 }

@@ -106,4 +106,19 @@ class Product extends Model
     {
         return $this->hasMany(DesignShareLink::class);
     }
+
+    public function rolls()
+    {
+        return $this->belongsToMany(Roll::class, 'product_rolls')
+            ->withTimestamps()
+            ->withPivot('is_default');   // no ->using(...)
+    }
+
+    public function defaultRoll()
+    {
+        return $this->belongsToMany(Roll::class, 'product_rolls')
+            ->withPivot('is_default')
+            ->wherePivot('is_default', true)
+            ->limit(1);
+    }
 }

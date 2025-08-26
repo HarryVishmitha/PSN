@@ -6,6 +6,7 @@ import CookiesV from '@/Components/CookieConsent';
 import Meta from '@/Components/Metaheads';
 import { Icon } from "@iconify/react";
 import Alert from "@/Components/Alert";
+import axios from '@/lib/axios';
 
 const Inventory = ({ userDetails, inventory, rolls, providers }) => {
     // General filters and alerts.
@@ -39,6 +40,14 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
     // If using Laravel paginator, data may be in the "data" field.
     const inventoryItems = inventory?.data ? inventory.data : inventory;
     const rollsItems = rolls?.data ? rolls.data : rolls;
+
+    const [bindModalOpen, setBindModalOpen] = useState(false);
+    const [bindProductId, setBindProductId] = useState('');
+    const [bindRollIds, setBindRollIds] = useState([]); // multi-select rolls
+    const [bindDefault, setBindDefault] = useState(null); // selected default roll id
+    const [bindBusy, setBindBusy] = useState(false);
+    const [productsList, setProductsList] = useState([]);  // from /admin/api/products
+    const [bindErrors, setBindErrors] = useState({});
 
     // Helper to update query parameters.
     const updateQuery = (params) => {
@@ -180,25 +189,21 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
     };
 
     // Delete Roll handler.
-    const handleRollDelete = () => {
+    const handleRollDelete = async () => {
         setDeleteRollLoading(true);
-        router.delete(
-            route('admin.deleteInventoryItem', selectedRollId),
-            {
-                preserveState: true,
-                onSuccess: () => {
-                    setAlert({ type: 'success', message: 'Roll deleted successfully' });
-                },
-                onError: () => {
-                    setAlert({ type: 'danger', message: 'Failed to delete roll. Please try again later.' });
-                },
-                onFinish: () => {
-                    setDeleteRollLoading(false);
-                    document.querySelector('#deleteRollModal .btn-close').click();
-                }
-            }
-        );
+        try {
+            await axios.delete(route('admin.deleteInventoryItem', selectedRollId));
+            setAlert({ type: 'success', message: 'Roll deleted successfully' });
+            // refresh only the rolls list
+            router.reload({ only: ['rolls'], preserveState: true, preserveScroll: true });
+        } catch (e) {
+            setAlert({ type: 'danger', message: e?.response?.data?.message || 'Failed to delete roll.' });
+        } finally {
+            setDeleteRollLoading(false);
+            document.querySelector('#deleteRollModal .btn-close')?.click();
+        }
     };
+
 
     // Rolls pagination (using backend paginator).
     const handleRollPageChange = (page) => {
@@ -209,6 +214,15 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
             });
         }
     };
+
+    const refreshRolls = () => {
+        router.reload({
+            only: ['rolls'],          // fetch just the rolls prop from the server
+            preserveState: true,      // keep your component state (alerts, modal state, filters)
+            preserveScroll: true,
+        });
+    };
+
 
     const renderRollsPagination = () => (
         rolls && rolls.last_page > 1 && (
@@ -271,8 +285,8 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
                         <li className="page-item" key={page}>
                             <Link
                                 className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${page === inventory.current_page
-                                        ? "bg-primary-600 text-white"
-                                        : "bg-neutral-200 text-secondary-light"
+                                    ? "bg-primary-600 text-white"
+                                    : "bg-neutral-200 text-secondary-light"
                                     }`}
                                 href={`?page=${page}`}
                             >
@@ -294,6 +308,22 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
             </div>
         )
     );
+
+    // preload products (use your existing JSON endpoint)
+    useEffect(() => {
+        (async () => {
+            try {
+                const { data } = await axios.get(route('admin.getProducts')); // returns JSON
+                // adapt to your controller’s shape; assuming { products: [...] }
+                setProductsList(Array.isArray(data?.products) ? data.products : (data ?? []));
+            } catch (err) {
+                console.error(err);
+                setAlert({ type: 'danger', message: 'Failed to load products list' });
+            }
+        })();
+    }, []);
+
+
 
     return (
         <>
@@ -379,6 +409,7 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
                                                 <th scope="col">Height</th>
                                                 <th scope="col">Price per Sq. Ft. LKR</th>
                                                 <th scope="col">Offcut Price</th>
+                                                <th scope="col">Products</th>
                                                 <th scope="col" className="text-center">Last Updated</th>
                                                 <th scope="col" className="text-center">Action</th>
                                             </tr>
@@ -402,6 +433,29 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
                                                         <td>{roll.roll_height || '-'}</td>
                                                         <td>{roll.price_rate_per_sqft || '-'}</td>
                                                         <td>{roll.offcut_price || '-'}</td>
+                                                        <td>
+                                                            {Array.isArray(roll.products) && roll.products.length > 0 ? (
+                                                                <div className="tw-flex tw-flex-wrap tw-gap-1">
+                                                                    {roll.products.slice(0, 3).map((p) => (
+                                                                        <Link
+                                                                            key={p.id}
+                                                                            href={route('admin.producteditView', p.id)}
+                                                                            className="tw-text-xs tw-bg-neutral-100 tw-border tw-border-neutral-200 tw-rounded tw-px-2 tw-py-0.5 hover:tw-underline"
+                                                                            title="Edit product"
+                                                                        >
+                                                                            {p.name ?? `#${p.id}`}
+                                                                        </Link>
+                                                                    ))}
+                                                                    {roll.products_count > 3 && (
+                                                                        <span className="tw-text-xs tw-text-gray-500">
+                                                                            +{roll.products_count - 3} more
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="tw-text-gray-400">—</span>
+                                                            )}
+                                                        </td>
                                                         <td className="text-center">{formatTimestamp(roll.updated_at)}</td>
                                                         <td className="text-center">
                                                             <div className="d-flex align-items-center gap-10 justify-content-center">
@@ -423,6 +477,22 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
                                                                 >
                                                                     <Icon icon="fluent:delete-24-regular" className="menu-icon" />
                                                                 </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="bg-primary-100 text-primary-700 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#bindRollsModal"
+                                                                    onClick={() => {
+                                                                        setBindModalOpen(true);
+                                                                        // pre-select the clicked roll
+                                                                        setBindRollIds([roll.id]);
+                                                                        setBindDefault(roll.id);
+                                                                    }}
+                                                                    title="Bind to products"
+                                                                >
+                                                                    <Icon icon="mdi:link-variant" className="menu-icon" />
+                                                                </button>
+
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -733,7 +803,130 @@ const Inventory = ({ userDetails, inventory, rolls, providers }) => {
                     </div>
                 </div>
 
-            </AdminDashboard>
+                <div className="modal fade" id="bindRollsModal" tabIndex={-1} aria-labelledby="bindRollsModalLabel" aria-hidden="true">
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content radius-16 bg-base">
+                            <div className="modal-header py-16 px-24 border-0">
+                                <h5 className="modal-title fs-5" id="bindRollsModalLabel">Bind Rolls to Product</h5>
+                                <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close"
+                                    onClick={() => { setBindErrors({}); setBindRollIds([]); setBindDefault(null); setBindProductId(''); }} />
+                            </div>
+                            <div className="modal-body p-24">
+                                <form onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    setBindBusy(true);
+                                    setBindErrors({});
+
+                                    try {
+                                        await axios.patch(
+                                            route('admin.product.rolls.sync', bindProductId),
+                                            {
+                                                roll_ids: bindRollIds,
+                                                default_roll: bindDefault,
+                                            }
+                                        );
+
+                                        setAlert({ type: 'success', message: 'Product rolls updated' });
+                                        refreshRolls();
+                                        // close modal
+                                        const closeBtn = document.querySelector('#bindRollsModal .btn-close');
+                                        if (closeBtn) closeBtn.click();
+
+                                        // optional: reset state
+                                        setBindProductId('');
+                                        setBindRollIds([]);
+                                        setBindDefault(null);
+                                    } catch (error) {
+                                        const errors = error?.response?.data?.errors ?? {};
+                                        setBindErrors(errors);
+                                        setAlert({ type: 'danger', message: 'Failed to update product rolls' });
+                                        console.error(error);
+                                    } finally {
+                                        setBindBusy(false);
+                                    }
+                                }}
+                                >
+                                    {/* Select product */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Product</label>
+                                        <select className="form-select"
+                                            value={bindProductId}
+                                            onChange={(e) => setBindProductId(e.target.value)}>
+                                            <option value="">Select a product</option>
+                                            {Array.isArray(productsList) && productsList.map(p => (
+                                                <option key={p.id} value={p.id}>{p.name || `#${p.id}`}</option>
+                                            ))}
+                                        </select>
+                                        {bindErrors.product && <div className="invalid-feedback d-block">
+                                            {Array.isArray(bindErrors.product) ? bindErrors.product[0] : bindErrors.product}
+                                        </div>}
+                                    </div>
+
+                                    {/* Multi-select rolls (use the list already loaded in this page) */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Select Rolls</label>
+                                        <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-3 tw-gap-2">
+                                            {Array.isArray(rollsItems) && rollsItems.map(r => {
+                                                const checked = bindRollIds.includes(r.id);
+                                                return (
+                                                    <label key={r.id} className="tw-flex tw-items-center tw-gap-2 tw-p-2 tw-border tw-rounded">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) setBindRollIds(prev => [...prev, r.id]);
+                                                                else setBindRollIds(prev => prev.filter(x => x !== r.id));
+                                                                // if default was removed, clear it
+                                                                if (!e.target.checked && bindDefault === r.id) setBindDefault(null);
+                                                            }}
+                                                        />
+                                                        <span className="tw-text-sm">
+                                                            #{r.id} {r.roll_type} {r.roll_size ? `(${r.roll_size})` : ''} {r.roll_width ? `- ${r.roll_width}ft` : ''}
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        {bindErrors.roll_ids && <div className="invalid-feedback d-block">
+                                            {Array.isArray(bindErrors.roll_ids) ? bindErrors.roll_ids[0] : bindErrors.roll_ids}
+                                        </div>}
+                                    </div>
+
+                                    {/* Default roll (radio among selected) */}
+                                    <div className="mb-3">
+                                        <label className="form-label">Default Roll (optional)</label>
+                                        <div className="tw-flex tw-flex-wrap tw-gap-3">
+                                            {bindRollIds.length === 0 && <div className="tw-text-sm tw-text-gray-500">Select at least one roll to choose a default.</div>}
+                                            {bindRollIds.map(rid => {
+                                                const roll = rollsItems.find(x => x.id === rid);
+                                                return (
+                                                    <label key={rid} className="tw-flex tw-items-center tw-gap-2">
+                                                        <input type="radio" name="default_roll"
+                                                            checked={bindDefault === rid}
+                                                            onChange={() => setBindDefault(rid)} />
+                                                        <span className="tw-text-sm">
+                                                            #{rid} {roll?.roll_type} {roll?.roll_size ? `(${roll.roll_size})` : ''}
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="modal-footer d-flex justify-content-end">
+                                        <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" className="btn btn-primary" disabled={bindBusy || !bindProductId}>
+                                            {bindBusy ? <span className="spinner-border spinner-border-sm" /> : 'Save'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </AdminDashboard >
             <CookiesV />
         </>
     );

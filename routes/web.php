@@ -124,7 +124,7 @@ Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('use
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
-Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('admin')->as('admin.')->group(function () {
+Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-payment-methods'])->prefix('admin')->as('admin.')->group(function () {
     Route::get('/dashboard', [AdminController::class, 'index'])->name('dashboard');
     Route::get('/api/notifications', [NotificationsController::class, 'index'])->name('notifications');
     Route::post('/api/notifications/{id}/read', [NotificationsController::class, 'markAsRead'])->name('markAsRead');
@@ -194,22 +194,40 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/api/json-tags', [AdminController::class, 'jsonTags'])->name('getTags');
     Route::get('/api/dashboard/metrics', [AdminController::class, 'fetchTopMetricsV1'])->name('admin.api.dashboard.metrics');
     Route::prefix('api/widgets')->as('api.widgets.')->group(function () {
-    Route::get('/sales',            [AdminWidgetApiController::class,'salesWidgetV1'])->name('sales');
-    Route::get('/recent-activity',  [AdminWidgetApiController::class,'recentActivityWidgetV1'])->name('activity');
-    Route::get('/customers',        [AdminWidgetApiController::class,'customersWidgetV1'])->name('customers');
+        Route::get('/sales',            [AdminWidgetApiController::class, 'salesWidgetV1'])->name('sales');
+        Route::get('/recent-activity',  [AdminWidgetApiController::class, 'recentActivityWidgetV1'])->name('activity');
+        Route::get('/customers',        [AdminWidgetApiController::class, 'customersWidgetV1'])->name('customers');
 
-    // New data-rich endpoints
-    Route::get('/top-products',     [AdminWidgetApiController::class,'topProductsWidgetV1'])->name('top_products');
-    Route::get('/category-breakdown',[AdminWidgetApiController::class,'categoryBreakdownWidgetV1'])->name('cat_breakdown');
-    Route::get('/low-stock',        [AdminWidgetApiController::class,'lowStockWidgetV1'])->name('low_stock');
-    Route::get('/payments-by-method',[AdminWidgetApiController::class,'paymentsByMethodWidgetV1'])->name('pay_methods');
-    Route::get('/refunds',          [AdminWidgetApiController::class,'refundsWidgetV1'])->name('refunds');
-    Route::get('/shipments-status', [AdminWidgetApiController::class,'shipmentsStatusWidgetV1'])->name('shipments');
+        // New data-rich endpoints
+        Route::get('/top-products',     [AdminWidgetApiController::class, 'topProductsWidgetV1'])->name('top_products');
+        Route::get('/category-breakdown', [AdminWidgetApiController::class, 'categoryBreakdownWidgetV1'])->name('cat_breakdown');
+        Route::get('/low-stock',        [AdminWidgetApiController::class, 'lowStockWidgetV1'])->name('low_stock');
+        Route::get('/payments-by-method', [AdminWidgetApiController::class, 'paymentsByMethodWidgetV1'])->name('pay_methods');
+        Route::get('/refunds',          [AdminWidgetApiController::class, 'refundsWidgetV1'])->name('refunds');
+        Route::get('/shipments-status', [AdminWidgetApiController::class, 'shipmentsStatusWidgetV1'])->name('shipments');
 
-    // New tables we created
-    Route::get('/tasks',            [AdminWidgetApiController::class,'tasksWidgetV1'])->name('tasks');
-    Route::get('/calendar',         [AdminWidgetApiController::class,'calendarWidgetV1'])->name('calendar');
-  });
+        // New tables we created
+        Route::get('/tasks',            [AdminWidgetApiController::class, 'tasksWidgetV1'])->name('tasks');
+        Route::get('/calendar',         [AdminWidgetApiController::class, 'calendarWidgetV1'])->name('calendar');
+    });
+
+    //Payments Brick
+    Route::get('/payment-methods', [AdminController::class, 'paymentMethodsIndex'])
+        ->name('payment_methods.index');
+
+    // API
+    Route::prefix('api/payment-methods')->group(function () {
+        Route::post('/', [AdminController::class, 'paymentMethodsStore']);
+        Route::post('/upload', [AdminController::class, 'paymentMethodsUpload']); // logo/qr uploader
+        Route::patch('/reorder', [AdminController::class, 'paymentMethodsReorder'])->name('payment_methods.reorder'); // [{id,sort_order}]
+        Route::patch('/{method}', [AdminController::class, 'paymentMethodsUpdate']);
+        Route::patch('/{method}/toggle', [AdminController::class, 'paymentMethodsToggle']);
+        Route::delete('/{method}', [AdminController::class, 'paymentMethodsDestroy']);
+    });
+    Route::get('/api/product/{product}/rolls', [AdminController::class, 'getProductRolls'])->name('product.rolls.get');
+    Route::patch('/api/product/{product}/rolls', [AdminController::class, 'syncProductRolls'])->name('product.rolls.sync');
+    Route::post('/api/product/{product}/rolls/{roll}/default', [AdminController::class, 'setDefaultProductRoll'])->name('product.rolls.default');
+    Route::delete('/api/product/{product}/rolls/{roll}', [AdminController::class, 'detachProductRoll'])->name('product.rolls.detach');
     // Add more admin routes here
 });
 

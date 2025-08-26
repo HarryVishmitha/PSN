@@ -53,7 +53,15 @@ use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Encoders\AutoEncoder;
 use App\Services\EstimatePdfService;
 use App\Models\Tag;
-use Illuminate\Http\JsonResponse; 
+use Illuminate\Http\JsonResponse;
+use App\Models\PaymentMethod;
+use App\Http\Requests\PaymentMethodRequest;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
+use Throwable;
+use App\Http\Requests\Admin\SyncProductRollsRequest;
 
 class AdminController extends Controller
 {
@@ -1295,44 +1303,75 @@ class AdminController extends Controller
 
     public function inventory(Request $request)
     {
-        // Log the activity for viewing the inventory page.
-        ActivityLog::create([
-            'user_id'     => Auth::id(),
-            'action_type' => 'inventory_view',
-            'description' => 'Admin viewed inventory page.',
-            'ip_address'  => $request->ip(),
-        ]);
+        try {
+            // 1) Log activity
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'inventory_view',
+                'description' => 'Admin viewed inventory page.',
+                'ip_address'  => $request->ip(),
+            ]);
 
-        // Build queries for inventory and rolls with eager loading and ordering.
-        $inventoryQuery = ProductInventory::with('provider')
-            ->orderBy('id', 'asc');
+            // 2) Inputs
+            $search  = trim((string) $request->input('search', ''));
+            $perPage = (int) $request->input('show', 10);
+            if ($perPage < 1)  $perPage = 10;
+            if ($perPage > 200) $perPage = 200;
 
-        $rollsQuery = Roll::with('provider')
-            ->orderBy('id', 'asc');
+            // 3) Base queries
+            $inventoryQuery = ProductInventory::query()
+                ->with(['provider:id,name'])
+                ->orderBy('id', 'asc');
 
-        // If a search term is provided, apply filtering to both queries.
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $inventoryQuery->where('id', 'like', "%{$search}%");
-            $rollsQuery->where('id', 'like', "%{$search}%");
+            $rollsQuery = Roll::query()
+                ->select([
+                    'id',
+                    'provider_id',
+                    'roll_type',
+                    'roll_size',
+                    'roll_width',
+                    'roll_height',
+                    'price_rate_per_sqft',
+                    'offcut_price',
+                    'updated_at'
+                ])
+                ->with(['provider:id,name'])
+                // 👇 eager-load minimal product fields + count
+                ->with(['products' => function ($q) {
+                    $q->select('products.id', 'products.name');
+                }])
+                ->withCount('products') // exposes roll.products_count
+                ->orderBy('id', 'asc');
+
+            // 4) Search (applies to both)
+            if ($search !== '') {
+                $inventoryQuery->where('id', 'like', "%{$search}%");
+
+                $rollsQuery->where(function ($q) use ($search) {
+                    $q->where('id', 'like', "%{$search}%")
+                        ->orWhere('roll_type', 'like', "%{$search}%")
+                        ->orWhere('roll_size', 'like', "%{$search}%");
+                });
+            }
+
+            // 5) Paginate and keep query strings
+            $inventory = $inventoryQuery->paginate($perPage)->appends($request->all());
+            $rolls     = $rollsQuery->paginate($perPage)->appends($request->all());
+            $providers = Provider::orderBy('name', 'asc')->get(['id', 'name']);
+
+            // 6) Render
+            return Inertia::render('admin/inventory', [
+                'userDetails' => Auth::user(),
+                'inventory'   => $inventory,
+                'rolls'       => $rolls,
+                'providers'   => $providers,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Inventory view failed', ['error' => $e->getMessage()]);
+            abort(500, 'Unable to load inventory.');
         }
-
-        // Use the "show" query parameter for pagination count, defaulting to 10.
-        $perPage = $request->input('show', 10);
-
-        // Paginate the results and append all request parameters so pagination links include them.
-        $inventory = $inventoryQuery->paginate($perPage)->appends($request->all());
-        $rolls = $rollsQuery->paginate($perPage)->appends($request->all());
-        $providers = Provider::orderby('name', 'asc')->get();
-
-        // Render the Inertia view for inventory.
-        return Inertia::render('admin/inventory', [
-            'userDetails' => Auth::user(),
-            'inventory'   => $inventory,
-            'rolls'       => $rolls,
-            'providers'   => $providers,
-        ]);
     }
+
 
     public function addInventoryItem(Request $request)
     {
@@ -1415,24 +1454,68 @@ class AdminController extends Controller
     public function deleteInventoryItem(Request $request, $id)
     {
         try {
-            // Find the roll record by ID; throws ModelNotFoundException if not found.
-            $roll = Roll::findOrFail($id);
+            // Load with count so you can decide whether to block deletion
+            $roll = \App\Models\Roll::withCount('products')->findOrFail($id);
 
-            // Delete the roll from the database.
-            $roll->delete();
+            // (Optional) Business rule: block delete if roll is bound to products
+            // Remove this block if you prefer auto-detach (see below).
+            if ($roll->products_count > 0 && ! $request->boolean('force')) {
+                $msg = 'Cannot delete: this roll is bound to one or more products.';
+                if ($request->expectsJson()) {
+                    return response()->json(['status' => 'error', 'message' => $msg], 422);
+                }
+                return back()->with('error', $msg);
+            }
 
-            // Log the deletion activity.
-            ActivityLog::create([
+            DB::transaction(function () use ($roll) {
+                // If your FK is NOT set to ON DELETE CASCADE, uncomment this:
+                // $roll->products()->detach();
+
+                $roll->delete();
+            });
+
+            // Log activity
+            \App\Models\ActivityLog::create([
                 'user_id'     => Auth::id(),
                 'action_type' => 'roll_deleted',
                 'description' => 'Admin deleted roll: ' . $roll->id,
-                'ip_address'  => $request->ip(),
+                'ip_address'  => request()->ip(),
             ]);
 
-            return redirect()->back()->with('success', 'Roll deleted successfully.');
-        } catch (\Exception $e) {
-            Log::error("Failed to delete roll: " . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to delete roll. Please try again.');
+            // Return JSON for Axios OR redirect for Inertia
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'ok', 'message' => 'Roll deleted successfully.'], 200);
+            }
+
+            return back()->with('success', 'Roll deleted successfully.');
+        } catch (ModelNotFoundException $e) {
+            $msg = 'Roll not found.';
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'error', 'message' => $msg], 404);
+            }
+            return back()->with('error', $msg);
+        } catch (QueryException $e) {
+            Log::error('Failed to delete roll (DB): ' . $e->getMessage());
+            // Translate FK violations nicely
+            if ($e->getCode() === '23000') {
+                $msg = 'Cannot delete this roll due to related records. Detach it from products first.';
+                if ($request->expectsJson()) {
+                    return response()->json(['status' => 'error', 'message' => $msg], 422);
+                }
+                return back()->with('error', $msg);
+            }
+            $msg = 'Database error while deleting the roll.';
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'error', 'message' => $msg], 500);
+            }
+            return back()->with('error', $msg);
+        } catch (\Throwable $e) {
+            Log::error('Failed to delete roll: ' . $e->getMessage());
+            $msg = 'Failed to delete roll. Please try again.';
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'error', 'message' => $msg], 500);
+            }
+            return back()->with('error', $msg);
         }
     }
 
@@ -2084,287 +2167,287 @@ class AdminController extends Controller
     // }
 
     public function storeDesign(Request $request)
-{
-    // Hostinger-friendly guards (don’t crash if disallowed)
-    @ini_set('memory_limit', '512M');
-    @set_time_limit(60);
+    {
+        // Hostinger-friendly guards (don’t crash if disallowed)
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(60);
 
-    Log::debug('storeDesign called', ['meta' => [
-        'user_id' => Auth::id(),
-        'ip'      => $request->ip(),
-    ]]);
+        Log::debug('storeDesign called', ['meta' => [
+            'user_id' => Auth::id(),
+            'ip'      => $request->ip(),
+        ]]);
 
-    // ---- A) Chunk receiver ----
-    $receiver = new FileReceiver('file', $request, HandlerFactory::classFromRequest($request));
-    if (!$receiver->isUploaded()) {
-        return response()->json(['message' => 'No file uploaded'], 400);
-    }
+        // ---- A) Chunk receiver ----
+        $receiver = new FileReceiver('file', $request, HandlerFactory::classFromRequest($request));
+        if (!$receiver->isUploaded()) {
+            return response()->json(['message' => 'No file uploaded'], 400);
+        }
 
-    $save = $receiver->receive();
-    $pct  = $save->handler()->getPercentageDone();
+        $save = $receiver->receive();
+        $pct  = $save->handler()->getPercentageDone();
 
-    // Not the last chunk yet → 202 Accepted with progress
-    if (!$save->isFinished()) {
-        return response()->json(['done' => $pct], 202);
-    }
+        // Not the last chunk yet → 202 Accepted with progress
+        if (!$save->isFinished()) {
+            return response()->json(['done' => $pct], 202);
+        }
 
-    // ---- B) Final chunk assembled → validate fields ----
-    $validated = $request->validate([
-        'working_group_id' => ['required','exists:working_groups,id'],
-        'product_id'       => ['required','exists:products,id'],
-        'width'            => ['required','numeric','gt:0'],
-        'height'           => ['required','numeric','gt:0'],
-        'access_type' => 'nullable|in:public,working_group,restricted',
-        // Only needed if restricted (we’ll check conditionally)
-        'restricted_user_ids' => ['nullable','array'],
-        'restricted_user_ids.*' => ['integer','exists:users,id'],
-    ]);
+        // ---- B) Final chunk assembled → validate fields ----
+        $validated = $request->validate([
+            'working_group_id' => ['required', 'exists:working_groups,id'],
+            'product_id'       => ['required', 'exists:products,id'],
+            'width'            => ['required', 'numeric', 'gt:0'],
+            'height'           => ['required', 'numeric', 'gt:0'],
+            'access_type' => 'nullable|in:public,working_group,restricted',
+            // Only needed if restricted (we’ll check conditionally)
+            'restricted_user_ids' => ['nullable', 'array'],
+            'restricted_user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
 
-    $accessType = $validated['access_type'] ?? 'working_group';
+        $accessType = $validated['access_type'] ?? 'working_group';
 
-    // ---- C) Assembled file
-    /** @var \Illuminate\Http\UploadedFile $assembled */
-    $assembled = $save->getFile();
+        // ---- C) Assembled file
+        /** @var \Illuminate\Http\UploadedFile $assembled */
+        $assembled = $save->getFile();
 
-    Log::info('Assembled file ready', [
-        'original_name' => $assembled->getClientOriginalName(),
-        'size'          => $assembled->getSize(),
-        'mime'          => $assembled->getMimeType(),
-    ]);
+        Log::info('Assembled file ready', [
+            'original_name' => $assembled->getClientOriginalName(),
+            'size'          => $assembled->getSize(),
+            'mime'          => $assembled->getMimeType(),
+        ]);
 
-    // ---- D) Create preview (resize + watermark) ----
-    $publicDir = public_path('images/designs');
-    if (!is_dir($publicDir)) {
-        @mkdir($publicDir, 0755, true);
-    }
+        // ---- D) Create preview (resize + watermark) ----
+        $publicDir = public_path('images/designs');
+        if (!is_dir($publicDir)) {
+            @mkdir($publicDir, 0755, true);
+        }
 
-    // Unique ID / file name
-    do {
-        $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
-    } while (Design::where('name', $uniqueId)->exists());
+        // Unique ID / file name
+        do {
+            $uniqueId = Str::upper(Str::random(2)) . random_int(100000, 999999);
+        } while (Design::where('name', $uniqueId)->exists());
 
-    $ext      = 'jpg'; // force JPEG preview
-    $filename = "{$uniqueId}.{$ext}";
-    $finalPath = $publicDir . DIRECTORY_SEPARATOR . $filename;
+        $ext      = 'jpg'; // force JPEG preview
+        $filename = "{$uniqueId}.{$ext}";
+        $finalPath = $publicDir . DIRECTORY_SEPARATOR . $filename;
 
-    // Load image with Intervention GD (you’re already using GD)
-    $manager = new ImageManager(new GdDriver());
+        // Load image with Intervention GD (you’re already using GD)
+        $manager = new ImageManager(new GdDriver());
 
-    try {
-        $image = Image::read($assembled->getPathname());
-    } catch (\Throwable $e) {
-        Log::error('Image read failed', ['e' => $e->getMessage()]);
-        return response()->json(['message' => 'Invalid or unsupported image.'], 422);
-    }
-
-    // Hostinger-safe cap: max edge 2560 px, quality ~75 (sharper text)
-    $origW = $image->width();
-    $origH = $image->height();
-
-    // Hard reject truly massive images (prevents memory death)
-    if ($origW > 12000 || $origH > 12000) {
-        return response()->json([
-            'message' => 'Image is too large. Please export a smaller preview.',
-            'hint'    => 'Max 12,000 px on either edge.'
-        ], 422);
-    }
-
-    $MAX_EDGE = 2560;
-    if ($origW > $MAX_EDGE || $origH > $MAX_EDGE) {
-        // scaleDown keeps aspect ratio
-        $image->scaleDown($MAX_EDGE, $MAX_EDGE);
-    }
-
-    // Consistent watermark (optional but encouraged)
-    $wmPath = public_path('images/watermark.png');
-    if (is_file($wmPath)) {
         try {
-            $wm = Image::read($wmPath);
-
-            // Scale watermark to ~14% of image width (looks right for most)
-            $targetW = max(100, (int) round($image->width() * 0.14));
-            $wm->scaleDown($targetW, $targetW);
-
-            // Place bottom-right with ~3% padding, alpha ~80
-            $pad = max(8, (int) round(min($image->width(), $image->height()) * 0.03));
-            $alpha = 80; // 0..100
-            $image->place($wm, 'center-center', $pad, $pad, $alpha);
+            $image = Image::read($assembled->getPathname());
         } catch (\Throwable $e) {
-            Log::warning('Watermark failed; continuing without', ['e' => $e->getMessage()]);
-        }
-    } else {
-        Log::warning('Watermark PNG missing', ['path' => $wmPath]);
-    }
-
-    // Encode preview JPEG (quality 75)
-    try {
-        $jpeg = $image->toJpeg(75);
-        file_put_contents($finalPath, $jpeg);
-    } catch (\Throwable $e) {
-        Log::error('Failed to write preview', ['e' => $e->getMessage()]);
-        return response()->json(['message' => 'Failed to save preview image.'], 500);
-    } finally {
-        // Drop memory refs ASAP
-        unset($image, $wm, $jpeg);
-    }
-
-    $previewUrl = "/images/designs/{$filename}";
-    $dim = @getimagesize($finalPath);
-    $previewW = $dim[0] ?? null;
-    $previewH = $dim[1] ?? null;
-    $previewBytes = @filesize($finalPath) ?: null;
-
-    // ---- E) Persist DB and optional restricted access list
-    DB::beginTransaction();
-    try {
-        $design = Design::create([
-            'name'             => $uniqueId,
-            'description'      => '',
-            'width'            => $validated['width'],
-            'height'           => $validated['height'],
-            'product_id'       => $validated['product_id'],
-            'working_group_id' => $validated['working_group_id'],
-            'access_type'      => $accessType,
-            'status'           => 'active',
-            // Preview fields
-            'preview_url'      => $previewUrl,
-            'preview_width'    => $previewW,
-            'preview_height'   => $previewH,
-            'preview_bytes'    => $previewBytes,
-            // Backward compatibility for old UI:
-            'image_url'        => $previewUrl,
-            'created_by'       => Auth::id(),
-            'updated_by'       => Auth::id(),
-        ]);
-
-        // If restricted, require at least one user
-        if ($accessType === 'restricted') {
-            $ids = array_filter($request->input('restricted_user_ids', []));
-            if (empty($ids)) {
-                DB::rollBack();
-                // Clean the preview file since record not created
-                @unlink($finalPath);
-                return response()->json([
-                    'message' => 'Select at least one user for restricted designs.',
-                    'code'    => 'RESTRICTED_NEEDS_USERS'
-                ], 422);
-            }
-            // Insert into pivot; ignore duplicates if constraint exists
-            $rows = [];
-            foreach ($ids as $uid) {
-                $rows[] = ['design_id' => $design->id, 'user_id' => (int)$uid];
-            }
-            DB::table('design_access')->upsert($rows, ['design_id','user_id']);
+            Log::error('Image read failed', ['e' => $e->getMessage()]);
+            return response()->json(['message' => 'Invalid or unsupported image.'], 422);
         }
 
-        ActivityLog::create([
-            'user_id'     => Auth::id(),
-            'action_type' => 'design_upload',
-            'description' => "Uploaded preview for design {$design->id} ({$previewUrl})",
-            'ip_address'  => $request->ip(),
-        ]);
+        // Hostinger-safe cap: max edge 2560 px, quality ~75 (sharper text)
+        $origW = $image->width();
+        $origH = $image->height();
 
-        DB::commit();
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        Log::error('DB error creating design', ['e' => $e->getMessage()]);
-        // attempt cleanup
-        @unlink($finalPath);
-        return response()->json(['message' => 'Upload failed, please try again.'], 500);
+        // Hard reject truly massive images (prevents memory death)
+        if ($origW > 12000 || $origH > 12000) {
+            return response()->json([
+                'message' => 'Image is too large. Please export a smaller preview.',
+                'hint'    => 'Max 12,000 px on either edge.'
+            ], 422);
+        }
+
+        $MAX_EDGE = 2560;
+        if ($origW > $MAX_EDGE || $origH > $MAX_EDGE) {
+            // scaleDown keeps aspect ratio
+            $image->scaleDown($MAX_EDGE, $MAX_EDGE);
+        }
+
+        // Consistent watermark (optional but encouraged)
+        $wmPath = public_path('images/watermark.png');
+        if (is_file($wmPath)) {
+            try {
+                $wm = Image::read($wmPath);
+
+                // Scale watermark to ~14% of image width (looks right for most)
+                $targetW = max(100, (int) round($image->width() * 0.14));
+                $wm->scaleDown($targetW, $targetW);
+
+                // Place bottom-right with ~3% padding, alpha ~80
+                $pad = max(8, (int) round(min($image->width(), $image->height()) * 0.03));
+                $alpha = 80; // 0..100
+                $image->place($wm, 'center-center', $pad, $pad, $alpha);
+            } catch (\Throwable $e) {
+                Log::warning('Watermark failed; continuing without', ['e' => $e->getMessage()]);
+            }
+        } else {
+            Log::warning('Watermark PNG missing', ['path' => $wmPath]);
+        }
+
+        // Encode preview JPEG (quality 75)
+        try {
+            $jpeg = $image->toJpeg(75);
+            file_put_contents($finalPath, $jpeg);
+        } catch (\Throwable $e) {
+            Log::error('Failed to write preview', ['e' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to save preview image.'], 500);
+        } finally {
+            // Drop memory refs ASAP
+            unset($image, $wm, $jpeg);
+        }
+
+        $previewUrl = "/images/designs/{$filename}";
+        $dim = @getimagesize($finalPath);
+        $previewW = $dim[0] ?? null;
+        $previewH = $dim[1] ?? null;
+        $previewBytes = @filesize($finalPath) ?: null;
+
+        // ---- E) Persist DB and optional restricted access list
+        DB::beginTransaction();
+        try {
+            $design = Design::create([
+                'name'             => $uniqueId,
+                'description'      => '',
+                'width'            => $validated['width'],
+                'height'           => $validated['height'],
+                'product_id'       => $validated['product_id'],
+                'working_group_id' => $validated['working_group_id'],
+                'access_type'      => $accessType,
+                'status'           => 'active',
+                // Preview fields
+                'preview_url'      => $previewUrl,
+                'preview_width'    => $previewW,
+                'preview_height'   => $previewH,
+                'preview_bytes'    => $previewBytes,
+                // Backward compatibility for old UI:
+                'image_url'        => $previewUrl,
+                'created_by'       => Auth::id(),
+                'updated_by'       => Auth::id(),
+            ]);
+
+            // If restricted, require at least one user
+            if ($accessType === 'restricted') {
+                $ids = array_filter($request->input('restricted_user_ids', []));
+                if (empty($ids)) {
+                    DB::rollBack();
+                    // Clean the preview file since record not created
+                    @unlink($finalPath);
+                    return response()->json([
+                        'message' => 'Select at least one user for restricted designs.',
+                        'code'    => 'RESTRICTED_NEEDS_USERS'
+                    ], 422);
+                }
+                // Insert into pivot; ignore duplicates if constraint exists
+                $rows = [];
+                foreach ($ids as $uid) {
+                    $rows[] = ['design_id' => $design->id, 'user_id' => (int)$uid];
+                }
+                DB::table('design_access')->upsert($rows, ['design_id', 'user_id']);
+            }
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'design_upload',
+                'description' => "Uploaded preview for design {$design->id} ({$previewUrl})",
+                'ip_address'  => $request->ip(),
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('DB error creating design', ['e' => $e->getMessage()]);
+            // attempt cleanup
+            @unlink($finalPath);
+            return response()->json(['message' => 'Upload failed, please try again.'], 500);
+        }
+
+        return response()->json([
+            'message'    => 'Design preview uploaded successfully.',
+            'design_id'  => $design->id,
+            'image_url'  => $previewUrl,     // BC for your current frontend
+            'preview'    => [
+                'url'   => $previewUrl,
+                'w'     => $previewW,
+                'h'     => $previewH,
+                'bytes' => $previewBytes,
+            ],
+        ], 201);
     }
-
-    return response()->json([
-        'message'    => 'Design preview uploaded successfully.',
-        'design_id'  => $design->id,
-        'image_url'  => $previewUrl,     // BC for your current frontend
-        'preview'    => [
-            'url'   => $previewUrl,
-            'w'     => $previewW,
-            'h'     => $previewH,
-            'bytes' => $previewBytes,
-        ],
-    ], 201);
-}
 
 
     public function designs(Request $request)
-{
-    // 1) Log the view
-    ActivityLog::create([
-        'user_id'     => Auth::id(),
-        'action_type' => 'design_view',
-        'description' => 'Admin viewed designs list',
-        'ip_address'  => $request->ip(),
-    ]);
+    {
+        // 1) Log the view
+        ActivityLog::create([
+            'user_id'     => Auth::id(),
+            'action_type' => 'design_view',
+            'description' => 'Admin viewed designs list',
+            'ip_address'  => $request->ip(),
+        ]);
 
-    // 2) Validate incoming list filters (keeps things safe + avoids the Rule-not-found error)
-    //    Make sure you have: use Illuminate\Validation\Rule;  at the top of the controller.
-    $validated = $request->validate([
-        'per_page'          => ['nullable', 'integer', Rule::in([5,10,20,25,50,100])],
-        'search'            => ['nullable', 'string', 'max:255'],
-        'status'            => ['nullable', Rule::in(['active','inactive'])],
-        'working_group_id'  => ['nullable', 'integer', 'exists:working_groups,id'],
-        'access_type'       => ['nullable', Rule::in(['public','working_group','restricted'])],
-    ]);
+        // 2) Validate incoming list filters (keeps things safe + avoids the Rule-not-found error)
+        //    Make sure you have: use Illuminate\Validation\Rule;  at the top of the controller.
+        $validated = $request->validate([
+            'per_page'          => ['nullable', 'integer', Rule::in([5, 10, 20, 25, 50, 100])],
+            'search'            => ['nullable', 'string', 'max:255'],
+            'status'            => ['nullable', Rule::in(['active', 'inactive'])],
+            'working_group_id'  => ['nullable', 'integer', 'exists:working_groups,id'],
+            'access_type'       => ['nullable', Rule::in(['public', 'working_group', 'restricted'])],
+        ]);
 
-    $perPage         = $validated['per_page']         ?? 10;
-    $search          = $validated['search']           ?? null;
-    $status          = $validated['status']           ?? null;
-    $workingGroupId  = $validated['working_group_id'] ?? null;
-    $accessType      = $validated['access_type']      ?? null;
+        $perPage         = $validated['per_page']         ?? 10;
+        $search          = $validated['search']           ?? null;
+        $status          = $validated['status']           ?? null;
+        $workingGroupId  = $validated['working_group_id'] ?? null;
+        $accessType      = $validated['access_type']      ?? null;
 
-    // 3) Base query
-    $query = Design::with(['product', 'workingGroup'])
-        ->whereNull('deleted_at');
+        // 3) Base query
+        $query = Design::with(['product', 'workingGroup'])
+            ->whereNull('deleted_at');
 
-    // 4) Search across name, product, and working group
-    if ($search) {
-        $query->where(function ($q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-              ->orWhereHas('product', function ($q2) use ($search) {
-                  $q2->where('name', 'like', "%{$search}%");
-              })
-              ->orWhereHas('workingGroup', function ($q3) use ($search) {
-                  $q3->where('name', 'like', "%{$search}%");
-              });
-        });
+        // 4) Search across name, product, and working group
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhereHas('product', function ($q2) use ($search) {
+                        $q2->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('workingGroup', function ($q3) use ($search) {
+                        $q3->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        // 5) Status filter
+        if ($status) {
+            $query->where('status', $status);
+        }
+
+        // 6) Working group filter
+        if ($workingGroupId) {
+            $query->where('working_group_id', $workingGroupId);
+        }
+
+        // 7) Access type filter
+        if ($accessType) {
+            $query->where('access_type', $accessType);
+        }
+
+        // 8) Paginate with query string so filters persist
+        $designs = $query
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // 9) Send to Inertia (include the new filters so the UI keeps them selected)
+        return Inertia::render('admin/designs', [
+            'userDetails'    => Auth::user(),
+            'designs'        => $designs,
+            'filters'        => [
+                'search'           => $search,
+                'status'           => $status,
+                'per_page'         => (int) $perPage,
+                'working_group_id' => $workingGroupId,
+                'access_type'      => $accessType,
+            ],
+            'workingGroups'  => WorkingGroup::where('status', 'active')->with('products')->get(),
+        ]);
     }
-
-    // 5) Status filter
-    if ($status) {
-        $query->where('status', $status);
-    }
-
-    // 6) Working group filter
-    if ($workingGroupId) {
-        $query->where('working_group_id', $workingGroupId);
-    }
-
-    // 7) Access type filter
-    if ($accessType) {
-        $query->where('access_type', $accessType);
-    }
-
-    // 8) Paginate with query string so filters persist
-    $designs = $query
-        ->orderBy('created_at', 'desc')
-        ->paginate($perPage)
-        ->withQueryString();
-
-    // 9) Send to Inertia (include the new filters so the UI keeps them selected)
-    return Inertia::render('admin/designs', [
-        'userDetails'    => Auth::user(),
-        'designs'        => $designs,
-        'filters'        => [
-            'search'           => $search,
-            'status'           => $status,
-            'per_page'         => (int) $perPage,
-            'working_group_id' => $workingGroupId,
-            'access_type'      => $accessType,
-        ],
-        'workingGroups'  => WorkingGroup::where('status', 'active')->with('products')->get(),
-    ]);
-}
 
 
     public function deleteDesign(Design $design)
@@ -3295,5 +3378,485 @@ class AdminController extends Controller
             'ok'   => true,
             'data' => $data,
         ]);
+    }
+
+    public function paymentMethodsIndex(Request $request)
+    {
+        Gate::authorize('manage-payment-methods');
+
+        $perPage = (int) $request->input('perPage', 10);
+        $search  = $request->input('search');
+        $status  = $request->input('status');
+        $type    = $request->input('type');
+        $flow    = $request->input('flow');
+
+        $methods = PaymentMethod::query()
+            ->search($search)
+            ->filter(['status' => $status, 'type' => $type, 'flow' => $flow])
+            ->orderBy('sort_order')
+            ->orderBy('id', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $filters = [
+            'status'  => $status,
+            'type'    => $type,
+            'flow'    => $flow,
+            'search'  => $search,
+            'perPage' => $perPage,
+        ];
+
+        $statusOptions = ['active', 'inactive'];
+        $typeOptions   = ['static', 'custom', 'gateway'];
+        $flowOptions   = ['cod', 'manual', 'online'];
+
+        return Inertia::render('admin/PaymentMethods', [
+            'paymentMethods' => $methods,
+            'filters'        => $filters,
+            'statusOptions'  => $statusOptions,
+            'typeOptions'    => $typeOptions,
+            'flowOptions'    => $flowOptions,
+            'userDetails'    => Auth::user(),
+            // pass named URLs if you prefer using them in JS
+            'urls' => [
+                'store'   => route('admin.payment_methods.index') . '/api', // optional, see below
+                'update'  => url('/admin/api/payment-methods'),           // base
+                'toggle'  => url('/admin/api/payment-methods'),
+                'destroy' => url('/admin/api/payment-methods'),
+                'reorder' => route('admin.payment_methods.reorder'),      // <- named route
+                'upload'  => url('/admin/api/payment-methods/upload'),
+            ],
+        ]);
+    }
+
+    public function paymentMethodsStore(PaymentMethodRequest $request)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            $data = $request->validated();
+            $data['fee_type'] = $data['fee_type'] ?? 'none';
+            $data['status']   = $data['status']   ?? 'inactive';
+
+            $method = DB::transaction(function () use ($data) {
+                return PaymentMethod::create($data);
+            });
+
+            $this->logActivity($request, 'payment_method_create', "Created method {$method->code}");
+
+            return $this->respondOk($request, 'Payment method created.', [
+                'method' => $method,
+            ]);
+        } catch (AuthorizationException $e) {
+            return $this->respondError($request, 'Not authorized.', 403, $e);
+        } catch (ValidationException $e) {
+            return $this->respondValidationError($request, $e);
+        } catch (\Throwable $e) {
+            return $this->respondError($request, 'Failed to create method.', 500, $e);
+        }
+    }
+
+    public function paymentMethodsUpdate(PaymentMethodRequest $request, PaymentMethod $method)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            $data = $request->validated();
+
+            if ($method->locked) {
+                foreach (PaymentMethod::lockedImmutableFields() as $field) {
+                    unset($data[$field]); // protect code/type/flow
+                }
+            }
+
+            DB::transaction(function () use ($method, $data) {
+                $method->update($data);
+            });
+
+            $this->logActivity($request, 'payment_method_update', "Updated method {$method->code}");
+
+            return $this->respondOk($request, 'Payment method updated.');
+        } catch (AuthorizationException $e) {
+            return $this->respondError($request, 'Not authorized.', 403, $e);
+        } catch (ValidationException $e) {
+            return $this->respondValidationError($request, $e);
+        } catch (ModelNotFoundException $e) {
+            return $this->respondError($request, 'Payment method not found.', 404, $e);
+        } catch (\Throwable $e) {
+            return $this->respondError($request, 'Failed to update method.', 500, $e);
+        }
+    }
+
+    public function paymentMethodsToggle(Request $request, PaymentMethod $method)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            DB::transaction(function () use ($method) {
+                $method->status = $method->status === 'active' ? 'inactive' : 'active';
+                $method->save();
+            });
+
+            $this->logActivity($request, 'payment_method_toggle', "Toggled method {$method->code} to {$method->status}");
+
+            return $this->respondOk($request, 'Payment method status updated.', [
+                'status' => $method->status,
+            ]);
+        } catch (AuthorizationException $e) {
+            return $this->respondError($request, 'Not authorized.', 403, $e);
+        } catch (\Throwable $e) {
+            return $this->respondError($request, 'Failed to update status.', 500, $e);
+        }
+    }
+
+    public function paymentMethodsDestroy(Request $request, PaymentMethod $method)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            if ($method->locked) {
+                return $this->respondError($request, 'Static methods cannot be deleted.', 422);
+            }
+
+            DB::transaction(function () use ($method) {
+                $method->delete();
+            });
+
+            $this->logActivity($request, 'payment_method_delete', "Deleted method {$method->code}");
+
+            return $this->respondOk($request, 'Payment method deleted.');
+        } catch (AuthorizationException $e) {
+            return $this->respondError($request, 'Not authorized.', 403, $e);
+        } catch (ModelNotFoundException $e) {
+            return $this->respondError($request, 'Payment method not found.', 404, $e);
+        } catch (\Throwable $e) {
+            return $this->respondError($request, 'Failed to delete method.', 500, $e);
+        }
+    }
+
+    public function paymentMethodsReorder(Request $request)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            $validated = $request->validate([
+                'order' => ['required', 'array'], // [{id,sort_order}]
+                'order.*.id' => ['required', 'integer', 'exists:payment_methods,id'],
+                'order.*.sort_order' => ['required', 'integer', 'min:0'],
+            ]);
+
+            DB::transaction(function () use ($validated) {
+                foreach ($validated['order'] as $row) {
+                    PaymentMethod::whereKey($row['id'])
+                        ->update(['sort_order' => $row['sort_order']]);
+                }
+            });
+
+            $this->logActivity($request, 'payment_method_reorder', 'Reordered payment methods');
+
+            return $this->respondOk($request, 'Order saved.');
+        } catch (AuthorizationException $e) {
+            return $this->respondError($request, 'Not authorized.', 403, $e);
+        } catch (ValidationException $e) {
+            return $this->respondValidationError($request, $e);
+        } catch (\Throwable $e) {
+            return $this->respondError($request, 'Failed to save order.', 500, $e);
+        }
+    }
+
+    public function paymentMethodsUpload(Request $request)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            $request->validate([
+                'file' => ['required', 'file', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],
+            ]);
+
+            // store on the "public" disk so the URL is /storage/...
+            $stored = $request->file('file')->store('payments', 'public');
+            $url    = \Illuminate\Support\Facades\Storage::url($stored);
+            return response()->json(['path' => $url], 201);
+        } catch (AuthorizationException $e) {
+            return response()->json(['message' => 'Not authorized.'], 403);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Validation failed.', 'errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            Log::error('paymentMethodsUpload failed', ['err' => $e]);
+            return response()->json(['message' => 'Upload failed.'], 500);
+        }
+    }
+
+    /* -----------------------------
+       Helpers (unified responders)
+       ----------------------------- */
+
+    // Replace isExpectingJson() with:
+    private function isExpectingJson(Request $request): bool
+    {
+        // axios/fetch default to Accept: application/json and/or X-Requested-With
+        return $request->expectsJson() || $request->wantsJson() || $request->ajax();
+    }
+
+    // Use respondOk/respondError/respondValidationError as in my last message,
+    // NO changes needed there except using the new isExpectingJson().
+
+
+    private function respondOk(Request $request, string $msg, array $payload = [])
+    {
+        if ($this->isExpectingJson($request)) {
+            return response()->json(array_merge(['message' => $msg], $payload));
+        }
+        return back()->with('success', $msg);
+    }
+
+    private function respondError(Request $request, string $msg, int $status = 400, \Throwable $e = null)
+    {
+        if ($e) {
+            Log::warning('Admin PM error', ['message' => $msg, 'status' => $status, 'exception' => $e->getMessage()]);
+        }
+        if ($this->isExpectingJson($request)) {
+            return response()->json(['message' => $msg], $status);
+        }
+        return back()->with('error', $msg);
+    }
+
+    private function respondValidationError(Request $request, ValidationException $e)
+    {
+        if ($this->isExpectingJson($request)) {
+            return response()->json(['message' => 'Validation failed.', 'errors' => $e->errors()], 422);
+        }
+        throw $e; // Let Laravel redirect back with errors & old input
+    }
+
+    private function logActivity(Request $request, string $type, string $description): void
+    {
+        try {
+            ActivityLog::create([
+                'user_id'     => $request->user()->id ?? null,
+                'action_type' => $type,
+                'description' => $description,
+                'ip_address'  => $request->ip(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::notice('ActivityLog write failed', ['type' => $type, 'desc' => $description, 'err' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * GET /admin/api/product/{product}/rolls
+     */
+    public function getProductRolls(Product $product)
+    {
+        try {
+            Gate::authorize('manage-payment-methods'); // matches your route gate
+
+            $product->load([
+                'rolls' => fn($q) => $q->select('rolls.id', 'roll_type', 'roll_size', 'roll_width', 'roll_height')
+                    ->withPivot('is_default')
+            ]);
+
+            return response()->json([
+                'status'     => 'ok',
+                'product_id' => $product->id,
+                'rolls'      => $product->rolls,
+            ], 200);
+        } catch (Throwable $e) {
+            Log::error('getProductRolls failed', [
+                'product_id' => $product->id ?? null,
+                'error'      => $e->getMessage(),
+                'trace'      => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Unable to fetch product rolls at the moment.',
+            ], 500);
+        }
+    }
+
+    /**
+     * PATCH /admin/api/product/{product}/rolls
+     * Body: { roll_ids: int[], default_roll?: int }
+     */
+    public function syncProductRolls(SyncProductRollsRequest $request, Product $product)
+    {
+        try {
+            // 1) Normalize + de-dupe aggressively
+            $rollIds = $request->input('roll_ids', []);
+            $rollIds = array_values(array_unique(array_map('intval', $rollIds))); // 👈 de-dupe
+
+            $defaultRoll = $request->input('default_roll');
+
+            if (!empty($defaultRoll) && !in_array((int)$defaultRoll, $rollIds, true)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Default roll must be one of the selected rolls.',
+                ], 422);
+            }
+
+            // 2) (Defensive) ensure all exist
+            $count = \App\Models\Roll::whereIn('id', $rollIds)->count();
+            if ($count !== count($rollIds)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'One or more selected rolls do not exist.',
+                ], 422);
+            }
+
+            // 3) Build pivot payload
+            $pivot = [];
+            foreach ($rollIds as $rid) {
+                $pivot[$rid] = ['is_default' => (!empty($defaultRoll) && (int)$defaultRoll === (int)$rid)];
+            }
+
+            DB::beginTransaction();
+            $product->rolls()->sync($pivot); // sync replaces; deduped IDs won’t violate unique index
+            DB::commit();
+
+            return response()->json([
+                'status'  => 'ok',
+                'message' => 'Product rolls synced successfully.',
+                'data'    => ['product_id' => $product->id, 'roll_ids' => $rollIds, 'default_roll' => $defaultRoll],
+            ], 200);
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+
+            // Translate MySQL duplicate key (1062) to a user-friendly 422 (shouldn’t happen after de-dupe, but just in case)
+            if (str_contains($e->getMessage(), 'Duplicate entry') || $e->getCode() === '23000') {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'The selected roll is already attached to this product.',
+                ], 422);
+            }
+
+            Log::error('syncProductRolls DB error', ['product_id' => $product->id, 'error' => $e->getMessage()]);
+            return response()->json(['status' => 'error', 'message' => 'Database error while syncing product rolls.'], 500);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('syncProductRolls failed', ['product_id' => $product->id, 'error' => $e->getMessage()]);
+            return response()->json(['status' => 'error', 'message' => 'Unexpected error while syncing product rolls.'], 500);
+        }
+    }
+
+
+    /**
+     * POST /admin/api/product/{product}/rolls/{roll}/default
+     */
+    public function setDefaultProductRoll(Product $product, Roll $roll)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            // Ensure the roll is already attached
+            if (! $product->rolls()->where('rolls.id', $roll->id)->exists()) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Roll is not attached to this product.',
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            // Clear existing default flags (only among attached rolls)
+            $attachedIds = $product->rolls()->pluck('rolls.id')->toArray();
+            if (!empty($attachedIds)) {
+                $product->rolls()->updateExistingPivot($attachedIds, ['is_default' => false]);
+            }
+
+            // Set the new default
+            $product->rolls()->updateExistingPivot($roll->id, ['is_default' => true]);
+
+            DB::commit();
+
+            return response()->json([
+                'status'  => 'ok',
+                'message' => 'Default roll updated.',
+                'data'    => [
+                    'product_id'   => $product->id,
+                    'default_roll' => $roll->id,
+                ],
+            ], 200);
+        } catch (QueryException $e) {
+            DB::rollBack();
+            Log::error('setDefaultProductRoll DB error', [
+                'product_id' => $product->id ?? null,
+                'roll_id'    => $roll->id ?? null,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Database error while updating default roll.',
+            ], 500);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('setDefaultProductRoll failed', [
+                'product_id' => $product->id ?? null,
+                'roll_id'    => $roll->id ?? null,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Unexpected error while updating default roll.',
+            ], 500);
+        }
+    }
+
+    /**
+     * DELETE /admin/api/product/{product}/rolls/{roll}
+     */
+    public function detachProductRoll(Product $product, Roll $roll)
+    {
+        try {
+            Gate::authorize('manage-payment-methods');
+
+            if (! $product->rolls()->where('rolls.id', $roll->id)->exists()) {
+                return response()->json([
+                    'status'  => 'ok',
+                    'message' => 'Roll already detached.',
+                ], 200);
+            }
+
+            DB::beginTransaction();
+
+            $product->rolls()->detach($roll->id);
+
+            DB::commit();
+
+            return response()->json([
+                'status'  => 'ok',
+                'message' => 'Roll detached successfully.',
+                'data'    => [
+                    'product_id' => $product->id,
+                    'roll_id'    => $roll->id,
+                ],
+            ], 200);
+        } catch (QueryException $e) {
+            DB::rollBack();
+            Log::error('detachProductRoll DB error', [
+                'product_id' => $product->id ?? null,
+                'roll_id'    => $roll->id ?? null,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Database error while detaching roll.',
+            ], 500);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('detachProductRoll failed', [
+                'product_id' => $product->id ?? null,
+                'roll_id'    => $roll->id ?? null,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Unexpected error while detaching roll.',
+            ], 500);
+        }
     }
 }
