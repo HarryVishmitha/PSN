@@ -87,4 +87,11 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(DesignShareLink::class, 'created_by');
     }
+
+    public function createdTasks(){ return $this->hasMany(Task::class, 'created_by'); }
+public function assignedTasks(){ return $this->hasMany(Task::class, 'assigned_to'); }
+public function tasks(){ return $this->belongsToMany(Task::class, 'task_user'); }
+public function createdEvents(){ return $this->hasMany(Event::class, 'created_by'); }
+public function events(){ return $this->belongsToMany(Event::class, 'event_user')->withPivot('status'); }
+
 }

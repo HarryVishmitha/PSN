@@ -17,6 +17,7 @@ use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Http\Controllers\UserDesignUploadController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\Admin\AdminWidgetApiController;
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
 
@@ -191,6 +192,24 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin'])->prefix('ad
     Route::get('/site-settings/topnav-categories/manage', [AdminController::class, 'topnavCategories'])->name('topnavCategories');
     Route::post('/api/top-nav-category/reorder', [AdminController::class, 'reorderTopNavCategories'])->name('topnavCategories.reorder');
     Route::get('/api/json-tags', [AdminController::class, 'jsonTags'])->name('getTags');
+    Route::get('/api/dashboard/metrics', [AdminController::class, 'fetchTopMetricsV1'])->name('admin.api.dashboard.metrics');
+    Route::prefix('api/widgets')->as('api.widgets.')->group(function () {
+    Route::get('/sales',            [AdminWidgetApiController::class,'salesWidgetV1'])->name('sales');
+    Route::get('/recent-activity',  [AdminWidgetApiController::class,'recentActivityWidgetV1'])->name('activity');
+    Route::get('/customers',        [AdminWidgetApiController::class,'customersWidgetV1'])->name('customers');
+
+    // New data-rich endpoints
+    Route::get('/top-products',     [AdminWidgetApiController::class,'topProductsWidgetV1'])->name('top_products');
+    Route::get('/category-breakdown',[AdminWidgetApiController::class,'categoryBreakdownWidgetV1'])->name('cat_breakdown');
+    Route::get('/low-stock',        [AdminWidgetApiController::class,'lowStockWidgetV1'])->name('low_stock');
+    Route::get('/payments-by-method',[AdminWidgetApiController::class,'paymentsByMethodWidgetV1'])->name('pay_methods');
+    Route::get('/refunds',          [AdminWidgetApiController::class,'refundsWidgetV1'])->name('refunds');
+    Route::get('/shipments-status', [AdminWidgetApiController::class,'shipmentsStatusWidgetV1'])->name('shipments');
+
+    // New tables we created
+    Route::get('/tasks',            [AdminWidgetApiController::class,'tasksWidgetV1'])->name('tasks');
+    Route::get('/calendar',         [AdminWidgetApiController::class,'calendarWidgetV1'])->name('calendar');
+  });
     // Add more admin routes here
 });
 
