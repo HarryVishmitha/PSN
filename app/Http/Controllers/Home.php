@@ -650,7 +650,7 @@ class Home extends Controller
                 'id'               => $product->id,
                 'name'             => $product->name,
                 'meta_description' => $product->meta_description,
-                'description'      => $product->description,
+                'description'      => $product->meta_description,
                 'pricing_method'   => $product->pricing_method,  // 'standard' | 'roll'
                 'price'            => $product->price,
                 'price_per_sqft'   => $product->price_per_sqft,
