@@ -1,5 +1,5 @@
 // resources/js/Pages/Admin/AddE.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AdminDashboard from '@/Layouts/AdminDashboard';
 import Breadcrumb from '@/Components/Breadcrumb';
@@ -9,349 +9,273 @@ import Meta from '@/Components/Metaheads';
 import Alert from '@/Components/Alert';
 import axios from 'axios';
 
+/* ------------------------------------------------------------
+   Helpers
+------------------------------------------------------------ */
+const pad = (n, len = 2) => String(n).padStart(len, '0');
+const todayISO = () => new Date().toISOString().split('T')[0];
+const plusDaysISO = (d = 14) => {
+    const t = new Date(todayISO());
+    t.setDate(t.getDate() + d);
+    return t.toISOString().split('T')[0];
+};
+
+// Always return EST-YYYYMMDD-XXXX (no double EST)
+const normalizeEstimateNumber = (raw) => {
+    if (!raw) return `EST-${todayISO().replace(/-/g, '')}-0001`;
+    const s = String(raw).replace(/^EST-?/i, '').trim();
+    const only = s.replace(/[^\d-]/g, '');
+    const bits = only.split('-').filter(Boolean);
+
+    let ymd = '', suffix = '';
+    if (bits.length >= 2) {
+        ymd = (bits[0] || '').replace(/[^\d]/g, '');
+        suffix = (bits.slice(1).join('') || '').replace(/[^\d]/g, '');
+    } else {
+        const digits = only.replace(/[^\d]/g, '');
+        ymd = digits.slice(0, 8);
+        suffix = digits.slice(8);
+    }
+
+    if (ymd.length !== 8) {
+        // fallback to today
+        ymd = todayISO().replace(/-/g, '');
+    }
+    if (!suffix) suffix = '0001';
+
+    return `EST-${ymd}-${suffix}`;
+};
+
+// Money format (no currency math issues here, just display)
+const money = (n) => `LKR ${Number(n || 0).toFixed(2)}`;
+
 const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }) => {
+    /* ------------------------------------------------------------
+       Core State
+    ------------------------------------------------------------ */
     const [alert, setAlert] = useState(null);
-    // If `estimate` is passed in via Inertia props when editing an existing estimate,
-    // we prefill; otherwise we start with blank/new.
-    const raw = estimate?.estimate_number || newEstimateNumber || '00000000';
-    const datePart = raw.slice(0, 8);
-    const suffix = raw.slice(8);
-    const todayISO = new Date().toISOString().split('T')[0];
-    const dueDate = new Date(new Date(todayISO).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const defaultForm = {
+    const [errors, setErrors] = useState({});
+    const [loading, setLoading] = useState(false);
+    const [wgLoading, setWgLoading] = useState(false);
+
+    // Number fix done here:
+    const bootstrapNumber = normalizeEstimateNumber(estimate?.estimate_number || newEstimateNumber);
+
+    const defaultItems = (estimate?.items || []).map(it => ({
+        tempId: crypto.randomUUID?.() || Math.random().toString(36).slice(2, 8),
+        product_id: it.product_id ?? null,
+        variant_id: it.variant_id ?? null,
+        subvariant_id: it.subvariant_id ?? null,
+        description: it.description ?? '',
+        qty: Number(it.qty) || 1,
+        unit: it.unit ?? '',
+        unit_price: Number(it.unit_price) || 0,
+        product_name: it.product_name || it.product?.name || '',
+        base_price: Number(it.base_price ?? it.unit_price) || 0,
+        variants: it.variants || [],
+        is_roll: !!it.is_roll,
+        size: it.size || '',
+    }));
+
+    const [form, setForm] = useState({
         id: estimate?.id || null,
-        estimate_number: `EST-${datePart}-${suffix}` || '',
+        estimate_number: bootstrapNumber,
         working_group_id: estimate?.working_group_id || '',
-        // --- Client + dates + notes ---
+        // client
         client_name: estimate?.client_name || '',
         client_id: estimate?.customer_id || null,
         client_address: estimate?.client_address || '',
         client_phone: estimate?.client_phone || '',
         client_type: estimate?.client_type || '',
-        issue_date: estimate?.issue_date || todayISO,
-        due_date: estimate?.due_date || dueDate,
+        client_email: estimate?.client_email || '',
+        // dates
+        issue_date: estimate?.issue_date || todayISO(),
+        due_date: estimate?.due_date || plusDaysISO(14),
         notes: estimate?.notes || '',
         po_number: estimate?.po_number || '',
         shipment_id: estimate?.shipment_id || '',
-        // --- Line items (array of { description, qty, unit, unit_price }) ---
-        items: estimate?.items.map(it => ({
-            tempId: Math.random().toString(36).slice(2, 8),
-            product_id: it.product_id,          // ← add this
-            variant_id: it.variant_id || null, // if you care about variants
-            subvariant_id: it.subvariant_id || null,
-            description: it.description,
-            qty: it.qty,
-            unit: it.unit,
-            unit_price: it.unit_price,
-            product_name: it.product_name || it.product?.name || '',
-            base_price: it.base_price || it.unit_price,
-            variants: it.variants || [],
-        })) || [ /* your empty row */],
-    };
+        // items
+        items: defaultItems.length ? defaultItems : [],
+    });
 
-    const [form, setForm] = useState(defaultForm);
-    const [errors, setErrors] = useState({});
-    const [loading, setLoading] = useState(false);
-    const [wgLoading, setWgLoading] = useState(false);
+    // WG scoped data
     const [wgUsers, setWgUsers] = useState([]);
     const [wgProducts, setWgProducts] = useState([]);
     const [wgDailyCustomers, setWgDailyCustomers] = useState([]);
     const [rolls, setRolls] = useState([]);
-    const isBlocked = !form.working_group_id;
-    const [searchTermwgUser, setSearchTermwgUser] = useState('');
-    const [productTab, setProductTab] = useState('standard')
+
+    // UI state
+    const [clientQuery, setClientQuery] = useState('');
+    const [editingField, setEditingField] = useState(null);
+
+    // Product drawer
+    const [drawerOpen, setDrawerOpen] = useState(false);
     const [productSearch, setProductSearch] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
-    const [pricingTab, setPricingTab] = useState('standard'); // or 'roll'
     const [selectedRollId, setSelectedRollId] = useState(null);
-    const selectedRoll = rolls.find(r => r.id == selectedRollId) || {};
 
+    // Product modal local form
+    const [modalForm, setModalForm] = useState({
+        unitPrice: 0,
+        quantity: 1,
+        description: '',
+        selectedVariants: {},
+        rollSizeInches: '',
+        pricePerOffcutSqFt: '',
+        fixedWidthIn: '',
+        heightIn: '',
+    });
 
-    const [editingField, setEditingField] = useState(null);
-    const [pdfUrl, setPdfUrl] = useState(null);
-    const [showPdfModal, setShowPdfModal] = useState(false);
+    const isBlocked = !form.working_group_id;
 
-    const openPdfModal = (url, { autoPrint = false } = {}) => {
-        setPdfUrl(url);
-        setShowPdfModal(true);
-        if (autoPrint) {
-            setTimeout(() => {
-                window.frames['pdf-preview'].focus();
-                window.frames['pdf-preview'].print();
-            }, 300);
+    /* ------------------------------------------------------------
+       Effects: WG fetch, local draft, shortcuts
+    ------------------------------------------------------------ */
+    const LS_KEY = 'addE.v3.draft';
+
+    // load draft if creating new
+    useEffect(() => {
+        if (!estimate) {
+            const draft = localStorage.getItem(LS_KEY);
+            if (draft) {
+                try {
+                    const parsed = JSON.parse(draft);
+                    // do NOT restore estimate number blindly—normalize it:
+                    parsed.estimate_number = normalizeEstimateNumber(parsed.estimate_number || bootstrapNumber);
+                    setForm(prev => ({ ...prev, ...parsed }));
+                } catch { }
+            }
         }
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
+    useEffect(() => {
+        localStorage.setItem(LS_KEY, JSON.stringify(form));
+    }, [form]);
 
     const fetchWorkingGroupDetails = async (wgId) => {
         if (!wgId) {
-            setWgUsers([]);
-            setWgProducts([]);
-            setWgDailyCustomers([]);
-            setRolls([]);
+            setWgUsers([]); setWgProducts([]); setWgDailyCustomers([]); setRolls([]);
             return;
         }
-        setErrors((prev) => {
-            const { fetch_wg, ...rest } = prev;
-            return rest; // Remove fetch_wg error if it exists
-        });
         setWgLoading(true);
+        setErrors(prev => {
+            const { fetch_wg, ...rest } = prev;
+            return rest;
+        });
         try {
             const { data } = await axios.get(route('admin.getdataEst', wgId));
             setWgUsers(data.users || []);
             setWgProducts(data.products || []);
             setWgDailyCustomers(data.dailyCustomers || []);
             setRolls(data.rolls || []);
-            console.log('WG data fetched successfully:', data);
+            if ((data.rolls || []).length === 1) setSelectedRollId(String(data.rolls[0].id));
         } catch (e) {
             const msg = e.response?.data?.message || e.message || 'Unknown error';
-            console.error('WG fetch error', e);
             setAlert({ type: 'danger', message: 'Failed to fetch working group details.' });
-            setErrors(prev => ({
-                ...prev,
-                fetch_wg: 'Error happen while fetching WG data. Backend says :' + msg,
-            }));
+            setErrors(prev => ({ ...prev, fetch_wg: 'Error while fetching WG data: ' + msg }));
         } finally {
             setWgLoading(false);
         }
     };
 
-    // When the select changes, fetch details
-    useEffect(() => {
-        fetchWorkingGroupDetails(form.working_group_id);
-    }, [form.working_group_id]);
+    useEffect(() => { fetchWorkingGroupDetails(form.working_group_id); }, [form.working_group_id]);
 
-    // Helpers: Format an ISO date string ("YYYY-MM-DD") → "DD/MM/YYYY"
+    // shortcuts
+    useEffect(() => {
+        const onKey = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault(); handleSubmit('draft');
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault(); handleSubmit('publish');
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+                e.preventDefault(); handleSubmit('download');
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+                e.preventDefault(); handleSubmit('print');
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [form]);
+
+    /* ------------------------------------------------------------
+       Derived data & helpers
+    ------------------------------------------------------------ */
+    const filteredClients = useMemo(() => {
+        const q = clientQuery.toLowerCase().trim();
+        const pool = [
+            ...wgUsers.map(u => ({ ...u, type: 'system' })),
+            ...wgDailyCustomers.map(c => ({ ...c, type: 'daily' })),
+        ];
+        if (!q) return pool.slice(0, 12);
+        return pool.filter(u => {
+            const name = (u.name || u.full_name || '').toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            const phone = (u.phone_number || u.phone || '').toLowerCase();
+            return name.includes(q) || email.includes(q) || phone.includes(q);
+        });
+    }, [clientQuery, wgUsers, wgDailyCustomers]);
+
+    const subtotal = useMemo(
+        () => form.items.reduce((sum, it) => sum + (Number(it.qty) * Number(it.unit_price)), 0),
+        [form.items]
+    );
+    const discount = 0, tax = 0, total = subtotal - discount + tax;
+
     const formatDateForDisplay = (iso) => {
         if (!iso) return '';
-        const [year, month, day] = iso.split('-');
-        return `${day}/${month}/${year}`;
+        const [y, m, d] = iso.split('-');
+        return `${d}/${m}/${y}`;
     };
 
-    // When editing, we want to write back into `form`; e.g. change form.issue_date, etc.
-    const startEditing = (fieldKey) => {
-        setEditingField(fieldKey);
-    };
-
-    const stopEditing = () => {
-        setEditingField(null);
-    };
-
-    // Top‐level field change (client_name, dates, etc.)
     const handleTopLevelChange = (e) => {
         const { name, value } = e.target;
-        setForm((prev) => ({ ...prev, [name]: value }));
+        setForm(prev => {
+            if (name === 'estimate_number') {
+                return { ...prev, estimate_number: normalizeEstimateNumber(value) };
+            }
+            return { ...prev, [name]: value };
+        });
     };
 
-    // Line‐item cell change: idx = index in form.items, field = 'description' | 'qty' | 'unit' | 'unit_price'
+    const startEditing = (key) => setEditingField(key);
+    const stopEditing = () => setEditingField(null);
+
     const handleItemChange = (idx, field, value) => {
-        setForm((prev) => {
+        setForm(prev => {
             const items = [...prev.items];
-            items[idx] = {
-                ...items[idx],
-                [field]: field === 'qty' || field === 'unit_price' ? parseFloat(value) || 0 : value,
-            };
+            const next = { ...items[idx] };
+            if (field === 'qty' || field === 'unit_price') {
+                next[field] = Number(value) || 0;
+            } else {
+                next[field] = value;
+            }
+            items[idx] = next;
             return { ...prev, items };
         });
     };
 
-    // Add a new empty line‐item
-    const addItem = () => {
-        setForm((prev) => ({
-            ...prev,
-            items: [
-                ...prev.items,
-                { description: '', qty: 1, unit: '', unit_price: 0, tempId: Math.random().toString(36).substring(2, 8) },
-            ],
-        }));
-    };
-
-    // Remove line‐item at index `idx`
     const removeItem = (idx) => {
-        setForm((prev) => ({
-            ...prev,
-            items: prev.items.filter((_, i) => i !== idx),
-        }));
-        // If we were editing something in that row, turn it off:
+        setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
         setEditingField(null);
     };
 
-    // Compute subtotal, discount=0, tax=0, total
-    const subtotal = form.items.reduce(
-        (sum, item) => sum + item.qty * item.unit_price,
-        0
-    );
-    const discount = 0;
-    const tax = 0;
-    const total = subtotal - discount + tax;
-
-    const handleSubmit = async (action) => {
-        // 1️⃣ Basic validations
-        if (!form.working_group_id) {
-            setAlert({ type: 'danger', message: 'Please select a working group first.' });
-            return;
-        }
-        if (!form.client_name) {
-            setAlert({ type: 'danger', message: 'Please assign a client before saving.' });
-            return;
-        }
-        if (form.items.length < 1) {
-            setAlert({ type: 'danger', message: 'You must add at least one line item.' });
-            return;
-        }
-
-        // 2️⃣ Build payload
-        const payload = {
-            ...form,
-            action, // "draft" | "publish" | "download" | "print"
-            items: form.items.map(({ tempId, ...keep }) => keep),
-        };
-
-        setLoading(true);
-        setErrors({});
-
-        try {
-            // 3️⃣ Decide URL & method
-            const url = route('admin.estimates.store');
-            const response = await axios.post(url, payload);
-
-            // 4️⃣ Handle post‐save behavior
-            setLoading(false);
-            console.log('Estimate save response:');
-            setAlert({ type: response.data.msgtype, message: response.data.message });
-
-            const delay = ms => new Promise(res => setTimeout(res, ms));
-            await delay(3500); // <-- wait 3.5s
-
-            if (action === 'download') {
-                return openPdfModal(data.download_url);
-            } else if (action === 'print') {
-                return openPdfModal(data.download_url, { autoPrint: true });
-            } else {
-                // for draft/publish just clear or redirect:
-                setForm(defaultForm);
-                if (response.data.estimate_number) {
-                    setForm(prev => ({
-                        ...prev,
-                        estimate_number: response.data.nextEstimateNumber
-                    }));
-                }
-            }
-
-        } catch (err) {
-            setLoading(false);
-            if (err.response?.data?.errors) {
-                setErrors(err.response.data.errors);
-                setAlert({ type: 'danger', message: 'Please fix the errors below.' });
-            } else {
-                setAlert({ type: 'danger', message: err.message || 'Unknown error' });
-            }
-        }
-    };
-
-
-
-    useEffect(() => {
-        if (isBlocked) {
-            setAlert({ type: 'danger', message: 'Please select a working group first.' });
-            setErrors({ working_group_id: 'Working group is required.' });
-        } else {
-            setAlert(null);
-            setErrors((prev) => {
-                const { working_group_id, ...rest } = prev;
-                return rest; // Remove working_group_id error if it exists
-            });
-        }
-    }, [form.working_group_id]);
-
-    // new helper inside your component
     const selectClient = (client) => {
         setForm(prev => ({
             ...prev,
-            client_id: client.id,
+            client_id: client.id ?? client.customer_id ?? null,
             client_name: client.full_name || client.name || '',
-            client_phone: client.phone_number || client.phone_number || '',
-            client_address: client.address || '',
-            // if you added client_email to defaultForm:
+            client_phone: client.phone || client.phone_number || '',
+            client_address: client.address || client.billing_address || '',
             client_email: client.email || '',
-            client_type: client.type || 'daily',
+            client_type: client.type || client.client_type || 'daily',
         }));
     };
 
-    useEffect(() => {
-        console.log('form.client_type changed:', form.client_type);
-    }, [form.client_type]);
-
-    // — “Add Daily Customer” form state —
-    const emptyAddForm = {
-        full_name: '',
-        phone_number: '',
-        email: '',
-        address: '',
-        notes: '',
-        visit_date: new Date().toISOString().split('T')[0],
-        working_group_id: form.working_group_id || '',  // default to selected WG
-    };
-    const [addForm, setAddForm] = useState(emptyAddForm);
-    const [addErrors, setAddErrors] = useState({});
-    const [addLoading, setAddLoading] = useState(false);
-
-    // Reset addForm & errors whenever WG select changes or modal opens
-    useEffect(() => {
-        setAddForm(prev => ({ ...emptyAddForm, working_group_id: form.working_group_id }));
-        setAddErrors({});
-    }, [form.working_group_id]);
-
-    // Track input changes
-    const handleAddChange = e => {
-        setAddForm(f => ({ ...f, [e.target.name]: e.target.value }));
-    };
-
-    // Submit “Add Daily Customer”
-    const submitAdd = async e => {
-        e.preventDefault();
-        setAddLoading(true);
-        setAddErrors({});
-        try {
-            const resp = await axios.post(route('admin.jsonDailyCustomers'), addForm);
-            // 1️⃣ unwrap your customer
-            //    - if you returned { customer: {...} }
-            //    - or a Resource { data: {...} }
-            //    - or bare {...}
-            let payload = resp.data.customer ?? resp.data.data ?? resp.data;
-            const customer = payload.customer ?? payload;
-
-            console.log(resp + ' mo ' + customer);
-
-            // 2️⃣ refresh your WG lists & append
-            await fetchWorkingGroupDetails(form.working_group_id);
-            // setWgDailyCustomers(dc => [...dc, customer]);
-
-            // 3️⃣ select them in the quote form
-            selectClient({ ...customer, type: 'daily' });
-            // make sure your selectClient reads client.full_name
-
-            document.querySelector('#addCustomerModal .btn-close').click();
-
-            // 5️⃣ flash their actual name
-            const name = customer.full_name || customer.name;
-            setAlert({ type: 'success', message: `${name} added & selected.` });
-        } catch (err) {
-            // Handle validation errors
-            if (err.response?.data?.errors) {
-                setAddErrors(err.response.data.errors);
-                setAlert({ type: 'danger', message: 'Please fix the errors below.' });
-                console.log('Add Daily Customer errors:', err.response.data.errors);
-            } else {
-                setAlert({ type: 'danger', message: err.message || 'Unknown error' });
-                console.error('Add Daily Customer error:', err);
-            }
-        } finally {
-            setAddLoading(false);
-        }
-    };
-
-    // --- Variants logic from ProductView ---
+    // Product picker helpers
     const groupedVariants = useMemo(() => {
         if (!selectedProduct?.variants) return [];
         return selectedProduct.variants.reduce((acc, v) => {
@@ -360,14 +284,13 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                 group = { name: v.variant_name, label: v.variant_name, options: [] };
                 acc.push(group);
             }
-            // map subvariants
             const subs = (v.subvariants || []).map(sv => ({
                 value: sv.subvariant_value,
-                priceAdjustment: parseFloat(sv.price_adjustment) || 0,
+                priceAdjustment: Number(sv.price_adjustment) || 0,
             }));
             group.options.push({
                 value: v.variant_value,
-                priceAdjustment: parseFloat(v.price_adjustment) || 0,
+                priceAdjustment: Number(v.price_adjustment) || 0,
                 subvariants: subs,
                 subLabel: subs.length ? v.subvariants[0].subvariant_name : '',
             });
@@ -375,1574 +298,802 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         }, []);
     }, [selectedProduct]);
 
-    // track which variant/subvariant is chosen
-    const [selectedVariants, setSelectedVariants] = useState({});
-
-    // recompute price = base + adjustments
-    const computedPrice = useMemo(() => {
+    const baseProductPrice = useMemo(() => {
         if (!selectedProduct) return 0;
-        const base = parseFloat(
+        return Number(
             selectedProduct.pricing_method === 'roll'
                 ? selectedProduct.price_per_sqft
                 : selectedProduct.price
         ) || 0;
+    }, [selectedProduct]);
+
+    const computedPrice = useMemo(() => {
+        if (!selectedProduct) return 0;
         return groupedVariants.reduce((sum, group) => {
-            const sel = selectedVariants[group.name];
+            const sel = modalForm.selectedVariants[group.name];
             if (!sel) return sum;
             const opt = group.options.find(o => o.value === sel);
             let total = sum + (opt?.priceAdjustment || 0);
-            const subSel = selectedVariants[`${group.name}-sub`];
+            const subSel = modalForm.selectedVariants[`${group.name}-sub`];
             if (subSel && opt) {
                 const subOpt = opt.subvariants.find(s => s.value === subSel);
                 total += (subOpt?.priceAdjustment || 0);
             }
             return total;
-        }, base);
-    }, [groupedVariants, selectedVariants, selectedProduct]);
+        }, baseProductPrice);
+    }, [groupedVariants, modalForm.selectedVariants, baseProductPrice, selectedProduct]);
 
-    const [modalForm, setModalForm] = useState({
-        // → standard fields
-        unitPrice: computedPrice,
-        quantity: 1,
-        description: selectedProduct?.meta_description || '',
-        selectedVariants: {},
-
-        // → roll-pricing fields
-        rollSizeInches: '',
-        pricePerOffcutSqFt: '',
-        fixedWidthIn: '',
-        heightIn: '',
-    });
+    // reset modalForm when product changes or price recomputes
     useEffect(() => {
-        setModalForm({
+        if (!selectedProduct) return;
+        setModalForm(f => ({
+            ...f,
             unitPrice: computedPrice,
-            quantity: '',
+            quantity: 1,
             description: selectedProduct?.meta_description || '',
-            selectedVariants: {},
-            rollSizeInches: '',
-            pricePerOffcutSqFt: '',
-            fixedWidthIn: '',
-            heightIn: '',
-        });
+        }));
     }, [selectedProduct, computedPrice]);
 
+    // roll preview calc
+    const rollPreview = useMemo(() => {
+        if (!selectedProduct || selectedProduct.pricing_method !== 'roll') return null;
+        const rollW = Number(modalForm.rollSizeInches) || 0;        // inches
+        const fixedW = Number(modalForm.fixedWidthIn) || 0;         // inches
+        const hIn = Number(modalForm.heightIn) || 0;                // inches
+        if (rollW <= 0 || fixedW <= 0 || hIn <= 0) return null;
 
+        const w_ft = fixedW / 12;
+        const h_ft = hIn / 12;
+        const fixedAreaFt2 = w_ft * h_ft;
 
+        const rollWidthIn = rollW * 12;
+        const offcutWidthIn = Math.max(0, rollWidthIn - fixedW);
+        const offcutAreaFt2 = (offcutWidthIn / 12) * h_ft;
 
+        const pRoll = Number(selectedProduct.price_per_sqft) || 0;
+        const pOff = Number(modalForm.pricePerOffcutSqFt) || 0;
 
+        const areaPrice = fixedAreaFt2 * pRoll;
+        const offcutPrice = offcutAreaFt2 * pOff;
+        const printPrice = areaPrice + offcutPrice;
+        const unitXQty = printPrice * (Number(modalForm.quantity) || 1);
+
+        return { fixedAreaFt2, offcutAreaFt2, areaPrice, offcutPrice, printPrice, unitXQty };
+    }, [selectedProduct, modalForm.rollSizeInches, modalForm.fixedWidthIn, modalForm.heightIn, modalForm.pricePerOffcutSqFt, modalForm.quantity]);
+
+    const addProductToItems = () => {
+        if (!selectedProduct) return;
+        const isRoll = selectedProduct.pricing_method === 'roll';
+
+        // validation: fixed width cannot exceed roll width (in inches)
+        if (isRoll && Number(modalForm.fixedWidthIn) > (Number(modalForm.rollSizeInches || 0) * 12)) {
+            setAlert({
+                type: 'danger',
+                message: `Fixed width (${modalForm.fixedWidthIn}") cannot exceed roll width (${(Number(modalForm.rollSizeInches || 0) * 12)}").`,
+            });
+            return;
+        }
+
+        // build variants record for standard
+        const variants = isRoll
+            ? []
+            : groupedVariants.flatMap(group => {
+                const value = modalForm.selectedVariants[group.name];
+                if (!value) return [];
+                const option = group.options.find(o => o.value === value);
+                const subKey = `${group.name}-sub`;
+                const subValue = modalForm.selectedVariants[subKey];
+                const subList = (option?.subvariants || [])
+                    .filter(sv => sv.value === subValue)
+                    .map(sv => ({
+                        subvariant_name: group.subLabel,
+                        subvariant_value: sv.value,
+                        priceAdjustment: sv.priceAdjustment,
+                    }));
+                return [{
+                    variant_name: group.name,
+                    variant_value: value,
+                    priceAdjustment: option?.priceAdjustment || 0,
+                    subvariants: subList,
+                }];
+            });
+
+        let calculatedUnitPrice = modalForm.unitPrice;
+        let sizeLabel = '';
+
+        if (isRoll) {
+            const w_ft = (Number(modalForm.fixedWidthIn) || 0) / 12;
+            const h_ft = (Number(modalForm.heightIn) || 0) / 12;
+            const fixedArea = w_ft * h_ft;
+            const offWIn = (Number(modalForm.rollSizeInches) || 0) * 12 - (Number(modalForm.fixedWidthIn) || 0);
+            const offArea = (Math.max(0, offWIn) / 12) * h_ft;
+            const areaPrice = fixedArea * (Number(selectedProduct.price_per_sqft) || 0);
+            const offPrice = offArea * (Number(modalForm.pricePerOffcutSqFt) || 0);
+            const printPrice = areaPrice + offPrice;
+            calculatedUnitPrice = printPrice;
+            sizeLabel = `${modalForm.fixedWidthIn}" × ${modalForm.heightIn}"`;
+        }
+
+        const newItem = {
+            tempId: crypto.randomUUID?.() || Math.random().toString(36).slice(2, 8),
+            product_id: selectedProduct.id,
+            variant_id: null,
+            subvariant_id: null,
+            description: modalForm.description,
+            qty: modalForm.quantity,
+            unit: selectedProduct.unit_of_measure,
+            unit_price: calculatedUnitPrice,
+            product_name: selectedProduct.name,
+            base_price: selectedProduct.pricing_method === 'standard'
+                ? selectedProduct.price
+                : selectedProduct.price_per_sqft,
+            variants,
+            is_roll: isRoll,
+            ...(isRoll && { size: sizeLabel }),
+            roll_id: isRoll ? (selectedRollId || null) : null,
+            cut_width_in: isRoll ? modalForm.fixedWidthIn : null,
+            cut_height_in: isRoll ? modalForm.heightIn : null,
+            offcut_price_per_sqft: isRoll ? modalForm.pricePerOffcutSqFt : null,
+            line_total: calculatedUnitPrice * (modalForm.quantity || 1),
+        };
+
+        setForm(f => ({ ...f, items: [...f.items, newItem] }));
+        // reset drawer state
+        setSelectedProduct(null);
+        setSelectedRollId(null);
+        setProductSearch('');
+        setDrawerOpen(false);
+    };
+
+    /* ------------------------------------------------------------
+       Submit
+    ------------------------------------------------------------ */
+    const handleSubmit = async (action /* draft|publish|download|print */) => {
+        if (!form.working_group_id) { setAlert({ type: 'danger', message: 'Please select a working group first.' }); return; }
+        if (!form.client_name) { setAlert({ type: 'danger', message: 'Please assign a client before saving.' }); return; }
+        if (form.items.length < 1) { setAlert({ type: 'danger', message: 'You must add at least one line item.' }); return; }
+
+        const payload = {
+            ...form,
+            estimate_number: normalizeEstimateNumber(form.estimate_number),
+            action,
+            items: form.items.map(({ tempId, ...keep }) => keep),
+        };
+
+        setLoading(true); setErrors({});
+        try {
+            const isUpdate = Boolean(form.id);
+            const url = isUpdate
+                ? route('admin.estimates.update', form.id)
+                : route('admin.estimates.store');
+
+            const resp = isUpdate ? await axios.put(url, payload) : await axios.post(url, payload);
+            const data = resp.data || {};
+
+            setAlert({ type: data.msgtype || 'success', message: data.message || 'Saved.' });
+
+            // open download/print if provided
+            if ((action === 'download' || action === 'print') && data.download_url) {
+                window.open(data.download_url, '_blank');
+            }
+
+            if (data.redirect_to) {
+                router.visit(data.redirect_to);
+            } else {
+                const nextNum = normalizeEstimateNumber(data.nextEstimateNumber || form.estimate_number);
+                // keep WG so you can continue adding more
+                setForm(prev => ({
+                    ...prev,
+                    id: data.id || null,
+                    estimate_number: nextNum,
+                    items: prev.items, // keep if you want, or clear: []
+                }));
+            }
+        } catch (err) {
+            if (err.response?.data?.errors) {
+                setErrors(err.response.data.errors);
+                setAlert({ type: 'danger', message: 'Please fix the errors below.' });
+            } else {
+                setAlert({ type: 'danger', message: err.message || 'Unknown error' });
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    /* ------------------------------------------------------------
+       NEW UI (clean 3‑step layout + sticky actions)
+    ------------------------------------------------------------ */
     return (
         <>
             <Head title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
             <Meta
                 title={form.id ? 'Edit Estimate - Admin Dashboard' : 'Add Estimate - Admin Dashboard'}
-                description="Inline‐edit Estimate"
+                description="Create and publish estimates quickly"
             />
 
             <AdminDashboard userDetails={userDetails}>
                 <Breadcrumb title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
+
+                {/* Sticky action bar */}
+                <div className="tw-sticky tw-top-0 tw-z-30 tw-bg-white/80 dark:tw-bg-gray-900/80 tw-backdrop-blur tw-border-b tw-border-gray-200 dark:tw-border-gray-800 tw-py-2 tw-mb-4">
+                    <div className="tw-container tw-mx-auto tw-flex tw-items-center tw-justify-between tw-gap-2 tw-px-2">
+                        <div className="tw-flex tw-items-center tw-gap-3">
+                            <select
+                                name="working_group_id"
+                                className="form-select tw-min-w-[180px]"
+                                value={form.working_group_id}
+                                onChange={handleTopLevelChange}
+                            >
+                                <option value="">— Working Group —</option>
+                                {workingGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                            </select>
+
+                            <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2 tw-text-xs tw-opacity-70">
+                                <span>Ctrl+S Draft</span>
+                                <span>•</span>
+                                <span>Ctrl+Enter Publish</span>
+                                <span>•</span>
+                                <span>Ctrl+D Download</span>
+                                <span>•</span>
+                                <span>Ctrl+P Print</span>
+                            </div>
+                        </div>
+
+                        <div className="tw-flex tw-gap-2">
+                            <button className="btn btn-sm btn-secondary" onClick={() => handleSubmit('draft')} disabled={loading}>
+                                <Icon icon="mdi:content-save-outline" /> Save Draft
+                            </button>
+                            <button className="btn btn-sm btn-primary" onClick={() => handleSubmit('publish')} disabled={loading}>
+                                <Icon icon="mdi:cloud-upload-outline" /> Save & Publish
+                            </button>
+                            <button className="btn btn-sm btn-info" onClick={() => handleSubmit('download')} disabled={loading}>
+                                <Icon icon="mdi:download-outline" /> Save & Download
+                            </button>
+                            <button className="btn btn-sm btn-warning" onClick={() => handleSubmit('print')} disabled={loading}>
+                                <Icon icon="solar:printer-outline" /> Save & Print
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
 
-                <div className="card position-relative tw-rounded">
-                    <div className="card-header">
-                        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                            {/* Working Group Selector */}
-                            <div className="mb-3 mt-2">
-                                {/* <label htmlFor="working_group_id" className="form-label fw-semibold">
-                                    Working Group
-                                </label> */}
-                                <select
-                                    name="working_group_id"
-                                    id="working_group_id"
-                                    className="form-select"
-                                    value={form.working_group_id}
-                                    onChange={handleTopLevelChange}
-                                >
-                                    <option value="">-- Select Working Group --</option>
-                                    {workingGroups.map(group => (
-                                        <option key={group.id} value={group.id}>
-                                            {group.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-
-                                <div className="d-flex flex-wrap align-items-center justify-content-end gap-2">
-                                    {/* Save as Draft */}
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-secondary radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => handleSubmit('draft')}
-                                        disabled={loading}
-                                    >
-                                        <Icon icon="mdi:content-save-outline" className="text-xl" />
-                                        Save Draft
-                                    </button>
-
-                                    {/* Save & Publish */}
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-primary radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => handleSubmit('publish')}
-                                        disabled={loading}
-                                    >
-                                        <Icon icon="mdi:cloud-upload-outline" className="text-xl" />
-                                        Save & Publish
-                                    </button>
-
-                                    {/* Save & Download */}
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-info radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => handleSubmit('download')}
-                                        disabled={loading}
-                                    >
-                                        <Icon icon="mdi:download-outline" className="text-xl" />
-                                        Save & Download
-                                    </button>
-
-                                    {/* Save & Print */}
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-warning radius-8 d-inline-flex align-items-center gap-1"
-                                        onClick={() => handleSubmit('print')}
-                                        disabled={loading}
-                                    >
-                                        <Icon icon="solar:printer-outline" className="text-xl" />
-                                        Save & Print
-                                    </button>
+                <div className="tw-grid lg:tw-grid-cols-2 tw-gap-4">
+                    {/* LEFT: Step 1 — Header + Client */}
+                    <div className="tw-space-y-4">
+                        {/* Estimate header card */}
+                        <div className="card">
+                            <div className="card-body tw-space-y-3">
+                                <div className="tw-flex tw-items-center tw-justify-between">
+                                    <h4 className="tw-font-bold">Estimate</h4>
+                                    <img src="/images/printairlogo.png" style={{ height: 42 }} alt="Printair" />
                                 </div>
 
-                            </div>
+                                <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                    <div>
+                                        <label className="form-label tw-text-xs">Estimate No.</label>
+                                        <input
+                                            name="estimate_number"
+                                            className="form-control form-control-sm"
+                                            value={form.estimate_number}
+                                            onChange={handleTopLevelChange}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label tw-text-xs">P.O. Number</label>
+                                        <input
+                                            name="po_number"
+                                            className="form-control form-control-sm"
+                                            value={form.po_number || ''}
+                                            onChange={handleTopLevelChange}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label tw-text-xs">Issued</label>
+                                        <input
+                                            type="date"
+                                            name="issue_date"
+                                            className="form-control form-control-sm"
+                                            value={form.issue_date}
+                                            onChange={handleTopLevelChange}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label tw-text-xs">Due</label>
+                                        <input
+                                            type="date"
+                                            name="due_date"
+                                            className="form-control form-control-sm"
+                                            value={form.due_date}
+                                            onChange={handleTopLevelChange}
+                                        />
+                                    </div>
+                                </div>
 
+                                <div className="tw-text-xs tw-opacity-70">
+                                    Order ID: <span className="tw-font-semibold">{form.estimate_number}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Client Card */}
+                        <div className="card">
+                            <div className="card-header tw-flex tw-items-center tw-justify-between">
+                                <h6 className="tw-m-0 tw-font-semibold">Client</h6>
+                                <button
+                                    className="btn btn-sm btn-outline-primary"
+                                    onClick={() => document.getElementById('client-search')?.focus()}
+                                >
+                                    <Icon icon="mdi:account-search" /> Find
+                                </button>
+                            </div>
+                            <div className="card-body tw-space-y-3">
+                                <input
+                                    id="client-search"
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    placeholder="Search name, email or phone…"
+                                    value={clientQuery}
+                                    onChange={(e) => setClientQuery(e.target.value)}
+                                />
+                                <div className="tw-max-h-52 tw-overflow-auto tw-divide-y tw-divide-gray-200">
+                                    {filteredClients.map(u => (
+                                        <button
+                                            key={`${u.type}-${u.id}`}
+                                            type="button"
+                                            className="tw-w-full tw-text-left tw-py-2 hover:tw-bg-gray-50"
+                                            onClick={() => selectClient(u)}
+                                        >
+                                            <div className="tw-flex tw-items-center tw-justify-between">
+                                                <div>
+                                                    <div className="tw-font-medium">{u.name || u.full_name}</div>
+                                                    <div className="tw-text-xs tw-opacity-70">
+                                                        {(u.email || '—')} • {(u.phone_number || u.phone || '—')}
+                                                    </div>
+                                                </div>
+                                                <span className={`tw-text-[10px] tw-px-2 tw-py-0.5 tw-rounded ${u.type === 'daily' ? 'tw-bg-blue-100 tw-text-blue-800' : 'tw-bg-green-100 tw-text-green-800'
+                                                    }`}>
+                                                    {u.type === 'daily' ? 'Daily' : 'System'}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-pt-2 tw-border-t">
+                                    <div className="tw-text-xs tw-opacity-70">Name</div>
+                                    <div className="tw-text-right tw-font-medium">{form.client_name || '—'}</div>
+                                    <div className="tw-text-xs tw-opacity-70">Phone</div>
+                                    <div className="tw-text-right">{form.client_phone || '—'}</div>
+                                    <div className="tw-text-xs tw-opacity-70">Email</div>
+                                    <div className="tw-text-right">{form.client_email || '—'}</div>
+                                    <div className="tw-text-xs tw-opacity-70">Address</div>
+                                    <div className="tw-text-right">{form.client_address || '—'}</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="card-body py-40">
-                        {wgLoading && (
-                            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center tw-bg-gray-800 tw-bg-opacity-75">
-                                <Icon icon="ic:baseline-autorenew" className="tw-text-3xl tw-animate-spin tw-mb-3 tw-text-gray-200" />
-                                <span className='tw-text-white'>Getting details of working group…</span>
+                    {/* MIDDLE: Step 2 — Items */}
+                    <div className="tw-space-y-4">
+                        <div className="card">
+                            <div className="card-header tw-flex tw-items-center tw-justify-between">
+                                <h6 className="tw-m-0 tw-font-semibold">Line Items</h6>
+                                <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => { setDrawerOpen(true); }}
+                                    disabled={isBlocked}
+                                >
+                                    <Icon icon="simple-line-icons:plus" /> Add Product
+                                </button>
                             </div>
-                        )}
-                        {/* Errors Banner */}
+
+                            <div className="card-body tw-p-0">
+                                <div className="table-responsive">
+                                    <table className="table table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Item</th>
+                                                <th style={{ width: 90 }}>Qty</th>
+                                                <th style={{ width: 110 }}>Unit</th>
+                                                <th style={{ width: 130 }}>Unit Price</th>
+                                                <th style={{ width: 140 }}>Total</th>
+                                                <th className="text-center" style={{ width: 60 }}>—</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {form.items.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={7} className="text-center tw-text-gray-500 tw-italic py-4">
+                                                        No items yet. Click “Add Product”.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {form.items.map((item, idx) => (
+                                                <tr key={item.tempId}>
+                                                    <td>{idx + 1}</td>
+                                                    <td>
+                                                        <div className="tw-font-medium">{item.product_name}</div>
+                                                        <div className="tw-text-xs tw-text-gray-500">
+                                                            {item.is_roll ? <>Size: {item.size || '—'}</> : <>Base: {Number(item.base_price || 0).toFixed(2)}</>}
+                                                        </div>
+                                                        <div className="tw-text-xs tw-text-gray-500">{item.description || '—'}</div>
+                                                    </td>
+
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            onWheel={(e) => e.currentTarget.blur()}
+                                                            className="form-control form-control-sm"
+                                                            value={item.qty}
+                                                            onChange={(e) => handleItemChange(idx, 'qty', e.target.value)}
+                                                        />
+                                                    </td>
+
+                                                    <td>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            value={item.unit || ''}
+                                                            onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
+                                                        />
+                                                    </td>
+
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            onWheel={(e) => e.currentTarget.blur()}
+                                                            className="form-control form-control-sm"
+                                                            value={item.unit_price}
+                                                            onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
+                                                        />
+                                                    </td>
+
+                                                    <td className="tw-font-semibold">{money(Number(item.qty) * Number(item.unit_price))}</td>
+
+                                                    <td className="text-center">
+                                                        <button className="btn btn-link text-danger p-0" onClick={() => removeItem(idx)}>
+                                                            <Icon icon="ic:twotone-close" className="tw-text-xl" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Review & totals */}
+                        <div className="card">
+                            <div className="card-body tw-grid md:tw-grid-cols-2 tw-gap-4">
+                                <div className="tw-space-y-2">
+                                    <div className="tw-text-sm tw-opacity-70">Sales By</div>
+                                    <div className="tw-font-medium">{userDetails?.name || '—'}</div>
+                                    <div className="tw-text-xs tw-opacity-50">Thank you!</div>
+                                </div>
+
+                                <div className="tw-justify-self-end tw-w-full md:tw-w-80">
+                                    <table className="table table-sm mb-0">
+                                        <tbody>
+                                            <tr>
+                                                <td>Subtotal</td>
+                                                <td className="text-end">{money(subtotal)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Discount</td>
+                                                <td className="text-end">{money(discount)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Tax</td>
+                                                <td className="text-end">{money(tax)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="tw-font-semibold">Total</td>
+                                                <td className="text-end tw-font-semibold">{money(total)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
                         {Object.keys(errors).length > 0 && (
-                            <div className="alert alert-danger bg-danger-100 text-danger-600 border-danger-600 border-start-width-4-px border-top-0 border-end-0 border-bottom-0 px-24 py-13 mb-0 fw-semibold text-lg radius-4 d-flex align-items-center justify-content-between">
+                            <div className="alert alert-danger">
                                 <ul className="mb-0">
-                                    {Object.values(errors).map((errMsg, idx) => (
-                                        <li key={idx}>{errMsg}</li>
-                                    ))}
+                                    {Object.values(errors).flat().map((m, i) => <li key={i}>{String(m)}</li>)}
                                 </ul>
                             </div>
                         )}
-
-                        <div className="row justify-content-center tw-mt-4" id="estimate">
-                            <div className="col tw-max-w-[8.3in]">
-                                <div className="shadow-4 border radius-8">
-                                    {/* Header (Estimate #, Dates, Company Info) */}
-                                    <div className="p-20 border-bottom">
-                                        <div className="row justify-content-between g-3">
-                                            {/* Left: Estimate #, Issue & Due */}
-                                            <div className="col-sm-6">
-                                                <h3 className="text-xl">
-                                                    {form.estimate_number
-                                                        ? (
-                                                            <>
-
-                                                                <h4 className='tw-font-bold'>Estimate</h4>
-                                                                <div className='tw-font-semibold tw-text-md'>#{form.estimate_number}</div>
-                                                            </>
-                                                        )
-                                                        : 'Estimate #—'}
-                                                </h3>
-
-                                                {/* Issue Date */}
-                                                <p className="mb-1 text-sm d-flex align-items-center tw-mt-3">
-                                                    Date Issued:&nbsp;
-                                                    {editingField === 'issue_date' ? (
-                                                        <input
-                                                            name="issue_date"
-                                                            type="date"
-                                                            className="form-control form-control-sm w-auto"
-                                                            value={form.issue_date}
-                                                            onChange={handleTopLevelChange}
-                                                            onBlur={stopEditing}
-                                                            autoFocus
-                                                        />
-                                                    ) : (
-                                                        <>
-                                                            <span className="editable text-decoration-underline">
-                                                                {formatDateForDisplay(form.issue_date)}
-                                                            </span>
-                                                            <span
-                                                                className="text-success-main ms-1"
-                                                                style={{ cursor: 'pointer' }}
-                                                                onClick={() => startEditing('issue_date')}
-                                                            >
-                                                                <Icon icon="mage:edit" />
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                </p>
-
-                                                {/* Due Date */}
-                                                <p className="mb-0 text-sm d-flex align-items-center">
-                                                    Date Due:&nbsp;
-                                                    {editingField === 'due_date' ? (
-                                                        <input
-                                                            name="due_date"
-                                                            type="date"
-                                                            className="form-control form-control-sm w-auto"
-                                                            value={form.due_date}
-                                                            onChange={handleTopLevelChange}
-                                                            onBlur={stopEditing}
-                                                            autoFocus
-                                                        />
-                                                    ) : (
-                                                        <>
-                                                            <span className="editable text-decoration-underline">
-                                                                {formatDateForDisplay(form.due_date)}
-                                                            </span>
-                                                            <span
-                                                                className="text-success-main ms-1"
-                                                                style={{ cursor: 'pointer' }}
-                                                                onClick={() => startEditing('due_date')}
-                                                            >
-                                                                <Icon icon="mage:edit" />
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                </p>
-                                            </div>
-
-                                            {/* Right: Company Logo & Contact */}
-                                            <div className="col-sm-6 d-flex flex-column align-items-end justify-content-end text-end">
-                                                <div>
-                                                    <img
-                                                        src="/images/printairlogo.png"
-                                                        alt="Printair Logo"
-                                                        className="tw-mb-3"
-                                                        style={{ maxHeight: '95px' }}
-                                                    />
-                                                </div>
-                                                <p className="tw-mb-1 tw-text-sm">
-                                                    No. 67/D/1, Uggashena Road,
-                                                    <br />Walpola, Ragama, Sri Lanka
-                                                </p>
-                                                <p className="tw-mb-0 tw-text-sm">
-                                                    contact@printair.lk
-                                                    <br />
-                                                    &nbsp;+94 76 886 0175
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Body: “Issues For” + “Order Info” + Line Items + Totals */}
-                                    <div className="py-28 px-20">
-                                        <div className="d-flex flex-wrap justify-content-between align-items-end gap-3">
-                                            <div>
-                                                <h6 className="text-md">Issues For:
-                                                    <span
-                                                        className="text-success-main ms-1"
-                                                        style={{ cursor: 'pointer' }}
-                                                        data-bs-toggle="modal" data-bs-target="#ClientModal"
-                                                    >
-                                                        <Icon icon="mage:edit" />
-                                                    </span>
-                                                </h6>
-                                                <table className="text-sm text-secondary-light">
-                                                    <tbody>
-                                                        {/* Client Name */}
-                                                        <tr>
-                                                            <td>Name</td>
-                                                            <td className="ps-8 d-flex align-items-center">
-                                                                : {form.client_name || '—'}
-                                                            </td>
-                                                        </tr>
-
-                                                        {/* Client Address */}
-                                                        <tr>
-                                                            <td>Address</td>
-                                                            {editingField === 'client_address' ? (
-                                                                <input
-                                                                    name="client_address"
-                                                                    type="text"
-                                                                    className="form-control form-control-sm w-auto"
-                                                                    value={form.client_address || ''}
-                                                                    onChange={handleTopLevelChange}
-                                                                    onBlur={stopEditing}
-                                                                    autoFocus
-                                                                />
-                                                            ) : (
-                                                                <>
-
-                                                                    <span className="ps-8 editable text-decoration-underline">
-                                                                        : {form.client_address || '—'}
-                                                                    </span>
-                                                                    <span
-                                                                        className='text-success-main ms-1'
-                                                                        style={{ cursor: 'pointer' }}
-                                                                        onClick={() => startEditing('client_address')}
-                                                                    >
-                                                                        <Icon icon="mage:edit" />
-                                                                    </span>
-                                                                </>
-                                                            )}
-                                                        </tr>
-
-                                                        {/* Client Phone */}
-                                                        <tr>
-                                                            <td>Phone number</td>
-                                                            <td className="ps-8 d-flex align-items-center">
-                                                                : {form.client_phone || '—'}
-                                                            </td>
-                                                        </tr>
-
-                                                        <tr>
-                                                            <td>Email</td>
-                                                            <td className="ps-8 d-flex align-items-center">
-                                                                : {form.client_email || '—'}
-                                                            </td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-
-                                            {/* Right side “Order Info” (Issus Date, Order ID, Shipment ID) */}
-                                            <div>
-                                                <table className="text-sm text-secondary-light">
-                                                    <tbody>
-                                                        <tr>
-                                                            <td className='tw-text-end'>Issus Date :</td>
-                                                            <td className="ps-8">
-                                                                {formatDateForDisplay(form.issue_date)}
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className='tw-text-end'>Order ID :</td>
-                                                            <td className="ps-8">
-                                                                {form.estimate_number || '—'}
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className='tw-text-end'>P.O. Number :</td>
-                                                            <td className="ps-8">
-                                                                {editingField === 'po_number' ? (
-                                                                    <input
-                                                                        name="po_number"
-                                                                        type="text"
-                                                                        className="form-control form-control-sm w-auto"
-                                                                        value={form.po_number || ''}
-                                                                        onChange={handleTopLevelChange}
-                                                                        onBlur={stopEditing}
-                                                                        autoFocus
-                                                                    />
-                                                                ) : (
-                                                                    <>
-                                                                        <span className="editable text-decoration-underline">
-                                                                            {form.po_number || '—'}
-                                                                        </span>
-                                                                        <span
-                                                                            className='text-success-main ms-1'
-                                                                            style={{ cursor: 'pointer' }}
-                                                                            onClick={() => startEditing('po_number')}
-                                                                        >
-                                                                            <Icon icon="mage:edit" />
-                                                                        </span>
-                                                                    </>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className='tw-text-end'>Shipment ID :</td>
-                                                            <td className="ps-8">
-                                                                {editingField === 'shipment_id' ? (
-                                                                    <input
-                                                                        name="shipment_id"
-                                                                        type="text"
-                                                                        className="form-control form-control-sm w-auto"
-                                                                        value={form.shipment_id || ''}
-                                                                        onChange={handleTopLevelChange}
-                                                                        onBlur={stopEditing}
-                                                                        autoFocus
-                                                                    />
-                                                                ) : (
-                                                                    <>
-                                                                        <span className="editable text-decoration-underline">
-                                                                            {form.shipment_id || '—'}
-                                                                        </span>
-                                                                        <span
-                                                                            className='text-success-main ms-1'
-                                                                            style={{ cursor: 'pointer' }}
-                                                                            onClick={() => startEditing('shipment_id')}
-                                                                        >
-                                                                            <Icon icon="mage:edit" />
-                                                                        </span>
-                                                                    </>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-
-                                        {/* Line Items Table */}
-                                        <div className="mt-24">
-                                            <div className="table-responsive scroll-sm">
-                                                <table
-                                                    className="table bordered-table text-sm"
-                                                    id="invoice-table"
-                                                >
-                                                    <thead>
-                                                        <tr>
-                                                            <th scope="col" className="text-sm">
-                                                                SL.
-                                                            </th>
-                                                            <th scope="col" className="text-sm">
-                                                                Items
-                                                            </th>
-                                                            <th scope="col" className="text-sm">
-                                                                Qty
-                                                            </th>
-                                                            <th scope="col" className="text-sm">
-                                                                Units
-                                                            </th>
-                                                            <th scope="col" className="text-sm">
-                                                                Unit Price
-                                                            </th>
-                                                            <th scope="col" className="text-sm">
-                                                                Price
-                                                            </th>
-                                                            <th scope="col" className="text-center text-sm">
-                                                                Action
-                                                            </th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {form.items.map((item, idx) => (
-                                                            <tr key={item.tempId}>
-                                                                {/* SL # */}
-                                                                <td>{idx + 1}</td>
-
-                                                                {/* Description (inline editable) */}
-                                                                <td>
-                                                                    <div className="tw-font-semibold">{item.product_name}</div>
-                                                                    {editingField === `item-${idx}-description` ? (
-                                                                        <input
-                                                                            type="text"
-                                                                            className="form-control form-control-sm"
-                                                                            value={item.description}
-                                                                            onChange={(e) =>
-                                                                                handleItemChange(idx, 'description', e.target.value)
-                                                                            }
-                                                                            onBlur={stopEditing}
-                                                                            autoFocus
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="d-flex align-items-center">
-                                                                            <span className="editable text-decoration-underline tw-text-sm tw-text-gray-500">
-                                                                                {item.description || '—'}
-                                                                            </span>
-                                                                            <span
-                                                                                className="text-success-main ms-1"
-                                                                                style={{ cursor: 'pointer' }}
-                                                                                onClick={() =>
-                                                                                    startEditing(`item-${idx}-description`)
-                                                                                }
-                                                                            >
-                                                                                <Icon icon="mage:edit" />
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                    {item.isRoll ? (
-                                                                        <div>
-                                                                            <div className='tw-text-xs'>
-                                                                                <span className="tw-font-semibold tw-text-gray-500">
-                                                                                    Size:
-                                                                                </span>
-                                                                                {item.size}
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div>
-                                                                            <div className='tw-text-xs'>
-                                                                                <span className="tw-font-semibold tw-text-gray-500">
-                                                                                    Base Price:
-                                                                                </span>
-                                                                                {parseFloat(item.base_price).toFixed(2)}
-                                                                            </div>
-
-                                                                            <div className='tw-text-xs'>
-                                                                                <span className="tw-font-semibold tw-text-gray-500">
-                                                                                    Variants
-                                                                                </span>
-                                                                                {item.variants && item.variants.length > 0 ? (
-                                                                                    <ul className='tw-list-disc tw-ml-4'>
-                                                                                        {item.variants.map((v, i) => (
-                                                                                            <li key={i}>
-                                                                                                {v.variant_name}: {v.variant_value}
-
-                                                                                                {v.subvariants.length > 0 && (
-                                                                                                    <ul>
-                                                                                                        {v.subvariants.map((sv, j) => (
-                                                                                                            <li key={j}>
-                                                                                                                {sv.subvariant_name}: {sv.subvariant_value}
-
-                                                                                                            </li>
-                                                                                                        ))}
-                                                                                                    </ul>
-                                                                                                )}
-                                                                                            </li>
-                                                                                        ))}
-                                                                                    </ul>
-                                                                                ) : (
-                                                                                    '—'
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-
-                                                                {/* Qty */}
-                                                                <td>
-                                                                    {editingField === `item-${idx}-qty` ? (
-                                                                        <input
-                                                                            type="number"
-                                                                            min="0"
-                                                                            onWheel={e => e.currentTarget.blur()}
-                                                                            className="form-control form-control-sm"
-                                                                            value={item.qty}
-                                                                            onChange={(e) =>
-                                                                                handleItemChange(idx, 'qty', e.target.value)
-                                                                            }
-                                                                            onBlur={stopEditing}
-                                                                            autoFocus
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="d-flex align-items-center">
-                                                                            <span className="editable text-decoration-underline">
-                                                                                {item.qty}
-                                                                            </span>
-                                                                            <span
-                                                                                className="text-success-main ms-1"
-                                                                                style={{ cursor: 'pointer' }}
-                                                                                onClick={() => startEditing(`item-${idx}-qty`)}
-                                                                            >
-                                                                                <Icon icon="mage:edit" />
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-
-                                                                {/* Unit */}
-                                                                <td>
-                                                                    {editingField === `item-${idx}-unit` ? (
-                                                                        <input
-                                                                            type="text"
-                                                                            className="form-control form-control-sm"
-                                                                            value={item.unit}
-                                                                            onChange={(e) =>
-                                                                                handleItemChange(idx, 'unit', e.target.value)
-                                                                            }
-                                                                            onBlur={stopEditing}
-                                                                            autoFocus
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="d-flex align-items-center">
-                                                                            <span className="editable text-decoration-underline">
-                                                                                {item.unit || '—'}
-                                                                            </span>
-                                                                            <span
-                                                                                className="text-success-main ms-1"
-                                                                                style={{ cursor: 'pointer' }}
-                                                                                onClick={() => startEditing(`item-${idx}-unit`)}
-                                                                            >
-                                                                                <Icon icon="mage:edit" />
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-
-                                                                {/* Unit Price */}
-                                                                <td>
-                                                                    {editingField === `item-${idx}-unit_price` ? (
-                                                                        <input
-                                                                            type="number"
-                                                                            min="0"
-                                                                            onWheel={e => e.currentTarget.blur()}
-                                                                            className="form-control form-control-sm"
-                                                                            value={item.unit_price}
-                                                                            onChange={e => handleItemChange(idx, 'unit_price', e.target.value)}
-                                                                            onBlur={stopEditing}
-                                                                            autoFocus
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="d-flex align-items-center">
-                                                                            <span className="editable text-decoration-underline">
-                                                                                {item.unit_price.toFixed(2)}
-                                                                            </span>
-                                                                            <span
-                                                                                className="text-success-main ms-1"
-                                                                                style={{ cursor: 'pointer' }}
-                                                                                onClick={() => startEditing(`item-${idx}-unit_price`)}
-                                                                            >
-                                                                                <Icon icon="mage:edit" />
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-
-
-                                                                {/* Price = qty × unit_price (read‐only) */}
-                                                                <td>LKR {(item.qty * item.unit_price).toFixed(2)}</td>
-
-                                                                {/* Remove‐row button */}
-                                                                <td className="text-center">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="remove-row btn p-0"
-                                                                        onClick={() => removeItem(idx)}
-                                                                    >
-                                                                        <Icon
-                                                                            icon="ic:twotone-close"
-                                                                            className="text-danger-main text-xl"
-                                                                        />
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-
-                                            {/* “Add New” line */}
-                                            <div className="mt-2">
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-sm btn-primary-600 radius-8 d-inline-flex align-items-center gap-1"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#ProductModal"
-                                                >
-                                                    <Icon
-                                                        icon="simple-line-icons:plus"
-                                                        className="text-xl"
-                                                    />
-                                                    Add New
-                                                </button>
-                                            </div>
-
-                                            {/* Totals */}
-                                            <div className="d-flex flex-wrap justify-content-between gap-3 mt-24">
-                                                <div>
-                                                    <p className="text-sm mb-0">
-                                                        <span className="text-primary-light fw-semibold">
-                                                            Sales By:
-                                                        </span>{' '}
-                                                        {userDetails.name || '—'}
-                                                    </p>
-                                                    <p className="text-sm mb-0">Thank You!</p>
-                                                </div>
-
-                                                <div>
-                                                    <table className="text-sm">
-                                                        <tbody>
-                                                            <tr>
-                                                                <td className="pe-64 text-start">Subtotal:</td>
-                                                                <td className="pe-16 text-end">
-                                                                    <span className="text-primary-light fw-semibold">
-                                                                        LKR {subtotal.toFixed(2)}
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td className="pe-64 text-start">Discount:</td>
-                                                                <td className="pe-16 text-end">
-                                                                    <span className="text-primary-light fw-semibold">
-                                                                        LKR {discount.toFixed(2)}
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td className="pe-64 border-bottom pb-4 text-start">Tax:</td>
-                                                                <td className="pe-16 border-bottom pb-4 text-end">
-                                                                    <span className="text-primary-light fw-semibold">
-                                                                        LKR {tax.toFixed(2)}
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td className="pe-64 pt-4 text-start">
-                                                                    <span className="text-primary-light fw-semibold">Total:</span>
-                                                                </td>
-                                                                <td className="pe-16 pt-4 text-end">
-                                                                    <span className="text-primary-light fw-semibold">
-                                                                        LKR {total.toFixed(2)}
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-
-                                            {/* Footer (Signatures) */}
-                                            <div className="mt-64">
-                                                <p className="text-center text-secondary-light text-sm fw-semibold">
-                                                    Looking forward to work with you!
-                                                </p>
-                                            </div>
-                                            <div className="d-flex flex-wrap border-top justify-content-between tw-pt-4 align-items-end mt-64">
-                                                <div className="text-sm d-inline-block px-12">
-                                                    System Authorized.
-                                                </div>
-                                                <div className='text-sm d-inline-block px-12'>1 of n pages</div>
-                                                <div className="text-sm d-inline-block px-12">
-                                                    www.printair.lk
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
-                <div
-                    className="modal fade"
-                    id="ClientModal"
-                    tabIndex={-1}
-                    aria-labelledby="ClientModalLabel"
-                    aria-hidden="true"
-                >
-                    <div className="modal-dialog modal-lg modal-dialog-centered">
-                        <div className="modal-content radius-16 bg-base">
-                            <div className="modal-header py-16 px-24 border-0">
-                                <h6
-                                    className="modal-title tw-font-semibold tw-text-gray-700 dark:tw-text-gray-400"
-                                    id="ClientModalLabel"
-                                >
-                                    Assign a Client for the Estimate
-                                </h6>
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    data-bs-dismiss="modal"
-                                    aria-label="Close"
-                                />
-                            </div>
-                            <div className="modal-body p-4 overflow-auto tw-min-h-80" style={{ maxHeight: '60vh' }}>
-                                <hr className='tw-mb-3' />
+                {/* PRODUCT DRAWER (right) */}
+                <div className={`tw-fixed tw-inset-y-0 tw-right-0 tw-w-full sm:tw-w-[480px] tw-bg-white dark:tw-bg-gray-900 tw-shadow-2xl tw-z-50 tw-transition-transform ${drawerOpen ? 'tw-translate-x-0' : 'tw-translate-x-full'}`}>
+                    <div className="tw-flex tw-items-center tw-justify-between tw-border-b tw-p-3">
+                        <h6 className="tw-m-0 tw-font-semibold">Add Product</h6>
+                        <button className="btn btn-sm btn-outline-secondary" onClick={() => setDrawerOpen(false)}>
+                            Close
+                        </button>
+                    </div>
 
-                                {/* — Search input — */}
-                                <div className="tw-mb-8 tw-px-12">
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        placeholder="Search users"
-                                        value={searchTermwgUser}
-                                        onChange={(e) => setSearchTermwgUser(e.target.value)}
-                                    />
+                    {/* Search */}
+                    <div className="tw-p-3">
+                        <input
+                            className="form-control"
+                            placeholder="Search products…"
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Product list or detail */}
+                    {!selectedProduct ? (
+                        <div className="tw-p-3 tw-space-y-2 tw-overflow-auto tw-max-h-[70vh]">
+                            {wgProducts
+                                .filter(p => (p.name || '').toLowerCase().includes(productSearch.toLowerCase()))
+                                .map(p => (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        className="tw-w-full tw-text-left tw-border tw-rounded tw-p-3 hover:tw-bg-gray-50"
+                                        onClick={() => setSelectedProduct(p)}
+                                    >
+                                        <div className="tw-font-medium">{p.name}</div>
+                                        <div className="tw-text-xs tw-opacity-70">
+                                            {(p.categories || []).map(c => c.name).join(', ')} • {p.unit_of_measure}
+                                        </div>
+                                    </button>
+                                ))}
+                        </div>
+                    ) : (
+                        <>
+                            <div className="tw-p-3 tw-space-y-3 tw-overflow-auto tw-max-h-[70vh]">
+                                <div className="tw-flex tw-items-start tw-justify-between">
+                                    <div>
+                                        <div className="tw-font-semibold tw-text-lg">{selectedProduct.name}</div>
+                                        <div className="tw-text-xs tw-opacity-70" dangerouslySetInnerHTML={{ __html: selectedProduct.meta_description || '' }} />
+                                    </div>
+                                    <button className="btn btn-sm btn-link" onClick={() => setSelectedProduct(null)}>Change</button>
                                 </div>
 
-                                {/* — Before typing: prompt — */}
-                                {searchTermwgUser.trim() === '' ? (
-                                    <div className=''>
-                                        <div className="tw-text-center tw-text-gray-500 tw-italic tw-mt-12">Search users by Name, Email or Phone Number <span className='tw-font-semibold'>OR</span> <br /> Add new daily customer</div>
-                                    </div>
-                                ) : (
-                                    /* — After typing: filtered results — */
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {[
-                                            ...wgUsers.map(u => ({ ...u, type: 'system' })),
-                                            ...wgDailyCustomers.map(c => ({ ...c, type: 'daily' })),
-                                        ]
-                                            .filter(user => {
-                                                const term = searchTermwgUser.toLowerCase();
-                                                // Safely grab name & email (fallback to empty string)
-                                                const name = (user.name || user.full_name || '').toLowerCase();
-                                                const [localPart = '', domainPart = ''] = (user.email || '').toLowerCase().split('@');
-                                                if (term.includes('@')) {
-                                                    return (user.email || '').toLowerCase().includes(term);
-                                                }
-                                                const phoneNumber = (user.phone_number || '').toLowerCase();
-                                                return name.includes(term) || localPart.includes(term) || phoneNumber.includes(term);
-                                            })
-                                            .map(user => (
-                                                <div
-                                                    key={`${user.type}-${user.id}`}
-                                                    className="flex items-center tw-mx-12 tw-p-3 tw-border tw-rounded-lg hover:tw-bg-blue-200 hover:dark:tw-bg-gray-800 tw-cursor-pointer tw-mb-3"
-                                                    onClick={() => selectClient(user)}
-                                                    data-bs-dismiss="modal"
-                                                >
-                                                    <div className="tw-ml-3 tw-flex-1">
-                                                        <p className="tw-font-semibold tw-text-black dark:tw-text-white">{user.name || user.full_name || NaN}</p>
-                                                        <p className="tw-text-sm tw-text-gray-500">{user.email}</p>
-                                                        <p className="tw-text-sm tw-text-gray-500">{user.phone_number}</p>
+                                {/* Pricing method switch (read-only by product) */}
+                                {selectedProduct.pricing_method === 'standard' && (
+                                    <>
+                                        <div>
+                                            <label className="form-label">Unit Price</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                onWheel={(e) => e.currentTarget.blur()}
+                                                className="form-control"
+                                                value={modalForm.unitPrice}
+                                                onChange={e => setModalForm(f => ({ ...f, unitPrice: parseFloat(e.target.value) || 0 }))}
+                                            />
+                                        </div>
+
+                                        {/* Variants */}
+                                        {groupedVariants.map(group => {
+                                            const sel = modalForm.selectedVariants[group.name];
+                                            const opt = group.options.find(o => o.value === sel);
+                                            return (
+                                                <div key={group.name}>
+                                                    <div className="tw-font-medium tw-mb-1">{group.label}</div>
+                                                    <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                                        {group.options.map(o => {
+                                                            const isSelected = sel === o.value;
+                                                            return (
+                                                                <button
+                                                                    key={o.value}
+                                                                    type="button"
+                                                                    className={`tw-px-3 tw-py-1 tw-rounded tw-border ${isSelected ? 'tw-bg-blue-600 tw-text-white' : 'tw-border-gray-300'}`}
+                                                                    onClick={() => {
+                                                                        setModalForm(f => {
+                                                                            const currently = f.selectedVariants[group.name] === o.value;
+                                                                            const next = currently ? null : o.value;
+                                                                            const delta = currently ? -o.priceAdjustment : o.priceAdjustment;
+                                                                            return {
+                                                                                ...f,
+                                                                                selectedVariants: { ...f.selectedVariants, [group.name]: next },
+                                                                                unitPrice: Math.max(0, f.unitPrice + delta),
+                                                                            };
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    {o.value}{o.priceAdjustment > 0 && ` (+${o.priceAdjustment})`}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
-                                                    <span
-                                                        className={`tw-text-xs tw-font-medium tw-px-2 tw-py-1 tw-ml-3 tw-rounded ${user.type === 'daily'
-                                                            ? 'tw-bg-blue-100 tw-text-blue-800'
-                                                            : 'tw-bg-green-100 tw-text-green-800'
-                                                            }`}
-                                                    >
-                                                        {user.type === 'daily' ? 'Daily Customer' : 'System User'}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div className='model-footer p-8 border-top'>
-                                <button
-                                    type="button"
-                                    className="btn btn-primary float-end d-flex align-items-center"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#addCustomerModal"
-                                >
-                                    <Icon icon="ic:baseline-add-circle" className='tw-me-2' /> Add New Daily Customer & Use
-                                </button>
 
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-
-                {/* — Add Daily Customer Modal — */}
-                <div
-                    className="modal fade"
-                    id="addCustomerModal"
-                    tabIndex={-1}
-                    aria-labelledby="addCustomerModalLabel"
-                    aria-hidden="true"
-                >
-                    <div className="modal-dialog modal-lg modal-dialog-centered">
-                        <div className="modal-content radius-16 bg-base">
-                            <div className="modal-header tw-py-3 tw-px-4">
-                                <h5 className="modal-title" id="addCustomerModalLabel">
-                                    Add New Daily Customer
-                                </h5>
-                                <button type="button" className="btn-close" data-bs-dismiss="modal" />
-                            </div>
-                            <form onSubmit={submitAdd}>
-                                <div className="modal-body tw-p-4">
-                                    {Object.keys(addErrors).length > 0 && (
-                                        <div className="alert alert-danger mb-3">
-                                            <ul className="mb-0">
-                                                {Object.values(addErrors).map((err, i) => (
-                                                    <li key={i}>{err}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* Full Name */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Full Name</label>
-                                        <input
-                                            name="full_name"
-                                            type="text"
-                                            className="form-control"
-                                            value={addForm.full_name}
-                                            onChange={handleAddChange}
-                                        />
-                                    </div>
-
-                                    {/* Phone */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Phone Number</label>
-                                        <input
-                                            name="phone_number"
-                                            type="text"
-                                            className="form-control"
-                                            value={addForm.phone_number}
-                                            onChange={handleAddChange}
-                                        />
-                                    </div>
-
-                                    {/* Email */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Email (optional)</label>
-                                        <input
-                                            name="email"
-                                            type="email"
-                                            className="form-control"
-                                            value={addForm.email}
-                                            onChange={handleAddChange}
-                                        />
-                                    </div>
-
-                                    {/* Address */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Address (optional)</label>
-                                        <textarea
-                                            name="address"
-                                            className="form-control"
-                                            rows="2"
-                                            value={addForm.address}
-                                            onChange={handleAddChange}
-                                        />
-                                    </div>
-
-                                    {/* Notes */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Notes (optional)</label>
-                                        <textarea
-                                            name="notes"
-                                            className="form-control"
-                                            rows="2"
-                                            value={addForm.notes}
-                                            onChange={handleAddChange}
-                                        />
-                                    </div>
-
-                                    {/* Visit Date */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Visit Date</label>
-                                        <input
-                                            name="visit_date"
-                                            type="date"
-                                            className="form-control"
-                                            value={addForm.visit_date}
-                                            onChange={handleAddChange}
-                                        />
-                                    </div>
-
-                                    {/* Working Group (pre-selected) */}
-                                    <div className="mb-3">
-                                        <label className="form-label">Working Group</label>
-                                        <select
-                                            name="working_group_id"
-                                            className="form-select"
-                                            value={addForm.working_group_id}
-                                            onChange={handleAddChange}
-                                        >
-                                            <option value="">— Select WG —</option>
-                                            {workingGroups.map(wg => (
-                                                <option key={wg.id} value={wg.id}>
-                                                    {wg.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div className="modal-footer">
-                                    {addLoading ? (
-                                        <div className="spinner-border text-primary" role="status" />
-                                    ) : (
-                                        <>
-                                            <button
-                                                type="button"
-                                                className="btn btn-secondary"
-                                                data-bs-dismiss="modal"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button type="submit" className="btn btn-primary">
-                                                Save Customer
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
-                {/* — Product Selection Modal — */}
-                <div className="modal fade" id="ProductModal" tabIndex={-1} aria-hidden="true">
-                    <div className="modal-dialog modal-lg modal-dialog-centered">
-                        <div className="modal-content radius-16 bg-base">
-
-                            {/* Header */}
-                            <div className="modal-header tw-py-3 tw-px-4 tw-border-0">
-                                <h5 className="modal-title">Select a Product</h5>
-                                <button type="button" className="btn-close" data-bs-dismiss="modal" />
-                            </div>
-
-                            {/* Search bar */}
-                            <div className="tw-px-4 tw-pb-2">
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    placeholder="Search products…"
-                                    value={productSearch}
-                                    onChange={e => {
-                                        setProductSearch(e.target.value);
-                                        // if user starts typing, show grid again
-                                    }}
-                                />
-                            </div>
-
-                            {/* Products grid */}
-                            {(
-                                !selectedProduct ||                // no product chosen yet
-                                productSearch.trim() !== ''        // OR user is searching
-                            ) && (
-                                    <div className="modal-body tw-px-4 tw-pt-0" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-                                        {wgProducts.filter(p =>
-                                            p.name.toLowerCase().includes(productSearch.toLowerCase())
-                                        ).length === 0 ? (
-                                            <p className="text-center text-gray-500 py-8">
-                                                No products match “{productSearch}.”
-                                            </p>
-                                        ) : (
-                                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-4">
-                                                {wgProducts
-                                                    .filter(p =>
-                                                        p.name.toLowerCase().includes(productSearch.toLowerCase())
-                                                    )
-                                                    .map(p => (
-                                                        <div
-                                                            key={p.id}
-                                                            className={`tw-p-3 tw-border card border tw-rounded tw-cursor-pointer col ${selectedProduct?.id === p.id
-                                                                ? 'tw-border-blue-500 tw-bg-blue-50'
-                                                                : 'hover:tw-shadow'
-                                                                }`}
-                                                            onClick={() => {
-                                                                setSelectedProduct(p);
-                                                                setProductSearch('');
-                                                            }}
-                                                        >
-                                                            {p.images[0] && (
-                                                                <img
-                                                                    src={p.images[0].image_url}
-                                                                    alt={p.name}
-                                                                    className="tw-mb-2 tw-w-full tw-h-24 tw-object-cover tw-rounded"
-                                                                />
-                                                            )}
-                                                            <h6 className="tw-font-semibold">{p.name}</h6>
-                                                            <p className="tw-text-sm tw-text-gray-600">
-                                                                {p.categories.map(c => c.name).join(', ')}
-                                                            </p>
-                                                            <p className="tw-mt-1">{p.unit_of_measure}</p>
+                                                    {opt?.subvariants?.length > 0 && (
+                                                        <div className="tw-mt-2 tw-flex tw-flex-wrap tw-gap-2">
+                                                            <div className="tw-text-xs tw-opacity-70">{opt.subLabel}</div>
+                                                            {opt.subvariants.map(sv => {
+                                                                const key = `${group.name}-sub`;
+                                                                const isSub = modalForm.selectedVariants[key] === sv.value;
+                                                                return (
+                                                                    <button
+                                                                        key={sv.value}
+                                                                        type="button"
+                                                                        className={`tw-px-3 tw-py-1 tw-rounded tw-border ${isSub ? 'tw-bg-blue-600 tw-text-white' : 'tw-border-gray-300'}`}
+                                                                        onClick={() => {
+                                                                            setModalForm(f => {
+                                                                                const currently = f.selectedVariants[key] === sv.value;
+                                                                                const next = currently ? null : sv.value;
+                                                                                const delta = currently ? -sv.priceAdjustment : sv.priceAdjustment;
+                                                                                return {
+                                                                                    ...f,
+                                                                                    selectedVariants: { ...f.selectedVariants, [key]: next },
+                                                                                    unitPrice: Math.max(0, f.unitPrice + delta),
+                                                                                };
+                                                                            });
+                                                                        }}
+                                                                    >
+                                                                        {sv.value}{sv.priceAdjustment > 0 && ` (+${sv.priceAdjustment})`}
+                                                                    </button>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    ))}
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+
+                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                            <div>
+                                                <label className="form-label">Quantity</label>
+                                                <input
+                                                    type="number"
+                                                    className="form-control"
+                                                    value={modalForm.quantity}
+                                                    onChange={e => setModalForm(f => ({ ...f, quantity: parseInt(e.target.value, 10) || 1 }))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Unit</label>
+                                                <input
+                                                    className="form-control"
+                                                    value={selectedProduct.unit_of_measure || ''}
+                                                    readOnly
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="form-label">Description</label>
+                                            <textarea
+                                                className="form-control"
+                                                rows={3}
+                                                value={modalForm.description}
+                                                onChange={e => setModalForm(f => ({ ...f, description: e.target.value }))}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                {selectedProduct.pricing_method === 'roll' && (
+                                    <>
+                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                            <div>
+                                                <label className="form-label">Price per Sq.Ft</label>
+                                                <input className="form-control" value={selectedProduct.price_per_sqft} readOnly />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Offcut / Sq.Ft</label>
+                                                <input
+                                                    type="number"
+                                                    className="form-control"
+                                                    value={modalForm.pricePerOffcutSqFt}
+                                                    onChange={e => setModalForm(m => ({ ...m, pricePerOffcutSqFt: parseFloat(e.target.value) || 0 }))}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="form-label">Choose Roll</label>
+                                            <select
+                                                className="form-select"
+                                                value={selectedRollId || ''}
+                                                onChange={(e) => {
+                                                    const roll = rolls.find(r => String(r.id) === String(e.target.value));
+                                                    setSelectedRollId(roll?.id ?? null);
+                                                    setModalForm(m => ({
+                                                        ...m,
+                                                        rollSizeInches: roll?.roll_width || roll?.roll_size || 0,
+                                                        pricePerOffcutSqFt: roll?.offcut_price || m.pricePerOffcutSqFt || 0,
+                                                    }));
+                                                }}
+                                            >
+                                                <option value="">— Select —</option>
+                                                {rolls.map(r => (
+                                                    <option key={r.id} value={r.id}>
+                                                        {`${r.roll_type} (${r.roll_size}" ) — LKR${Number(r.price_rate_per_sqft).toFixed(2)}/ft²`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                            <div>
+                                                <label className="form-label">Fixed Width (in)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    className="form-control"
+                                                    value={modalForm.fixedWidthIn}
+                                                    onChange={e => setModalForm(m => ({ ...m, fixedWidthIn: parseFloat(e.target.value) || 0 }))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Height (in)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    className="form-control"
+                                                    value={modalForm.heightIn}
+                                                    onChange={e => setModalForm(m => ({ ...m, heightIn: parseFloat(e.target.value) || 0 }))}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="form-label">Quantity</label>
+                                            <input
+                                                type="number"
+                                                className="form-control"
+                                                value={modalForm.quantity}
+                                                onChange={e => setModalForm(m => ({ ...m, quantity: parseInt(e.target.value, 10) || 1 }))}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="form-label">Description</label>
+                                            <textarea
+                                                className="form-control"
+                                                rows={3}
+                                                value={modalForm.description}
+                                                onChange={e => setModalForm(m => ({ ...m, description: e.target.value }))}
+                                            />
+                                        </div>
+
+                                        {rollPreview && (
+                                            <div className="tw-bg-gray-50 tw-rounded tw-p-3 tw-text-sm">
+                                                <div className="tw-flex tw-justify-between"><span>Fixed Area</span><span>{rollPreview.fixedAreaFt2.toFixed(2)} ft²</span></div>
+                                                <div className="tw-flex tw-justify-between"><span>Offcut Area</span><span>{rollPreview.offcutAreaFt2.toFixed(2)} ft²</span></div>
+                                                <div className="tw-flex tw-justify-between"><span>Area Price</span><span>{money(rollPreview.areaPrice)}</span></div>
+                                                <div className="tw-flex tw-justify-between"><span>Offcut Price</span><span>{money(rollPreview.offcutPrice)}</span></div>
+                                                <div className="tw-flex tw-justify-between"><span>Unit Price</span><span>{money(rollPreview.printPrice)}</span></div>
+                                                <div className="tw-flex tw-justify-between tw-font-semibold"><span>Unit × Qty</span><span>{money(rollPreview.unitXQty)}</span></div>
                                             </div>
                                         )}
-                                    </div>
+                                    </>
                                 )}
+                            </div>
 
-                            {/* Pricing pane (only when a product is chosen AND search is empty) */}
-                            {selectedProduct && productSearch.trim() === '' && (
-                                <>
-                                    <div className="tw-border-t" />
-                                    <div className="tw-px-4 tw-pt-4">
-                                        <nav className="tw-flex tw-border-b">
-                                            <ul
-                                                className="nav bordered-tab border border-top-0 border-start-0 border-end-0 d-inline-flex nav-pills mb-16"
-                                                id="pills-tab"
-                                                role="tablist"
-                                            >
-                                                <li className="nav-item" role="presentation">
-                                                    <button
-                                                        className={`nav-link px-16 py-10 ${selectedProduct.pricing_method === 'standard' ? 'active' : ''}`}
-                                                        id="pills-home-tab"
-                                                        data-bs-toggle="pill"
-                                                        data-bs-target="#pills-standard"
-                                                        type="button"
-                                                        role="tab"
-                                                        aria-controls="pills-home"
-                                                        aria-selected="true"
-                                                    >
-                                                        Standard Pricing
-                                                    </button>
-                                                </li>
-                                                <li className="nav-item" role="presentation">
-                                                    <button
-                                                        className={`nav-link px-16 py-10 ${selectedProduct.pricing_method === 'roll' ? 'active' : ''}`}
-                                                        id="pills-profile-tab"
-                                                        data-bs-toggle="pill"
-                                                        data-bs-target="#pills-roll"
-                                                        type="button"
-                                                        role="tab"
-                                                        aria-controls="pills-profile"
-                                                        aria-selected="false"
-                                                    >
-                                                        Roll-Based Pricing
-                                                    </button>
-                                                </li>
-                                            </ul>
-                                        </nav>
-                                        <div className="tab-content" id="pills-tabContent">
-
-                                            <div
-                                                className={`tab-pane fade show ${selectedProduct.pricing_method === 'standard' ? 'active' : ''}`}
-                                                id="pills-standard"
-                                                role="tabpanel"
-                                                aria-labelledby="pills-standard-tab"
-                                                tabIndex={0}
-                                            >
-                                                {/* Product title & description */}
-                                                <div className="tw-font-semibold tw-text-xl mb-4">{selectedProduct.name}</div>
-                                                <div
-                                                    className="tw-text-sm tw-text-gray-500 mb-6"
-                                                    dangerouslySetInnerHTML={{ __html: selectedProduct.meta_description || 'No description.' }}
-                                                />
-
-                                                {/* Editable Unit Price */}
-                                                <div className="mb-4">
-                                                    <label className="form-label">Unit Price</label>
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={modalForm.unitPrice}
-                                                        onChange={e =>
-                                                            setModalForm(f => ({
-                                                                ...f,
-                                                                unitPrice: parseFloat(e.target.value) || 0,
-                                                            }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Variants */}
-                                                {groupedVariants.map(group => {
-                                                    const sel = modalForm.selectedVariants[group.name];
-                                                    const opt = group.options.find(o => o.value === sel);
-                                                    return (
-                                                        <div key={group.name} className="mb-4">
-                                                            <div className="tw-font-semibold mb-2">{group.label}</div>
-                                                            <div className="tw-flex tw-flex-wrap tw-gap-2">
-                                                                {group.options.map(o => {
-                                                                    const isSelected = sel === o.value;
-                                                                    return (
-                                                                        <button
-                                                                            key={o.value}
-                                                                            type="button"
-                                                                            className={`tw-px-4 tw-py-1 tw-rounded tw-border ${isSelected
-                                                                                ? 'tw-bg-blue-600 tw-text-white'
-                                                                                : 'tw-border-gray-400 tw-text-gray-800'
-                                                                                }`}
-                                                                            onClick={() => {
-                                                                                // toggle variant
-                                                                                setModalForm(f => {
-                                                                                    const currently = f.selectedVariants[group.name] === o.value;
-                                                                                    const next = currently ? null : o.value;
-                                                                                    const delta = currently ? -o.priceAdjustment : o.priceAdjustment;
-                                                                                    return {
-                                                                                        ...f,
-                                                                                        selectedVariants: {
-                                                                                            ...f.selectedVariants,
-                                                                                            [group.name]: next,
-                                                                                        },
-                                                                                        unitPrice: Math.max(0, f.unitPrice + delta),
-                                                                                    };
-                                                                                });
-                                                                            }}
-                                                                        >
-                                                                            {o.value}
-                                                                            {o.priceAdjustment > 0 && ` (+${o.priceAdjustment})`}
-                                                                        </button>
-                                                                    );
-                                                                })}
-                                                            </div>
-
-                                                            {/* Subvariants */}
-                                                            {opt?.subvariants.length > 0 && (
-                                                                <div className="tw-mt-2 tw-flex tw-flex-wrap tw-gap-2">
-                                                                    <div className="tw-font-medium tw-mr-2">{opt.subLabel}</div>
-                                                                    {opt.subvariants.map(sv => {
-                                                                        const key = `${group.name}-sub`;
-                                                                        const isSub = modalForm.selectedVariants[key] === sv.value;
-                                                                        return (
-                                                                            <button
-                                                                                key={sv.value}
-                                                                                type="button"
-                                                                                className={`tw-px-4 tw-py-1 tw-rounded tw-border ${isSub
-                                                                                    ? 'tw-bg-blue-600 tw-text-white'
-                                                                                    : 'tw-border-gray-400 tw-text-gray-800'
-                                                                                    }`}
-                                                                                onClick={() => {
-                                                                                    setModalForm(f => {
-                                                                                        const currently = f.selectedVariants[key] === sv.value;
-                                                                                        const next = currently ? null : sv.value;
-                                                                                        const delta = currently ? -sv.priceAdjustment : sv.priceAdjustment;
-                                                                                        return {
-                                                                                            ...f,
-                                                                                            selectedVariants: {
-                                                                                                ...f.selectedVariants,
-                                                                                                [key]: next,
-                                                                                            },
-                                                                                            unitPrice: Math.max(0, f.unitPrice + delta),
-                                                                                        };
-                                                                                    });
-                                                                                }}
-                                                                            >
-                                                                                {sv.value}
-                                                                                {sv.priceAdjustment > 0 && ` (+${sv.priceAdjustment})`}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-
-                                                {/* Quantity */}
-                                                <div className="mb-4">
-                                                    <label className="form-label">Quantity</label>
-                                                    <input
-                                                        type="number"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={modalForm.quantity}
-                                                        onChange={e =>
-                                                            setModalForm(f => ({
-                                                                ...f,
-                                                                quantity: parseInt(e.target.value, 10) || 1,
-                                                            }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Description */}
-                                                <div className="mb-4">
-                                                    <label className="form-label">Description</label>
-                                                    <textarea
-                                                        className="form-control"
-                                                        rows="3"
-                                                        value={modalForm.description}
-                                                        onChange={e =>
-                                                            setModalForm(f => ({ ...f, description: e.target.value }))
-                                                        }
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* — Roll-Based Pricing Pane — */}
-                                            <div
-                                                className={`tab-pane fade show ${selectedProduct.pricing_method === 'roll' ? 'active' : ''}`}
-                                                id="pills-roll"
-                                                role="tabpanel"
-                                                aria-labelledby="pills-roll-tab"
-                                                tabIndex={0}
-                                            >
-                                                {/* Product Title & Description */}
-                                                <div className="tw-font-semibold tw-text-xl mb-4">{selectedProduct.name}</div>
-                                                <div
-                                                    className="tw-text-sm tw-text-gray-500 mb-6"
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: selectedProduct.meta_description || 'No description available.',
-                                                    }}
-                                                />
-
-                                                {/* Price per Sq.Ft */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Price per Sq.Ft</label>
-                                                    <input
-                                                        type="number"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={selectedProduct.price_per_sqft}
-                                                        readOnly
-                                                    />
-                                                </div>
-
-                                                {/* Choose Roll */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Choose Roll</label>
-                                                    <select
-                                                        className="form-select"
-                                                        value={selectedRollId || ''}
-                                                        onChange={e => {
-                                                            const roll = rolls.find(r => r.id == e.target.value)
-                                                            setSelectedRollId(roll?.id)
-                                                            setModalForm(m => ({
-                                                                ...m,
-                                                                rollSizeInches: roll?.roll_width || 0,
-                                                                pricePerOffcutSqFt: roll?.offcut_price || 0,
-                                                            }))
-                                                        }}
-                                                    >
-                                                        <option value="" disabled>— Select a Roll —</option>
-                                                        {rolls.map(r => (
-                                                            <option key={r.id} value={r.id}>
-                                                                {`${r.roll_type} (${r.roll_size}" ) — LKR${parseFloat(r.price_rate_per_sqft).toFixed(2)}/ft²`}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-
-                                                {/* Price per Offcut Sq.Ft */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Price per Offcut Sq.Ft</label>
-                                                    <input
-                                                        type="number"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={modalForm.pricePerOffcutSqFt}
-                                                        onChange={e =>
-                                                            setModalForm(m => ({
-                                                                ...m,
-                                                                pricePerOffcutSqFt: parseFloat(e.target.value)
-                                                            }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Fixed Width (inches) */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Fixed Width (in)</label>
-                                                    <input
-                                                        type="number" step="0.01"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={modalForm.fixedWidthIn}
-                                                        onChange={e =>
-                                                            setModalForm(m => ({
-                                                                ...m,
-                                                                fixedWidthIn: parseFloat(e.target.value)
-                                                            }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Height (inches) */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Height (in)</label>
-                                                    <input
-                                                        type="number" step="0.01"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={modalForm.heightIn}
-                                                        onChange={e =>
-                                                            setModalForm(m => ({
-                                                                ...m,
-                                                                heightIn: parseFloat(e.target.value)
-                                                            }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Description */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Description</label>
-                                                    <textarea
-                                                        className="form-control"
-                                                        rows={3}
-                                                        value={modalForm.description}
-                                                        onChange={e =>
-                                                            setModalForm(m => ({ ...m, description: e.target.value }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Quantity */}
-                                                <div className="mb-3">
-                                                    <label className="form-label">Quantity</label>
-                                                    <input
-                                                        type="number"
-                                                        onWheel={e => e.currentTarget.blur()}
-                                                        className="form-control"
-                                                        value={modalForm.quantity}
-                                                        onChange={e =>
-                                                            setModalForm(m => ({
-                                                                ...m,
-                                                                quantity: parseInt(e.target.value, 10) || 1
-                                                            }))
-                                                        }
-                                                    />
-                                                </div>
-
-                                                {/* Live Calculation Preview */}
-                                                {(modalForm.fixedWidthIn > 0 && modalForm.heightIn > 0) && (() => {
-                                                    // convert to feet
-                                                    const w_ft = modalForm.fixedWidthIn / 12
-                                                    const h_ft = modalForm.heightIn / 12
-
-                                                    const fixedAreaFt2 = w_ft * h_ft
-                                                    const rollWidthIn = modalForm.rollSizeInches * 12
-                                                    const offcutWidthIn = rollWidthIn - modalForm.fixedWidthIn
-                                                    const offcutWidthFt = offcutWidthIn / 12
-                                                    const offcutAreaFt2 = offcutWidthFt * h_ft
-
-                                                    const pRoll = selectedProduct.price_per_sqft
-                                                    const pOffcut = modalForm.pricePerOffcutSqFt
-
-                                                    const areaPrice = fixedAreaFt2 * pRoll
-                                                    const offcutPrice = offcutAreaFt2 * pOffcut
-                                                    const printPrice = areaPrice + offcutPrice
-                                                    const unitPrice = printPrice * modalForm.quantity
-
-                                                    return (
-
-                                                        <div className="p-3 bg-gray-100 rounded mb-4">
-                                                            <table className="table table-sm mb-0">
-                                                                <tbody>
-                                                                    <tr><td>Fixed Area:</td>           <td>{fixedAreaFt2.toFixed(2)} ft²</td></tr>
-                                                                    <tr><td>Offcut Area:</td>          <td>{offcutAreaFt2.toFixed(2)} ft²</td></tr>
-                                                                    <tr><td>Area Price:</td>           <td>LKR {areaPrice.toFixed(2)}</td></tr>
-                                                                    <tr><td>Offcut Price:</td>         <td>LKR {offcutPrice.toFixed(2)}</td></tr>
-                                                                    <tr><td>Print Price:</td>          <td>LKR {printPrice.toFixed(2)}</td></tr>
-                                                                    <tr><td>Unit × Qty:</td>            <td>LKR {unitPrice.toFixed(2)}</td></tr>
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    )
-                                                })()}
-
-                                                {/* — end roll pane — */}
-                                            </div>
-
-
-
-                                        </div>
-
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Footer */}
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-secondary" data-bs-dismiss="modal"
-                                    onClick={() => {// close modal
-                                        document.querySelector('#ProductModal .btn-close').click();
-
-                                        // clear selection for next time
-                                        setSelectedProduct(null);
-                                        setSelectedRollId(null);
-                                        setProductSearch('');
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    disabled={!selectedProduct}
-                                    onClick={() => {
-                                        const isRoll = selectedProduct.pricing_method === 'roll';
-
-                                        if (isRoll && modalForm.fixedWidthIn > modalForm.rollSizeInches * 12) {
-                                            setAlert({
-                                                type: 'danger',
-                                                message: `Fixed width (${modalForm.fixedWidthIn}") cannot exceed roll width (${modalForm.rollSizeInches * 12}").`
-                                            });
-                                            return; // bail out before doing any calculation
-                                        }
-
-                                        // 1) if standard, build variants as before
-                                        const variants = isRoll
-                                            ? []
-                                            : groupedVariants.flatMap(group => {
-                                                const value = modalForm.selectedVariants[group.name];
-                                                if (!value) return [];
-                                                const option = group.options.find(o => o.value === value);
-                                                const subKey = `${group.name}-sub`;
-                                                const subValue = modalForm.selectedVariants[subKey];
-                                                const subList = option.subvariants
-                                                    .filter(sv => sv.value === subValue)
-                                                    .map(sv => ({
-                                                        subvariant_name: group.subLabel,
-                                                        subvariant_value: sv.value,
-                                                        priceAdjustment: sv.priceAdjustment,
-                                                    }));
-                                                return [{
-                                                    variant_name: group.name,
-                                                    variant_value: value,
-                                                    priceAdjustment: option.priceAdjustment,
-                                                    subvariants: subList,
-                                                }];
-                                            });
-
-                                        // 2) if roll-based, recalc the unit price and size
-                                        let calculatedUnitPrice = modalForm.unitPrice;
-                                        let sizeLabel = '';
-                                        if (isRoll) {
-                                            const w_ft = modalForm.fixedWidthIn / 12;
-                                            const h_ft = modalForm.heightIn / 12;
-                                            const fixedArea = w_ft * h_ft;
-                                            const offWIn = modalForm.rollSizeInches * 12 - modalForm.fixedWidthIn;
-                                            const offArea = (offWIn / 12) * h_ft;
-                                            const areaPrice = fixedArea * selectedProduct.price_per_sqft;
-                                            const offPrice = offArea * modalForm.pricePerOffcutSqFt;
-                                            const printPrice = areaPrice + offPrice;
-                                            calculatedUnitPrice = printPrice
-                                            sizeLabel = `${modalForm.fixedWidthIn}" × ${modalForm.heightIn}"`;
-                                        }
-                                        const chosenVariant = variants[0] || {};
-                                        // 3) assemble the new item
-                                        const newItem = {
-                                            product_id: selectedProduct.id,           // ← make this mandatory
-                                            variant_id: chosenVariant.variant_id || null,
-                                            subvariant_id: chosenVariant.subvariant_id || null,
-                                            description: modalForm.description,
-                                            qty: modalForm.quantity,
-                                            unit: selectedProduct.unit_of_measure,
-                                            unit_price: calculatedUnitPrice,
-                                            product_name: selectedProduct.name,
-                                            base_price: isRoll
-                                                ? undefined
-                                                : selectedProduct.pricing_method === 'standard'
-                                                    ? selectedProduct.price
-                                                    : selectedProduct.price_per_sqft,
-                                            variants: variants,
-                                            // only for roll:
-                                            isRoll,
-                                            ...(isRoll && { size: sizeLabel }),
-                                            roll_id: isRoll ? selectedRoll.id : null,
-                                            is_roll: isRoll,
-                                            cut_width_in: isRoll ? modalForm.fixedWidthIn : null,
-                                            cut_height_in: isRoll ? modalForm.heightIn : null,
-                                            offcut_price_per_sqft: isRoll ? modalForm.pricePerOffcutSqFt : null,
-                                            size: isRoll ? sizeLabel : undefined,
-                                            tempId: Math.random().toString(36).slice(2, 8),
-                                            line_total: calculatedUnitPrice * modalForm.quantity,
-                                        };
-
-                                        // 4) push into your form
-                                        setForm(f => ({
-                                            ...f,
-                                            items: [...f.items, newItem],
-                                        }));
-
-                                        // 5) close/reset
-                                        document.querySelector('#ProductModal .btn-close').click();
-                                        setSelectedRollId(null);
-                                        setSelectedProduct(null);
-                                        setProductSearch('');
-                                    }}
-                                >
+                            <div className="tw-border-t tw-p-3 tw-flex tw-justify-between">
+                                <button className="btn btn-outline-secondary" onClick={() => setDrawerOpen(false)}>Cancel</button>
+                                <button className="btn btn-primary" onClick={addProductToItems} disabled={!selectedProduct}>
                                     Add to Quote
                                 </button>
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </div>
 
-                {showPdfModal && (
-                    <div className="modal-backdrop">
-                        <div className="pdf-modal">
-                            <header>
-                                <h5>Estimate Preview</h5>
-                                <button onClick={() => setShowPdfModal(false)}>✕</button>
-                            </header>
-                            <iframe
-                                name="pdf-preview"
-                                src={pdfUrl}
-                                style={{ width: '100%', height: '80vh', border: 0 }}
-                            />
-                            <footer>
-                                <a href={pdfUrl} download className="btn">Download</a>
-                                <button onClick={() => {
-                                    window.frames['pdf-preview'].focus();
-                                    window.frames['pdf-preview'].print();
-                                }}>Print</button>
-                                <button onClick={() => setShowPdfModal(false)}>Close</button>
-                            </footer>
+                {/* // /* WG overlay loader */}
+                {wgLoading && (
+                    <div className="tw-fixed tw-inset-0 tw-bg-black/30 tw-backdrop-blur-sm tw-z-40 tw-flex tw-items-center tw-justify-center">
+                        <div className="tw-bg-white dark:tw-bg-gray-900 tw-rounded tw-p-4 tw-shadow-lg tw-flex tw-items-center tw-gap-2">
+                            <Icon icon="ic:baseline-autorenew" className="tw-text-2xl tw-animate-spin" />
+                            <span>Fetching working group data…</span>
                         </div>
                     </div>
                 )}
-
-
             </AdminDashboard >
 
             <CookiesV />
