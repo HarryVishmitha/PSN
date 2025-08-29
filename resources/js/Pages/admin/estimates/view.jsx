@@ -10,12 +10,11 @@ import Meta from "@/Components/Metaheads";
 
 /**
  * EstimateView (Admin)
- * - Bootstrap table + Tailwind utilities
+ * - Category-UI aligned: bordered table, compact rows, square pagination, circular soft icon actions
  * - Server-driven pagination & sorting
- * - Debounced search, filters (status, group, amount range, date range, PO)
- * - Sticky toolbar, responsive table, compact rows
+ * - Debounced search & filters (status, WG, amount range, date range, PO)
+ * - Sticky toolbar, responsive table
  * - Preserves query string with Inertia router.get
- * - Safe sort whitelist handled server-side (controller accepts `sort_by`, `sort_dir`)
  */
 
 const STATUSES = [
@@ -50,7 +49,7 @@ export default function EstimateView({
     const { url } = usePage();
     const [alert, setAlert] = useState(null);
 
-    // Local UI state mirrors current filters
+    // Filters & sort
     const [perPage, setPerPage] = useState(Number(filters?.per_page || 10));
     const [search, setSearch] = useState(filters?.search || "");
     const [status, setStatus] = useState(filters?.status || "");
@@ -68,7 +67,6 @@ export default function EstimateView({
     const debouncedMin = useDebounced(minTotal);
     const debouncedMax = useDebounced(maxTotal);
 
-    // Build query params consistently
     const buildQuery = () => ({
         per_page: perPage,
         search: debouncedSearch || undefined,
@@ -83,7 +81,7 @@ export default function EstimateView({
         sort_dir: sortDir,
     });
 
-    // Trigger fetch when any debounced filter changes
+    // Fetch on debounced inputs
     useEffect(() => {
         if (!filters) return;
         router.get(route("admin.estimates"), buildQuery(), {
@@ -96,28 +94,23 @@ export default function EstimateView({
     }, [debouncedSearch, debouncedPO, debouncedMin, debouncedMax]);
 
     const onChangeSimple = (setter) => (e) => setter(e.target.value);
-
-    const onChangePerPage = (e) => {
-        const v = Number(e.target.value || 10);
-        setPerPage(v);
-        router.get(
-            route("admin.estimates"),
-            { ...buildQuery(), per_page: v },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-                only: ["estimates", "filters", "aggregates"],
-            }
-        );
-    };
-
     const onChangeStatus = onChangeSimple(setStatus);
     const onChangeGroup = onChangeSimple(setGroup);
     const onChangeDate = (setter) => (e) => setter(e.target.value);
 
+    const onChangePerPage = (e) => {
+        const v = Number(e.target.value || 10);
+        setPerPage(v);
+        router.get(route("admin.estimates"), { ...buildQuery(), per_page: v }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            only: ["estimates", "filters", "aggregates"],
+        });
+    };
+
+    // Fetch on non-debounced filters
     useEffect(() => {
-        // refetch when non-debounced filters change (status, group, date, perPage, sort)
         router.get(route("admin.estimates"), buildQuery(), {
             preserveState: true,
             preserveScroll: true,
@@ -141,26 +134,25 @@ export default function EstimateView({
         return sortDir === "asc" ? SORT_ICONS.asc : SORT_ICONS.desc;
     };
 
-    const badge = (s) => {
-        const base =
-            "tw-inline-flex tw-items-center tw-gap-1 tw-text-xs tw-font-medium tw-rounded-full tw-px-2.5 tw-py-1";
-        const map = {
-            draft:
-                "tw-bg-zinc-100 dark:tw-bg-zinc-800 tw-text-zinc-700 dark:tw-text-zinc-100",
-            published:
-                "tw-bg-emerald-100 dark:tw-bg-emerald-900/40 tw-text-emerald-700 dark:tw-text-emerald-200",
-            expired:
-                "tw-bg-rose-100 dark:tw-bg-rose-900/40 tw-text-rose-700 dark:tw-text-rose-200",
-        };
-        return <span className={`${base} ${map[s] || "tw-bg-zinc-100"}`}>{s}</span>;
-    };
-
     const money = (n) =>
         new Intl.NumberFormat("en-LK", {
             style: "currency",
             currency: "LKR",
             maximumFractionDigits: 2,
         }).format(Number(n || 0));
+
+    const badge = (s) => {
+        const map = {
+            draft: "bg-neutral-200 text-secondary-light",
+            published: "bg-success-focus text-success-600",
+            expired: "bg-danger-focus text-danger-600",
+        };
+        return (
+            <span className={`${map[s] || "bg-neutral-200 text-secondary-light"} px-24 py-4 radius-4 fw-medium text-sm`}>
+                {s}
+            </span>
+        );
+    };
 
     const headCell = (key, label, className = "") => (
         <th className={`text-start ${className}`}>
@@ -188,31 +180,59 @@ export default function EstimateView({
         });
     };
 
+    // Delete modal state
+    const [selected, setSelected] = useState(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+
+    const openDelete = (estimate) => {
+        setSelected(estimate);
+        const modalEl = document.getElementById("deleteEstimateModal");
+        if (modalEl) {
+            const bs = new bootstrap.Modal(modalEl);
+            bs.show();
+        }
+    };
+
+    const closeDeleteModal = () => {
+        const modalEl = document.getElementById("deleteEstimateModal");
+        if (modalEl) {
+            const inst = bootstrap.Modal.getInstance(modalEl);
+            inst?.hide();
+        }
+    };
+
+    const confirmDelete = () => {
+        if (!selected?.id) return;
+        setDeleteLoading(true);
+        setAlert(null);
+
+        // Adjust route if your backend uses a different name
+        router.delete(route("admin.estimates.destroy", selected.id), {
+            preserveState: true,
+            onSuccess: () => {
+                setAlert({ type: "success", message: "Estimate deleted successfully!" });
+            },
+            onError: (error) => {
+                setAlert({
+                    type: "danger",
+                    message: error?.response?.data?.error || "Failed to delete estimate. Please try again.",
+                });
+            },
+            onFinish: () => {
+                setDeleteLoading(false);
+                closeDeleteModal();
+            },
+            only: ["estimates", "filters", "aggregates"],
+        });
+    };
+
     return (
         <>
-            {/* Drop-in styles (you can move to your global CSS) */}
+            {/* Category-style quick tokens */}
             <style>{`
-        .btn-circle {
-          width: 38px; height: 38px; border-radius: 50%;
-          display: inline-flex; align-items: center; justify-content: center;
-          line-height: 1; padding: 0;
-          transition: transform .15s ease, box-shadow .15s ease;
-          border: 0;
-        }
-        .btn-circle:hover { transform: translateY(-1px); }
-
-        .btn-soft-primary { background: rgba(var(--bs-primary-rgb), .12); color: var(--bs-primary); }
-        .btn-soft-success { background: rgba(var(--bs-success-rgb), .12); color: var(--bs-success); }
-        .btn-soft-danger  { background: rgba(var(--bs-danger-rgb),  .12); color: var(--bs-danger); }
-
-        .btn-soft-primary:hover { background: rgba(var(--bs-primary-rgb), .18); }
-        .btn-soft-success:hover { background: rgba(var(--bs-success-rgb), .18); }
-        .btn-soft-danger:hover  { background: rgba(var(--bs-danger-rgb),  .18); }
-
-        .table thead th {
-          font-weight: 600; font-size: .75rem; letter-spacing: .02em; color: #6b7280;
-        }
-        .table tbody td { vertical-align: middle; }
+        .btn-circle { width: 38px; height: 38px; border-radius: 50%;
+          display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 0; border: 0;}
+        .scroll-sm { scrollbar-width: thin; }
       `}</style>
 
             <Head title="Estimates - Admin Dashboard" />
@@ -228,8 +248,8 @@ export default function EstimateView({
                     />
                 )}
 
-                {/* Header / Toolbar */}
                 <div className="card h-100 p-0 radius-12">
+                    {/* Sticky header / toolbar */}
                     <div className="card-header border-bottom bg-base py-16 px-24 tw-sticky tw-top-0 tw-z-10">
                         <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
                             <div className="tw-font-semibold tw-text-black dark:tw-text-white tw-text-2xl">
@@ -237,9 +257,7 @@ export default function EstimateView({
                             </div>
 
                             <div className="d-flex align-items-center flex-wrap gap-2">
-                                <span className="text-md fw-medium text-secondary-light mb-0">
-                                    Show
-                                </span>
+                                <span className="text-md fw-medium text-secondary-light mb-0">Show</span>
                                 <select
                                     name="per_page"
                                     className="form-select form-select-sm w-auto ps-12 py-6 radius-12 h-40-px"
@@ -247,9 +265,7 @@ export default function EstimateView({
                                     onChange={onChangePerPage}
                                 >
                                     {[5, 10, 20, 25, 50, 100].map((n) => (
-                                        <option key={n} value={n}>
-                                            {n}
-                                        </option>
+                                        <option key={n} value={n}>{n}</option>
                                     ))}
                                 </select>
 
@@ -343,30 +359,27 @@ export default function EstimateView({
                         {aggregates && (
                             <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
                                 <div className="tw-text-xs tw-text-zinc-500 dark:tw-text-zinc-400">
-                                    All: <span className="tw-font-semibold">{aggregates.count_all}</span>{" "}
-                                    | Sum:{" "}
+                                    All: <span className="tw-font-semibold">{aggregates.count_all}</span> | Sum:{" "}
                                     <span className="tw-font-semibold">{money(aggregates.sum_all)}</span>
                                 </div>
                                 <div className="tw-text-xs">
                                     Draft: <span className="tw-font-semibold">{money(aggregates.draft)}</span>
                                 </div>
                                 <div className="tw-text-xs">
-                                    Published:{" "}
-                                    <span className="tw-font-semibold">{money(aggregates.published)}</span>
+                                    Published: <span className="tw-font-semibold">{money(aggregates.published)}</span>
                                 </div>
                                 <div className="tw-text-xs">
-                                    Expired:{" "}
-                                    <span className="tw-font-semibold">{money(aggregates.expired)}</span>
+                                    Expired: <span className="tw-font-semibold">{money(aggregates.expired)}</span>
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Table */}
-                    <div className="card-body p-0">
-                        <div className="table-responsive">
-                            <table className="table table-hover table-striped table-sm align-middle mb-0">
-                                <thead className="table-light">
+                    {/* Body */}
+                    <div className="card-body p-24">
+                        <div className="table-responsive scroll-sm">
+                            <table className="table bordered-table sm-table mb-0">
+                                <thead>
                                     <tr>
                                         {headCell("estimate_number", "Estimate #")}
                                         {headCell("customer", "Customer")}
@@ -375,32 +388,30 @@ export default function EstimateView({
                                         {headCell("valid_to", "Valid To")}
                                         {headCell("total_amount", "Total (LKR)")}
                                         {headCell("status", "Status")}
-                                        <th className="text-uppercase small fw-semibold text-secondary">
-                                            Items
-                                        </th>
-                                        <th className="text-uppercase small fw-semibold text-secondary">
-                                            Actions
-                                        </th>
+                                        <th className="text-uppercase small fw-semibold text-secondary">Items</th>
+                                        <th className="text-uppercase small fw-semibold text-secondary text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {estimates?.data?.length ? (
-                                        estimates.data.map((e) => (
+                                        estimates.data.map((e, idx) => (
                                             <tr key={e.id} className="tw-text-sm">
+                                                {/* Estimate # + PO */}
                                                 <td className="tw-font-medium tw-whitespace-nowrap">
                                                     <div className="tw-flex tw-items-center tw-gap-2">
                                                         <Icon icon="mdi:file-document-edit-outline" className="tw-text-lg" />
                                                         <span>#{e.estimate_number}</span>
                                                     </div>
                                                     {e.po_number && (
-                                                        <div className="tw-text-[11px] tw-text-zinc-500">
-                                                            PO: {e.po_number}
-                                                        </div>
+                                                        <div className="text-xs text-secondary-light">PO: {e.po_number}</div>
                                                     )}
                                                 </td>
 
+                                                {/* Customer */}
                                                 <td className="tw-whitespace-nowrap">
-                                                    {e.customer?.name || e.customer?.full_name || "—"}
+                                                    <span className="text-md mb-0 fw-normal text-secondary-light">
+                                                        {e.customer?.name || e.customer?.full_name || "—"}
+                                                    </span>
                                                     {e.customer?.phone_number && (
                                                         <div className="tw-text-[11px] tw-text-zinc-500">
                                                             {e.customer.phone_number}
@@ -408,64 +419,64 @@ export default function EstimateView({
                                                     )}
                                                 </td>
 
-                                                <td className="tw-whitespace-nowrap">
+                                                {/* Group */}
+                                                <td className="tw-whitespace-nowrap text-secondary-light">
                                                     {e.working_group?.name || "—"}
                                                 </td>
 
+                                                {/* Dates */}
                                                 <td className="tw-whitespace-nowrap">
-                                                    {e.valid_from
-                                                        ? new Date(e.valid_from).toLocaleString()
-                                                        : "—"}
+                                                    {e.valid_from ? new Date(e.valid_from).toLocaleString() : "—"}
                                                 </td>
-
                                                 <td className="tw-whitespace-nowrap">
                                                     {e.valid_to ? new Date(e.valid_to).toLocaleString() : "—"}
                                                 </td>
 
+                                                {/* Total */}
                                                 <td className="tw-font-semibold tw-whitespace-nowrap">
                                                     {money(e.total_amount)}
                                                 </td>
 
+                                                {/* Status */}
                                                 <td className="tw-whitespace-nowrap">{badge(e.status)}</td>
 
+                                                {/* Items count */}
                                                 <td className="text-center tw-whitespace-nowrap">
                                                     {e.items_count ?? e.items?.length ?? 0}
                                                 </td>
 
-                                                {/* Actions: circle soft buttons (View / Edit / Delete) */}
-                                                <td className="text-nowrap">
-                                                    <div className="d-flex align-items-center gap-2">
+                                                {/* Actions */}
+                                                <td className="text-center">
+                                                    <div className="d-flex justify-content-center gap-10">
                                                         {/* View */}
                                                         <Link
                                                             href={route("admin.estimate.preview", e.id)}
-                                                            className="btn btn-circle btn-soft-primary"
+                                                            className="bg-info-focus bg-hover-info-200 text-info-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
                                                             title="View"
                                                             aria-label={`View estimate ${e.estimate_number}`}
                                                         >
-                                                            <Icon icon="mdi:eye-outline" className="fs-5" />
+                                                            <Icon icon="majesticons:eye-line" className="icon text-xl" />
                                                         </Link>
 
                                                         {/* Edit */}
                                                         <Link
                                                             href={route("admin.estimates.edit", e.id)}
-                                                            className="btn btn-circle btn-soft-success"
+                                                            className="bg-success-focus bg-hover-success-200 text-success-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
                                                             title="Edit"
                                                             aria-label={`Edit estimate ${e.estimate_number}`}
                                                         >
-                                                            <Icon icon="mdi:pencil-outline" className="fs-5" />
+                                                            <Icon icon="lucide:edit" className="menu-icon" />
                                                         </Link>
 
-                                                        {/* Delete (hook up when ready) */}
+                                                        {/* Delete */}
                                                         <button
                                                             type="button"
-                                                            className="btn btn-circle btn-soft-danger"
+                                                            className="remove-item-btn bg-danger-focus bg-hover-danger-200 text-danger-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
                                                             title="Delete"
                                                             aria-label={`Delete estimate ${e.estimate_number}`}
-                                                            onClick={() => {
-                                                                // TODO: open Bootstrap confirmation modal
-                                                            }}
+                                                            onClick={() => openDelete(e)}
                                                         >
-                                                            <Icon icon="mdi:trash-can-outline" className="fs-5" />
+                                                            <Icon icon="fluent:delete-24-regular" className="menu-icon" />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -473,10 +484,7 @@ export default function EstimateView({
                                         ))
                                     ) : (
                                         <tr>
-                                            <td
-                                                colSpan={9}
-                                                className="tw-text-center tw-text-sm tw-text-zinc-500 tw-py-10"
-                                            >
+                                            <td colSpan={9} className="tw-text-center tw-text-sm tw-text-zinc-500 tw-py-10">
                                                 No estimates found.
                                             </td>
                                         </tr>
@@ -485,29 +493,81 @@ export default function EstimateView({
                             </table>
                         </div>
 
-                        {/* Pagination */}
-                        <div className="d-flex align-items-center justify-content-between p-16 border-top">
-                            <div className="tw-text-xs tw-text-zinc-500">
-                                Showing {estimates?.from || 0}–{estimates?.to || 0} of{" "}
-                                {estimates?.total || 0}
-                            </div>
-                            <div className="tw-flex tw-gap-1 tw-flex-wrap">
-                                {pagination.map((l, i) => (
-                                    <button
-                                        key={i}
-                                        type="button"
-                                        disabled={!l.url}
-                                        onClick={() => goToPage(l.url)}
-                                        className={`btn btn-sm ${l.active ? "btn-primary" : "btn-light"
-                                            } tw-min-w-[40px]`}
-                                        dangerouslySetInnerHTML={{ __html: l.label }}
-                                    />
-                                ))}
-                            </div>
+                        {/* Category-style Pagination */}
+                        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-24">
+                            <span className="text-sm text-secondary-light">
+                                Showing {estimates?.from || 0} to {estimates?.to || 0} of {estimates?.total || 0} entries
+                            </span>
+
+                            <ul className="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center mb-0">
+                                {/* Prev */}
+                                {pagination.find((p) => p.label.toLowerCase().includes("previous")) && (
+                                    <li className="page-item">
+                                        <button
+                                            className="page-link bg-neutral-200 text-secondary-light fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md"
+                                            disabled={!pagination.find((p) => p.label.toLowerCase().includes("previous"))?.url}
+                                            onClick={() => goToPage(pagination.find((p) => p.label.toLowerCase().includes("previous"))?.url)}
+                                        >
+                                            <Icon icon="ep:d-arrow-left" />
+                                        </button>
+                                    </li>
+                                )}
+
+                                {/* Numbered */}
+                                {pagination
+                                    .filter((p) => /^\d+$/.test(p.label))
+                                    .map((p, i) => (
+                                        <li className="page-item" key={i}>
+                                            <button
+                                                className={`page-link fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md ${p.active ? "bg-primary-600 text-white" : "bg-neutral-200 text-secondary-light"
+                                                    }`}
+                                                onClick={() => goToPage(p.url)}
+                                                disabled={!p.url}
+                                            >
+                                                {p.label}
+                                            </button>
+                                        </li>
+                                    ))}
+
+                                {/* Next */}
+                                {pagination.find((p) => p.label.toLowerCase().includes("next")) && (
+                                    <li className="page-item">
+                                        <button
+                                            className="page-link bg-neutral-200 text-secondary-light fw-semibold radius-8 border-0 d-flex align-items-center justify-content-center h-32-px w-32-px text-md"
+                                            disabled={!pagination.find((p) => p.label.toLowerCase().includes("next"))?.url}
+                                            onClick={() => goToPage(pagination.find((p) => p.label.toLowerCase().includes("next"))?.url)}
+                                        >
+                                            <Icon icon="ep:d-arrow-right" />
+                                        </button>
+                                    </li>
+                                )}
+                            </ul>
                         </div>
                     </div>
                 </div>
             </AdminDashboard>
+
+            {/* Delete Confirmation Modal */}
+            <div className="modal fade" id="deleteEstimateModal" tabIndex={-1} aria-labelledby="deleteEstimateModalLabel" aria-hidden="true">
+                <div className="modal-dialog">
+                    <div className="modal-content radius-12">
+                        <div className="modal-header">
+                            <h1 className="modal-title fs-5 text-red-500" id="deleteEstimateModalLabel">Are you sure?</h1>
+                            <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+                        </div>
+                        <div className="modal-body font-light">
+                            <p>Do you really want to delete estimate <strong>#{selected?.estimate_number}</strong>? This cannot be undone.</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button type="button" className="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" className="btn btn-outline-danger" onClick={confirmDelete} disabled={deleteLoading}>
+                                {deleteLoading ? <span className="spinner-border spinner-border-sm" role="status" /> : "Delete Estimate"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <CookiesV />
         </>
     );

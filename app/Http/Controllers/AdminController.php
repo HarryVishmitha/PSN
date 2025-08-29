@@ -3153,7 +3153,7 @@ class AdminController extends Controller
                     }
 
                     // Ensure customer width does not exceed roll width (all in inches)
-                    $rollW_in = (float) $roll->roll_width; // already inches
+                    $rollW_in = (float) $roll->roll_width * 12; // already inches
                     if ($w_in > $rollW_in) {
                         throw ValidationException::withMessages([
                             "items.$idx.cut_width_in" => "Width {$w_in}\" exceeds roll width {$rollW_in}\".",
