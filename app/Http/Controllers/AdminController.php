@@ -62,6 +62,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Throwable;
 use App\Http\Requests\Admin\SyncProductRollsRequest;
+use Illuminate\Support\Facades\Validator;
 
 class AdminController extends Controller
 {
@@ -2744,44 +2745,129 @@ class AdminController extends Controller
 
     public function estimateView(Request $request)
     {
-        $perPage = $request->input('per_page', 10);
-        $search  = $request->input('search', '');
-        $status  = $request->input('status', '');
-        $group   = $request->input('group', '');
+        // $this->authorize('viewAny', Estimate::class); // if you have policies
 
-        $query = Estimate::with(['customer', 'workingGroup']);
+        // Inputs + sane defaults
+        $perPage   = (int) $request->integer('per_page', 10);
+        $search    = trim((string) $request->input('search', ''));
+        $status    = $request->input('status', '');                // draft|published|expired  :contentReference[oaicite:2]{index=2}
+        $group     = $request->input('group', '');                 // id or name
+        $fromDate  = $request->input('valid_from');                // YYYY-MM-DD
+        $toDate    = $request->input('valid_to');                  // YYYY-MM-DD
+        $minTotal  = $request->input('min_total');                 // number
+        $maxTotal  = $request->input('max_total');                 // number
+        $publishedFrom = $request->input('published_from');        // YYYY-MM-DD
+        $publishedTo   = $request->input('published_to');          // YYYY-MM-DD
+        $customerType  = $request->input('customer_type');         // 'users' | 'daily_customers' etc.
+        $po            = trim((string) $request->input('po'));     // PO number search
 
-        if ($search) {
-            $query->where('estimate_number', 'like', "%{$search}%")
-                ->orWhereHas(
-                    'customer',
-                    fn($q) =>
-                    $q->where('name', 'like', "%{$search}%")
-                );
+        // sort whitelist
+        $sortable = ['valid_from', 'valid_to', 'estimate_number', 'total_amount', 'status', 'published_at', 'created_at'];
+        $sortBy   = in_array($request->input('sort_by'), $sortable, true)
+            ? $request->input('sort_by')
+            : 'valid_from';
+        $sortDir  = $request->input('sort_dir') === 'asc' ? 'asc' : 'desc';
+
+        // Base query with relationships and counts
+        $query = Estimate::query()
+            ->with([
+                'workingGroup:id,name',
+                'customer',            // morph (users or daily_customers)
+            ])
+            ->withCount('items')       // item_count for table badges
+            ->when($customerType, fn($q) => $q->where('customer_type', $customerType))
+            ->status($status)
+            ->validBetween($fromDate, $toDate)
+            ->totalBetween($minTotal, $maxTotal)
+            ->when($publishedFrom, fn($q) => $q->whereDate('published_at', '>=', $publishedFrom))
+            ->when($publishedTo,   fn($q) => $q->whereDate('published_at', '<=', $publishedTo));
+
+        // Working group filter (allow id or name)
+        if ($group !== '') {
+            $query->where(function ($qq) use ($group) {
+                if (is_numeric($group)) {
+                    $qq->where('working_group_id', (int) $group);
+                } else {
+                    $qq->whereHas('workingGroup', fn($wg) => $wg->where('name', $group));
+                }
+            });
         }
 
-        if ($status) {
-            $query->where('status', $status);
+        // Text search: estimate_number, po_number, plus customer name/phone across morphs
+        if ($search !== '' || $po !== '') {
+            $query->where(function ($qq) use ($search, $po) {
+                if ($search !== '') {
+                    $qq->where('estimate_number', 'like', "%{$search}%")
+                        ->orWhereHas('workingGroup', fn($wg) => $wg->where('name', 'like', "%{$search}%"))
+                        // Search customer across morph targets:
+                        ->orWhere(function ($q2) use ($search) {
+                            $q2->where(function ($qUsers) use ($search) {
+                                $qUsers->where('customer_type', (new \App\Models\User)->getMorphClass())
+                                    ->whereHasMorph(
+                                        'customer',
+                                        [\App\Models\User::class],
+                                        fn($u) => $u->where('name', 'like', "%{$search}%")
+                                            ->orWhere('email', 'like', "%{$search}%")
+                                            ->orWhere('phone_number', 'like', "%{$search}%")
+                                    );
+                            })
+                                ->orWhere(function ($qDaily) use ($search) {
+                                    $qDaily->where('customer_type', (new \App\Models\DailyCustomer)->getMorphClass())
+                                        ->whereHasMorph(
+                                            'customer',
+                                            [\App\Models\DailyCustomer::class],
+                                            fn($d) => $d->where('full_name', 'like', "%{$search}%")
+                                                ->orWhere('phone_number', 'like', "%{$search}%")
+                                                ->orWhere('email', 'like', "%{$search}%")
+                                        );
+                                });
+                        });
+                }
+                if ($po !== '') {
+                    $qq->orWhere('po_number', 'like', "%{$po}%");
+                }
+            });
         }
 
-        if ($group) {
-            $query->whereHas(
-                'workingGroup',
-                fn($q) =>
-                $q->where('name', $group)
-            );
-        }
+        // Clone for aggregates without affecting the main query
+        $aggBase = (clone $query)->without(['customer', 'workingGroup']);
 
-        $estimates = $query->orderBy('valid_from', 'desc')
+        $totalsByStatus = [
+            'draft'     => (clone $aggBase)->where('status', 'draft')->sum('total_amount'),
+            'published' => (clone $aggBase)->where('status', 'published')->sum('total_amount'),
+            'expired'   => (clone $aggBase)->where('status', 'expired')->sum('total_amount'),
+            'count_all' => (clone $aggBase)->count(),
+            'sum_all'   => (clone $aggBase)->sum('total_amount'),
+        ];
+
+        $estimates = $query
+            ->orderBy($sortBy, $sortDir)
             ->paginate($perPage)
             ->withQueryString();
 
         $workingGroups = WorkingGroup::select('id', 'name')->get();
 
         return Inertia::render('admin/estimates/view', [
-            'userDetails'   => Auth::user(),
-            'estimates'     => $estimates,
-            'workingGroups' => $workingGroups,
+            'userDetails'     => Auth::user(),
+            'estimates'       => $estimates,
+            'workingGroups'   => $workingGroups,
+            'filters'         => [
+                'per_page' => $perPage,
+                'search'   => $search,
+                'status'   => $status,
+                'group'    => $group,
+                'valid_from' => $fromDate,
+                'valid_to'   => $toDate,
+                'min_total'  => $minTotal,
+                'max_total'  => $maxTotal,
+                'published_from' => $publishedFrom,
+                'published_to'   => $publishedTo,
+                'customer_type'  => $customerType,
+                'po'             => $po,
+                'sort_by'  => $sortBy,
+                'sort_dir' => $sortDir,
+            ],
+            'aggregates'      => $totalsByStatus,
         ]);
     }
 
@@ -3969,6 +4055,71 @@ class AdminController extends Controller
                 'status'  => 'error',
                 'message' => 'Unexpected error while detaching roll.',
             ], 500);
+        }
+    }
+
+    public function editDailyCustomerJson(Request $request, $id)
+    {
+        $customer = DailyCustomer::findOrFail($id);
+
+        $rules = [
+            'full_name'        => 'required|string|max:255',
+            'phone_number'     => 'required|string|max:15',
+            'email'            => 'nullable|email|max:255',
+            'address'          => 'nullable|string',
+            'notes'            => 'nullable|string',
+            'visit_date'       => 'required|date',
+            'working_group_id' => 'nullable|exists:working_groups,id',
+        ];
+
+        $validator = Validator::make($request->all(), $rules);
+
+        if ($validator->fails()) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed.',
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+            return redirect()->back()->withErrors($validator)->withInput();
+        }
+
+        try {
+            $customer->update($validator->validated());
+
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'daily_customer_update',
+                'description' => 'Admin updated walk-in Customer. customer ID ' . $customer->id,
+                'ip_address'  => $request->ip(),
+            ]);
+
+            $customer->refresh()->load('workingGroup');
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'status'   => 'success',
+                    'message'  => 'Customer details updated successfully!',
+                    'customer' => $customer,
+                ], 200);
+            }
+
+            return redirect()->back()->with('success', 'Customer updated successfully.');
+        } catch (\Throwable $e) {
+            Log::error('Error updating customer', [
+                'error'       => $e->getMessage(),
+                'customer_id' => $customer->id,
+            ]);
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'There was an issue updating the customer.',
+                ], 500);
+            }
+
+            return redirect()->back()->withInput()->with('error', 'Failed to update customer. Please try again.');
         }
     }
 }

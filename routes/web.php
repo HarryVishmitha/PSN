@@ -171,6 +171,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::get('/daily-customers', [AdminController::class, 'dailyCustomersView'])->name('dailyCustomers');
     Route::post('/api/add-daily-customer', [AdminController::class, 'addDailyCustomer'])->name('addDailyCustomer');
     Route::patch('/api/daily-customers/{customer}/edit', [AdminController::class, 'editDailyCustomer'])->name('editDailyCustomer');
+    Route::patch('/api/daily-customers/{customer}/edit/json', [AdminController::class, 'editDailyCustomerJson'])->name('editDailyCustomerJson');
     Route::delete('/api/daily-customers/{customer}', [AdminController::class, 'deleteDailyCustomer'])->name('deleteDailyCustomer');
     Route::get('/estimates', [AdminController::class, 'estimateView'])->name('estimates');
     Route::get('/add-estimate', [AdminController::class, 'addEstimate'])->name('addEstimate');
@@ -230,6 +231,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::patch('/api/product/{product}/rolls', [AdminController::class, 'syncProductRolls'])->name('product.rolls.sync');
     Route::post('/api/product/{product}/rolls/{roll}/default', [AdminController::class, 'setDefaultProductRoll'])->name('product.rolls.default');
     Route::delete('/api/product/{product}/rolls/{roll}', [AdminController::class, 'detachProductRoll'])->name('product.rolls.detach');
+    
     // Add more admin routes here
 });
 

@@ -12,15 +12,20 @@ import axios from 'axios';
 /* ------------------------------------------------------------
    Helpers
 ------------------------------------------------------------ */
-const pad = (n, len = 2) => String(n).padStart(len, '0');
 const todayISO = () => new Date().toISOString().split('T')[0];
 const plusDaysISO = (d = 14) => {
     const t = new Date(todayISO());
     t.setDate(t.getDate() + d);
     return t.toISOString().split('T')[0];
 };
+// --- UI helpers --------------------------------------------------------------
+const btnBase =
+    "tw-flex tw-items-center tw-gap-1 tw-shadow-sm focus:tw-ring-2 focus:tw-ring-offset-2 focus:tw-ring-blue-500 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed";
 
-// Always return EST-YYYYMMDD-XXXX (no double EST)
+const btnSm = "tw-h-9 tw-px-3 tw-py-3 tw-text-[13px]";
+const btnIcon = "tw-text-[18px] tw -mt-[1px]"; // tiny nudge for perfect vertical align
+
+// Always EST-YYYYMMDD-XXXX (no double EST, robust to junk)
 const normalizeEstimateNumber = (raw) => {
     if (!raw) return `EST-${todayISO().replace(/-/g, '')}-0001`;
     const s = String(raw).replace(/^EST-?/i, '').trim();
@@ -36,18 +41,27 @@ const normalizeEstimateNumber = (raw) => {
         ymd = digits.slice(0, 8);
         suffix = digits.slice(8);
     }
-
-    if (ymd.length !== 8) {
-        // fallback to today
-        ymd = todayISO().replace(/-/g, '');
-    }
+    if (ymd.length !== 8) ymd = todayISO().replace(/-/g, '');
     if (!suffix) suffix = '0001';
-
     return `EST-${ymd}-${suffix}`;
 };
 
-// Money format (no currency math issues here, just display)
 const money = (n) => `LKR ${Number(n || 0).toFixed(2)}`;
+
+// Accepts roll objects with: roll_width (in), roll_size ("3ft" | 36 | '36"' | 36.0), width
+const parseRollWidthToInches = (roll) => {
+    if (!roll) return 0;
+    let w = roll.roll_width ?? roll.roll_size ?? roll.width ?? 0;
+    if (typeof w === 'string') {
+        const s = w.trim().toLowerCase();
+        if (s.endsWith('ft')) return (parseFloat(s) || 0) * 12;
+        if (s.endsWith('"')) return parseFloat(s) || 0;
+        // just number in string, assume inches
+        return parseFloat(s) || 0;
+    }
+    // numeric—assume inches
+    return Number(w) || 0;
+};
 
 const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }) => {
     /* ------------------------------------------------------------
@@ -58,7 +72,6 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const [loading, setLoading] = useState(false);
     const [wgLoading, setWgLoading] = useState(false);
 
-    // Number fix done here:
     const bootstrapNumber = normalizeEstimateNumber(estimate?.estimate_number || newEstimateNumber);
 
     const defaultItems = (estimate?.items || []).map(it => ({
@@ -76,6 +89,13 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         is_roll: !!it.is_roll,
         size: it.size || '',
     }));
+
+    // discount/tax
+    const [discountMode, setDiscountMode] = useState('none'); // none | fixed | percent
+    const [discountValue, setDiscountValue] = useState(0);
+    const [taxMode, setTaxMode] = useState('none'); // none | fixed | percent
+    const [taxValue, setTaxValue] = useState(0);
+    const [shipping, setShipping] = useState(0);
 
     const [form, setForm] = useState({
         id: estimate?.id || null,
@@ -106,13 +126,15 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
     // UI state
     const [clientQuery, setClientQuery] = useState('');
-    const [editingField, setEditingField] = useState(null);
 
-    // Product drawer
+    // Drawer & Modals
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [productSearch, setProductSearch] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedRollId, setSelectedRollId] = useState(null);
+    const [showAddCustomer, setShowAddCustomer] = useState(false);
+    const [showEditCustomer, setShowEditCustomer] = useState(false);
+    const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
     // Product modal local form
     const [modalForm, setModalForm] = useState({
@@ -120,30 +142,46 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         quantity: 1,
         description: '',
         selectedVariants: {},
-        rollSizeInches: '',
+        rollSizeInches: '',        // normalized inches
         pricePerOffcutSqFt: '',
         fixedWidthIn: '',
         heightIn: '',
     });
 
-    const isBlocked = !form.working_group_id;
+    const [addForm, setAddForm] = useState({
+        full_name: '',
+        email: '',
+        phone_number: '',
+        address: '',
+        notes: '',
+        visit_date: todayISO(),
+        working_group_id: '',
+    });
+    const [editForm, setEditForm] = useState({
+        id: null,
+        full_name: '',
+        email: '',
+        phone_number: '',
+        address: '',
+        notes: '',
+        visit_date: todayISO(),
+        working_group_id: '',
+    });
 
     /* ------------------------------------------------------------
        Effects: WG fetch, local draft, shortcuts
     ------------------------------------------------------------ */
     const LS_KEY = 'addE.v3.draft';
 
-    // load draft if creating new
     useEffect(() => {
         if (!estimate) {
             const draft = localStorage.getItem(LS_KEY);
             if (draft) {
                 try {
                     const parsed = JSON.parse(draft);
-                    // do NOT restore estimate number blindly—normalize it:
                     parsed.estimate_number = normalizeEstimateNumber(parsed.estimate_number || bootstrapNumber);
                     setForm(prev => ({ ...prev, ...parsed }));
-                } catch { }
+                } catch { /* ignore */ }
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,6 +190,32 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     useEffect(() => {
         localStorage.setItem(LS_KEY, JSON.stringify(form));
     }, [form]);
+
+    const resetQuotation = () => {
+        setForm({
+            id: null,
+            estimate_number: normalizeEstimateNumber(bootstrapNumber),
+            working_group_id: form.working_group_id || '',
+            client_name: '',
+            client_id: null,
+            client_address: '',
+            client_phone: '',
+            client_type: '',
+            client_email: '',
+            issue_date: todayISO(),
+            due_date: plusDaysISO(14),
+            notes: '',
+            po_number: '',
+            shipment_id: '',
+            items: [],
+        });
+        setDiscountMode('none'); setDiscountValue(0);
+        setTaxMode('none'); setTaxValue(0);
+        setShipping(0);
+        setSelectedProduct(null);
+        setSelectedRollId(null);
+        setProductSearch('');
+    };
 
     const fetchWorkingGroupDetails = async (wgId) => {
         if (!wgId) {
@@ -179,7 +243,16 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         }
     };
 
-    useEffect(() => { fetchWorkingGroupDetails(form.working_group_id); }, [form.working_group_id]);
+    // fetch on WG change AND reset quotation
+    useEffect(() => {
+        fetchWorkingGroupDetails(form.working_group_id);
+        if (form.working_group_id) {
+            // auto-reset when WG changes
+            resetQuotation();
+            setForm(prev => ({ ...prev, working_group_id: form.working_group_id }));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.working_group_id]);
 
     // shortcuts
     useEffect(() => {
@@ -219,17 +292,28 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         });
     }, [clientQuery, wgUsers, wgDailyCustomers]);
 
-    const subtotal = useMemo(
+    const baseSubtotal = useMemo(
         () => form.items.reduce((sum, it) => sum + (Number(it.qty) * Number(it.unit_price)), 0),
         [form.items]
     );
-    const discount = 0, tax = 0, total = subtotal - discount + tax;
 
-    const formatDateForDisplay = (iso) => {
-        if (!iso) return '';
-        const [y, m, d] = iso.split('-');
-        return `${d}/${m}/${y}`;
-    };
+    const discountAmount = useMemo(() => {
+        if (discountMode === 'none') return 0;
+        if (discountMode === 'fixed') return Number(discountValue) || 0;
+        // percent
+        const pct = Math.min(100, Math.max(0, Number(discountValue) || 0));
+        return (baseSubtotal * pct) / 100;
+    }, [discountMode, discountValue, baseSubtotal]);
+
+    const taxedBase = Math.max(0, baseSubtotal - discountAmount);
+    const taxAmount = useMemo(() => {
+        if (taxMode === 'none') return 0;
+        if (taxMode === 'fixed') return Number(taxValue) || 0;
+        const pct = Math.min(100, Math.max(0, Number(taxValue) || 0));
+        return (taxedBase * pct) / 100;
+    }, [taxMode, taxValue, taxedBase]);
+
+    const grandTotal = Math.max(0, taxedBase + taxAmount + (Number(shipping) || 0));
 
     const handleTopLevelChange = (e) => {
         const { name, value } = e.target;
@@ -240,9 +324,6 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             return { ...prev, [name]: value };
         });
     };
-
-    const startEditing = (key) => setEditingField(key);
-    const stopEditing = () => setEditingField(null);
 
     const handleItemChange = (idx, field, value) => {
         setForm(prev => {
@@ -260,7 +341,6 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
 
     const removeItem = (idx) => {
         setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
-        setEditingField(null);
     };
 
     const selectClient = (client) => {
@@ -273,6 +353,19 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             client_email: client.email || '',
             client_type: client.type || client.client_type || 'daily',
         }));
+        // prime edit form if it's a daily customer
+        if (client.type === 'daily' || client.full_name) {
+            setEditForm({
+                id: client.id,
+                full_name: client.full_name || '',
+                email: client.email || '',
+                phone_number: client.phone_number || '',
+                address: client.address || '',
+                notes: client.notes || '',
+                visit_date: todayISO(),
+                working_group_id: form.working_group_id || '',
+            });
+        }
     };
 
     // Product picker helpers
@@ -337,17 +430,16 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     // roll preview calc
     const rollPreview = useMemo(() => {
         if (!selectedProduct || selectedProduct.pricing_method !== 'roll') return null;
-        const rollW = Number(modalForm.rollSizeInches) || 0;        // inches
-        const fixedW = Number(modalForm.fixedWidthIn) || 0;         // inches
-        const hIn = Number(modalForm.heightIn) || 0;                // inches
-        if (rollW <= 0 || fixedW <= 0 || hIn <= 0) return null;
+        const rollWIn = Number(modalForm.rollSizeInches * 12) || 0; // inches (normalized)
+        const fixedW = Number(modalForm.fixedWidthIn) || 0;    // inches
+        const hIn = Number(modalForm.heightIn) || 0;           // inches
+        if (rollWIn <= 0 || fixedW <= 0 || hIn <= 0) return null;
 
         const w_ft = fixedW / 12;
         const h_ft = hIn / 12;
         const fixedAreaFt2 = w_ft * h_ft;
 
-        const rollWidthIn = rollW * 12;
-        const offcutWidthIn = Math.max(0, rollWidthIn - fixedW);
+        const offcutWidthIn = Math.max(0, rollWIn - fixedW);
         const offcutAreaFt2 = (offcutWidthIn / 12) * h_ft;
 
         const pRoll = Number(selectedProduct.price_per_sqft) || 0;
@@ -365,11 +457,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         if (!selectedProduct) return;
         const isRoll = selectedProduct.pricing_method === 'roll';
 
-        // validation: fixed width cannot exceed roll width (in inches)
-        if (isRoll && Number(modalForm.fixedWidthIn) > (Number(modalForm.rollSizeInches || 0) * 12)) {
+        // validation: fixed width cannot exceed roll width (both in inches)
+        const rollWidthInches = Number(modalForm.rollSizeInches * 12) || 0;
+        if (isRoll && Number(modalForm.fixedWidthIn) > rollWidthInches) {
             setAlert({
                 type: 'danger',
-                message: `Fixed width (${modalForm.fixedWidthIn}") cannot exceed roll width (${(Number(modalForm.rollSizeInches || 0) * 12)}").`,
+                message: `Fixed width (${modalForm.fixedWidthIn}") cannot exceed roll width (${rollWidthInches}").`,
             });
             return;
         }
@@ -405,7 +498,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             const w_ft = (Number(modalForm.fixedWidthIn) || 0) / 12;
             const h_ft = (Number(modalForm.heightIn) || 0) / 12;
             const fixedArea = w_ft * h_ft;
-            const offWIn = (Number(modalForm.rollSizeInches) || 0) * 12 - (Number(modalForm.fixedWidthIn) || 0);
+            const offWIn = rollWidthInches - (Number(modalForm.fixedWidthIn) || 0);
             const offArea = (Math.max(0, offWIn) / 12) * h_ft;
             const areaPrice = fixedArea * (Number(selectedProduct.price_per_sqft) || 0);
             const offPrice = offArea * (Number(modalForm.pricePerOffcutSqFt) || 0);
@@ -456,6 +549,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         const payload = {
             ...form,
             estimate_number: normalizeEstimateNumber(form.estimate_number),
+            // payload fields for totals (optional if backend recalculates)
+            discount_mode: discountMode,
+            discount_value: discountValue,
+            tax_mode: taxMode,
+            tax_value: taxValue,
+            shipping: Number(shipping) || 0,
             action,
             items: form.items.map(({ tempId, ...keep }) => keep),
         };
@@ -464,15 +563,14 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         try {
             const isUpdate = Boolean(form.id);
             const url = isUpdate
-                ? route('admin.estimates.update', form.id)
-                : route('admin.estimates.store');
+                ? route('admin.estimates.update', form.id)        // PUT /admin/api/estimates/{estimate}/edit
+                : route('admin.estimates.store');                 // POST /admin/api/add/estimates
 
             const resp = isUpdate ? await axios.put(url, payload) : await axios.post(url, payload);
             const data = resp.data || {};
 
             setAlert({ type: data.msgtype || 'success', message: data.message || 'Saved.' });
 
-            // open download/print if provided
             if ((action === 'download' || action === 'print') && data.download_url) {
                 window.open(data.download_url, '_blank');
             }
@@ -481,12 +579,10 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                 router.visit(data.redirect_to);
             } else {
                 const nextNum = normalizeEstimateNumber(data.nextEstimateNumber || form.estimate_number);
-                // keep WG so you can continue adding more
                 setForm(prev => ({
                     ...prev,
-                    id: data.id || null,
+                    id: data.id || prev.id || null,
                     estimate_number: nextNum,
-                    items: prev.items, // keep if you want, or clear: []
                 }));
             }
         } catch (err) {
@@ -502,8 +598,10 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     };
 
     /* ------------------------------------------------------------
-       NEW UI (clean 3‑step layout + sticky actions)
+       UI
     ------------------------------------------------------------ */
+    const isAnyModalOpen = drawerOpen || showAddCustomer || showEditCustomer || confirmResetOpen;
+
     return (
         <>
             <Head title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
@@ -516,7 +614,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                 <Breadcrumb title={form.id ? 'Edit Estimate' : 'Add New Estimate'} />
 
                 {/* Sticky action bar */}
-                <div className="tw-sticky tw-top-0 tw-z-30 tw-bg-white/80 dark:tw-bg-gray-900/80 tw-backdrop-blur tw-border-b tw-border-gray-200 dark:tw-border-gray-800 tw-py-2 tw-mb-4">
+                <div className="tw-sticky tw-top-0 tw-z-40 tw-bg-white/80 dark:tw-bg-gray-900/80 tw-backdrop-blur tw-border-b tw-border-gray-200 dark:tw-border-gray-800 tw-py-2 tw-mb-4">
                     <div className="tw-container tw-mx-auto tw-flex tw-items-center tw-justify-between tw-gap-2 tw-px-2">
                         <div className="tw-flex tw-items-center tw-gap-3">
                             <select
@@ -528,6 +626,16 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                 <option value="">— Working Group —</option>
                                 {workingGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                             </select>
+
+                            <button
+                                type="button"
+                                className={`btn btn-sm btn-outline-secondary ${btnBase} ${btnSm}`}
+                                onClick={() => setConfirmResetOpen(true)}
+                            >
+                                <Icon icon="mdi:restart" className={btnIcon} />
+                                <span>Reset</span>
+                            </button>
+
 
                             <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2 tw-text-xs tw-opacity-70">
                                 <span>Ctrl+S Draft</span>
@@ -541,36 +649,60 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                         </div>
 
                         <div className="tw-flex tw-gap-2">
-                            <button className="btn btn-sm btn-secondary" onClick={() => handleSubmit('draft')} disabled={loading}>
-                                <Icon icon="mdi:content-save-outline" /> Save Draft
+                            <button
+                                className={`btn btn-sm btn-secondary ${btnBase} ${btnSm}`}
+                                onClick={() => handleSubmit('draft')}
+                                disabled={loading}
+                            >
+                                <Icon icon="mdi:content-save-outline" className={btnIcon} />
+                                <span>Save Draft</span>
                             </button>
-                            <button className="btn btn-sm btn-primary" onClick={() => handleSubmit('publish')} disabled={loading}>
-                                <Icon icon="mdi:cloud-upload-outline" /> Save & Publish
+
+                            <button
+                                className={`btn btn-sm btn-primary ${btnBase} ${btnSm}`}
+                                onClick={() => handleSubmit('publish')}
+                                disabled={loading}
+                            >
+                                <Icon icon="mdi:cloud-upload-outline" className={btnIcon} />
+                                <span>Save &amp; Publish</span>
                             </button>
-                            <button className="btn btn-sm btn-info" onClick={() => handleSubmit('download')} disabled={loading}>
-                                <Icon icon="mdi:download-outline" /> Save & Download
+
+                            <button
+                                className={`btn btn-sm btn-info ${btnBase} ${btnSm}`}
+                                onClick={() => handleSubmit('download')}
+                                disabled={loading}
+                            >
+                                <Icon icon="mdi:download-outline" className={btnIcon} />
+                                <span>Save &amp; Download</span>
                             </button>
-                            <button className="btn btn-sm btn-warning" onClick={() => handleSubmit('print')} disabled={loading}>
-                                <Icon icon="solar:printer-outline" /> Save & Print
+
+                            <button
+                                className={`btn btn-sm btn-warning ${btnBase} ${btnSm}`}
+                                onClick={() => handleSubmit('print')}
+                                disabled={loading}
+                            >
+                                <Icon icon="solar:printer-outline" className={btnIcon} />
+                                <span>Save &amp; Print</span>
                             </button>
                         </div>
+
                     </div>
                 </div>
 
                 {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
 
                 <div className="tw-grid lg:tw-grid-cols-2 tw-gap-4">
-                    {/* LEFT: Step 1 — Header + Client */}
+                    {/* LEFT: Header + Client */}
                     <div className="tw-space-y-4">
-                        {/* Estimate header card */}
+                        {/* Estimate header */}
                         <div className="card">
                             <div className="card-body tw-space-y-3">
                                 <div className="tw-flex tw-items-center tw-justify-between">
                                     <h4 className="tw-font-bold">Estimate</h4>
-                                    <img src="/images/printairlogo.png" style={{ height: 42 }} alt="Printair" />
+                                    <p className='tw-text-xs tw-text-gray-400'>Estimator v2.1</p>
                                 </div>
 
-                                <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                <div className="tw-grid sm:tw-grid-cols-2 tw-gap-2">
                                     <div>
                                         <label className="form-label tw-text-xs">Estimate No.</label>
                                         <input
@@ -617,16 +749,37 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             </div>
                         </div>
 
-                        {/* Client Card */}
+                        {/* Client */}
                         <div className="card">
                             <div className="card-header tw-flex tw-items-center tw-justify-between">
                                 <h6 className="tw-m-0 tw-font-semibold">Client</h6>
-                                <button
-                                    className="btn btn-sm btn-outline-primary"
-                                    onClick={() => document.getElementById('client-search')?.focus()}
-                                >
-                                    <Icon icon="mdi:account-search" /> Find
-                                </button>
+                                <div className="tw-flex tw-gap-2">
+                                    <button
+                                        className={`btn btn-sm btn-outline-primary ${btnBase} ${btnSm}`}
+                                        onClick={() => document.getElementById('client-search')?.focus()}
+                                    >
+                                        <Icon icon="mdi:account-search" className={btnIcon} />
+                                        <span>Find</span>
+                                    </button>
+
+                                    <button
+                                        className={`btn btn-sm btn-outline-success ${btnBase} ${btnSm}`}
+                                        onClick={() => { setAddForm(f => ({ ...f, working_group_id: form.working_group_id || '' })); setShowAddCustomer(true); }}
+                                        disabled={!form.working_group_id}
+                                    >
+                                        <Icon icon="mdi:account-plus-outline" className={btnIcon} />
+                                        <span>Add Daily</span>
+                                    </button>
+
+                                    <button
+                                        className={`btn btn-sm btn-outline-warning ${btnBase} ${btnSm}`}
+                                        onClick={() => (form.client_id ? setShowEditCustomer(true) : null)}
+                                        disabled={!form.client_id}
+                                    >
+                                        <Icon icon="mdi:account-edit-outline" className={btnIcon} />
+                                        <span>Edit</span>
+                                    </button>
+                                </div>
                             </div>
                             <div className="card-body tw-space-y-3">
                                 <input
@@ -652,8 +805,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                         {(u.email || '—')} • {(u.phone_number || u.phone || '—')}
                                                     </div>
                                                 </div>
-                                                <span className={`tw-text-[10px] tw-px-2 tw-py-0.5 tw-rounded ${u.type === 'daily' ? 'tw-bg-blue-100 tw-text-blue-800' : 'tw-bg-green-100 tw-text-green-800'
-                                                    }`}>
+                                                <span
+                                                    className={`tw-text-[10px] tw-px-2 tw-py-0.5 tw-rounded ${u.type === 'daily'
+                                                        ? 'tw-bg-blue-100 tw-text-blue-800'
+                                                        : 'tw-bg-green-100 tw-text-green-800'
+                                                        }`}
+                                                >
                                                     {u.type === 'daily' ? 'Daily' : 'System'}
                                                 </span>
                                             </div>
@@ -675,15 +832,15 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                         </div>
                     </div>
 
-                    {/* MIDDLE: Step 2 — Items */}
+                    {/* RIGHT: Items + totals */}
                     <div className="tw-space-y-4">
                         <div className="card">
                             <div className="card-header tw-flex tw-items-center tw-justify-between">
                                 <h6 className="tw-m-0 tw-font-semibold">Line Items</h6>
                                 <button
-                                    className="btn btn-sm btn-primary"
+                                    className="btn btn-sm btn-primary tw-flex tw-items-center tw-gap-1"
                                     onClick={() => { setDrawerOpen(true); }}
-                                    disabled={isBlocked}
+                                    disabled={!form.working_group_id}
                                 >
                                     <Icon icon="simple-line-icons:plus" /> Add Product
                                 </button>
@@ -768,13 +925,82 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                             </div>
                         </div>
 
-                        {/* Review & totals */}
+                        {/* Discounts, Tax, Shipping & totals */}
                         <div className="card">
                             <div className="card-body tw-grid md:tw-grid-cols-2 tw-gap-4">
-                                <div className="tw-space-y-2">
-                                    <div className="tw-text-sm tw-opacity-70">Sales By</div>
-                                    <div className="tw-font-medium">{userDetails?.name || '—'}</div>
-                                    <div className="tw-text-xs tw-opacity-50">Thank you!</div>
+                                <div className="tw-space-y-3">
+                                    <div>
+                                        <div className="tw-text-sm tw-opacity-70">Sales By</div>
+                                        <div className="tw-font-medium">{userDetails?.name || '—'}</div>
+                                    </div>
+
+                                    <div className="tw-grid sm:tw-grid-cols-2 tw-gap-2">
+                                        <div>
+                                            <label className="form-label tw-text-xs">Discount</label>
+                                            <div className="tw-flex tw-gap-2">
+                                                <select
+                                                    className="form-select form-select-sm"
+                                                    value={discountMode}
+                                                    onChange={e => { setDiscountMode(e.target.value); if (e.target.value === 'none') setDiscountValue(0); }}
+                                                >
+                                                    <option value="none">No Discount</option>
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="percent">Percent %</option>
+                                                </select>
+                                                <input
+                                                    type="number"
+                                                    className="form-control form-control-sm"
+                                                    value={discountValue}
+                                                    onChange={e => setDiscountValue(e.target.value)}
+                                                    disabled={discountMode === 'none'}
+                                                    placeholder={discountMode === 'percent' ? '0–100' : ''}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="form-label tw-text-xs">Tax</label>
+                                            <div className="tw-flex tw-gap-2">
+                                                <select
+                                                    className="form-select form-select-sm"
+                                                    value={taxMode}
+                                                    onChange={e => { setTaxMode(e.target.value); if (e.target.value === 'none') setTaxValue(0); }}
+                                                >
+                                                    <option value="none">No Tax</option>
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="percent">Percent %</option>
+                                                </select>
+                                                <input
+                                                    type="number"
+                                                    className="form-control form-control-sm"
+                                                    value={taxValue}
+                                                    onChange={e => setTaxValue(e.target.value)}
+                                                    disabled={taxMode === 'none'}
+                                                    placeholder={taxMode === 'percent' ? '0–100' : ''}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="form-label tw-text-xs">Shipping (LKR)</label>
+                                        <input
+                                            type="number"
+                                            className="form-control form-control-sm"
+                                            value={shipping}
+                                            onChange={e => setShipping(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="form-label tw-text-xs">Internal Notes</label>
+                                        <textarea
+                                            className="form-control"
+                                            rows={3}
+                                            value={form.notes || ''}
+                                            onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))}
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="tw-justify-self-end tw-w-full md:tw-w-80">
@@ -782,19 +1008,23 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                         <tbody>
                                             <tr>
                                                 <td>Subtotal</td>
-                                                <td className="text-end">{money(subtotal)}</td>
+                                                <td className="text-end">{money(baseSubtotal)}</td>
                                             </tr>
                                             <tr>
                                                 <td>Discount</td>
-                                                <td className="text-end">{money(discount)}</td>
+                                                <td className="text-end">– {money(discountAmount)}</td>
                                             </tr>
                                             <tr>
                                                 <td>Tax</td>
-                                                <td className="text-end">{money(tax)}</td>
+                                                <td className="text-end">{money(taxAmount)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Shipping</td>
+                                                <td className="text-end">{money(shipping)}</td>
                                             </tr>
                                             <tr>
                                                 <td className="tw-font-semibold">Total</td>
-                                                <td className="text-end tw-font-semibold">{money(total)}</td>
+                                                <td className="text-end tw-font-semibold">{money(grandTotal)}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -812,8 +1042,12 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                     </div>
                 </div>
 
-                {/* PRODUCT DRAWER (right) */}
-                <div className={`tw-fixed tw-inset-y-0 tw-right-0 tw-w-full sm:tw-w-[480px] tw-bg-white dark:tw-bg-gray-900 tw-shadow-2xl tw-z-50 tw-transition-transform ${drawerOpen ? 'tw-translate-x-0' : 'tw-translate-x-full'}`}>
+                {/* PRODUCT DRAWER */}
+                <div
+                    className={`tw-fixed tw-inset-y-0 tw-right-0 tw-w-full sm:tw-w-[520px] tw-bg-white dark:tw-bg-gray-900 tw-shadow-2xl tw-z-50 tw-transition-transform ${drawerOpen ? 'tw-translate-x-0' : 'tw-translate-x-full'}`}
+                    role="dialog"
+                    aria-modal="true"
+                >
                     <div className="tw-flex tw-items-center tw-justify-between tw-border-b tw-p-3">
                         <h6 className="tw-m-0 tw-font-semibold">Add Product</h6>
                         <button className="btn btn-sm btn-outline-secondary" onClick={() => setDrawerOpen(false)}>
@@ -861,7 +1095,6 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                     <button className="btn btn-sm btn-link" onClick={() => setSelectedProduct(null)}>Change</button>
                                 </div>
 
-                                {/* Pricing method switch (read-only by product) */}
                                 {selectedProduct.pricing_method === 'standard' && (
                                     <>
                                         <div>
@@ -1002,17 +1235,19 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                 onChange={(e) => {
                                                     const roll = rolls.find(r => String(r.id) === String(e.target.value));
                                                     setSelectedRollId(roll?.id ?? null);
+                                                    const inches = parseRollWidthToInches(roll); // normalize to inches
                                                     setModalForm(m => ({
                                                         ...m,
-                                                        rollSizeInches: roll?.roll_width || roll?.roll_size || 0,
-                                                        pricePerOffcutSqFt: roll?.offcut_price || m.pricePerOffcutSqFt || 0,
+                                                        rollSizeInches: inches,
+                                                        // default offcut if provided by roll
+                                                        pricePerOffcutSqFt: roll?.offcut_price ?? m.pricePerOffcutSqFt ?? 0,
                                                     }));
                                                 }}
                                             >
                                                 <option value="">— Select —</option>
                                                 {rolls.map(r => (
                                                     <option key={r.id} value={r.id}>
-                                                        {`${r.roll_type} (${r.roll_size}" ) — LKR${Number(r.price_rate_per_sqft).toFixed(2)}/ft²`}
+                                                        {`${r.roll_type} (${r.roll_size || r.roll_width}" ) — LKR${Number(r.price_rate_per_sqft).toFixed(2)}/ft²`}
                                                     </option>
                                                 ))}
                                             </select>
@@ -1085,16 +1320,210 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                     )}
                 </div>
 
-                {/* // /* WG overlay loader */}
+                {/* Add Daily Customer (Bootstrap-like modal) */}
+                {showAddCustomer && (
+                    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center">
+                        <div className="tw-bg-white dark:tw-bg-gray-900 tw-rounded tw-shadow-xl tw-w-[min(600px,96vw)]">
+                            <div className="tw-flex tw-justify-between tw-items-center tw-p-3 tw-border-b">
+                                <h6 className="tw-m-0">Add Daily Customer</h6>
+                                <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowAddCustomer(false)}>×</button>
+                            </div>
+                            <div className="tw-p-3">
+                                <div className="tw-grid sm:tw-grid-cols-2 tw-gap-2">
+                                    <div>
+                                        <label className="form-label">Full Name</label>
+                                        <input className="form-control" value={addForm.full_name} onChange={e => setAddForm(f => ({ ...f, full_name: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Phone Number</label>
+                                        <input className="form-control" value={addForm.phone_number} onChange={e => setAddForm(f => ({ ...f, phone_number: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Email</label>
+                                        <input className="form-control" type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Visit Date</label>
+                                        <input className="form-control" type="date" value={addForm.visit_date} onChange={e => setAddForm(f => ({ ...f, visit_date: e.target.value }))} />
+                                    </div>
+                                    <div className="sm:tw-col-span-2">
+                                        <label className="form-label">Address</label>
+                                        <input className="form-control" value={addForm.address} onChange={e => setAddForm(f => ({ ...f, address: e.target.value }))} />
+                                    </div>
+                                    <div className="sm:tw-col-span-2">
+                                        <label className="form-label">Notes</label>
+                                        <textarea className="form-control" rows={3} value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Working Group</label>
+                                        <select
+                                            className="form-select"
+                                            value={addForm.working_group_id || ''}
+                                            onChange={e => setAddForm(f => ({ ...f, working_group_id: e.target.value }))}
+                                        >
+                                            <option value="">—</option>
+                                            {workingGroups.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="tw-border-t tw-p-3 tw-flex tw-justify-between">
+                                <button className="btn btn-outline-secondary" onClick={() => setShowAddCustomer(false)}>Cancel</button>
+                                <button
+                                    className="btn btn-success"
+                                    onClick={async () => {
+                                        try {
+                                            const url = route('admin.jsonDailyCustomers'); // POST /admin/api/add-daily-customer/json
+                                            const resp = await axios.post(url, addForm, { headers: { Accept: 'application/json' } });
+                                            const customer = resp.data?.customer ?? resp.data?.data ?? resp.data;
+                                            // refresh WG lists:
+                                            await fetchWorkingGroupDetails(form.working_group_id);
+                                            selectClient({ ...customer, type: 'daily' });
+                                            setAlert({ type: 'success', message: 'Customer added & selected.' });
+                                            setShowAddCustomer(false);
+                                            setAddForm({
+                                                full_name: '',
+                                                email: '',
+                                                phone_number: '',
+                                                address: '',
+                                                notes: '',
+                                                visit_date: todayISO(),
+                                                working_group_id: form.working_group_id || '',
+                                            });
+
+                                        } catch (e) {
+                                            setAlert({ type: 'danger', message: e.response?.data?.message || e.message || 'Failed to add customer.' });
+                                        }
+                                    }}
+                                >
+                                    Save & Use
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit Daily Customer */}
+                {showEditCustomer && (
+                    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center">
+                        <div className="tw-bg-white dark:tw-bg-gray-900 tw-rounded tw-shadow-xl tw-w-[min(600px,96vw)]">
+                            <div className="tw-flex tw-justify-between tw-items-center tw-p-3 tw-border-b">
+                                <h6 className="tw-m-0">Edit Daily Customer</h6>
+                                <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowEditCustomer(false)}>×</button>
+                            </div>
+                            <div className="tw-p-3">
+                                <div className="tw-grid sm:tw-grid-cols-2 tw-gap-2">
+                                    <div>
+                                        <label className="form-label">Full Name</label>
+                                        <input className="form-control" value={editForm.full_name} onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Phone Number</label>
+                                        <input className="form-control" value={editForm.phone_number} onChange={e => setEditForm(f => ({ ...f, phone_number: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Email</label>
+                                        <input className="form-control" type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Visit Date</label>
+                                        <input className="form-control" type="date" value={editForm.visit_date} onChange={e => setEditForm(f => ({ ...f, visit_date: e.target.value }))} />
+                                    </div>
+                                    <div className="sm:tw-col-span-2">
+                                        <label className="form-label">Address</label>
+                                        <input className="form-control" value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} />
+                                    </div>
+                                    <div className="sm:tw-col-span-2">
+                                        <label className="form-label">Notes</label>
+                                        <textarea className="form-control" rows={3} value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Working Group</label>
+                                        <select
+                                            className="form-select"
+                                            value={editForm.working_group_id || ''}
+                                            onChange={e => setEditForm(f => ({ ...f, working_group_id: e.target.value }))}
+                                        >
+                                            <option value="">—</option>
+                                            {workingGroups.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="tw-border-t tw-p-3 tw-flex tw-justify-between">
+                                <button className="btn btn-outline-secondary" onClick={() => setShowEditCustomer(false)}>Cancel</button>
+                                <button
+                                    className="btn btn-warning"
+                                    onClick={async () => {
+                                        try {
+                                            const url = route('admin.editDailyCustomerJson', { customer: editForm.id }); // PATCH /admin/api/daily-customers/{customer}/edit
+                                            await axios.patch(url, {
+                                                full_name: editForm.full_name,
+                                                phone_number: editForm.phone_number,
+                                                email: editForm.email || null,
+                                                address: editForm.address || '',
+                                                notes: editForm.notes || '',
+                                                visit_date: editForm.visit_date,
+                                                working_group_id: editForm.working_group_id || null,
+                                            }, { headers: { Accept: 'application/json' } });
+                                            await fetchWorkingGroupDetails(form.working_group_id);
+                                            setAlert({ type: 'success', message: 'Customer updated.' });
+                                            setShowEditCustomer(false);
+                                        } catch (e) {
+                                            setAlert({ type: 'danger', message: e.response?.data?.message || e.message || 'Failed to update customer.' });
+                                        }
+                                    }}
+                                >
+                                    Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Confirm reset */}
+                {confirmResetOpen && (
+                    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center">
+                        <div className="tw-bg-white dark:tw-bg-gray-900 tw-rounded tw-shadow-xl tw-w-[min(520px,96vw)]">
+                            <div className="tw-p-4">
+                                <h6 className="tw-font-semibold tw-mb-2">Reset quotation?</h6>
+                                <p className="tw-text-sm tw-text-gray-600">This clears client and all line items. You can’t undo this.</p>
+                            </div>
+                            <div className="tw-border-t tw-p-3 tw-flex tw-justify-between">
+                                <button className="btn btn-outline-secondary" onClick={() => setConfirmResetOpen(false)}>Cancel</button>
+                                <button
+                                    className="btn btn-danger"
+                                    onClick={() => { resetQuotation(); setConfirmResetOpen(false); }}
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Global dark backdrop when any modal/drawer is open */}
+                {isAnyModalOpen && (
+                    <div
+                        className="tw-fixed tw-inset-0 tw-bg-black/50 tw-z-40"
+                        aria-hidden="true"
+                        onClick={() => {
+                            // click outside to close only drawer (modals have their own buttons)
+                            if (drawerOpen) setDrawerOpen(false);
+                        }}
+                    />
+                )}
+
+                {/* WG overlay loader */}
                 {wgLoading && (
-                    <div className="tw-fixed tw-inset-0 tw-bg-black/30 tw-backdrop-blur-sm tw-z-40 tw-flex tw-items-center tw-justify-center">
+                    <div className="tw-fixed tw-inset-0 tw-bg-black/30 tw-backdrop-blur-sm tw-z-50 tw-flex tw-items-center tw-justify-center">
                         <div className="tw-bg-white dark:tw-bg-gray-900 tw-rounded tw-p-4 tw-shadow-lg tw-flex tw-items-center tw-gap-2">
                             <Icon icon="ic:baseline-autorenew" className="tw-text-2xl tw-animate-spin" />
                             <span>Fetching working group data…</span>
                         </div>
                     </div>
                 )}
-            </AdminDashboard >
+            </AdminDashboard>
 
             <CookiesV />
         </>
