@@ -92,19 +92,6 @@ Route::delete('/api/cart/offer', [CartController::class, 'removeOffer']);
 Route::post('/api/cart/addresses', [CartController::class, 'setAddresses']);
 Route::post('/api/cart/items/{item}/attach-upload', [CartController::class, 'attachUpload']);
 
-Route::get('/temp/{estimate}/pdf', function (Estimate $estimate) {
-    // eager load relations:
-    $estimate->load(['customer', 'items.variant', 'items.subvariant', 'items.product']);
-
-    // render & stream:
-    $pdf = Pdf::loadView('pdfs.estimate', ['est' => $estimate])
-        ->setPaper('a4', 'portrait')
-        // optional: increase default PHP memory / timeouts if you have lots of pages
-        ->setOptions(['dpi' => 150, 'defaultFont' => 'sans-serif']);
-
-    return $pdf->stream("Estimate-{$estimate->estimate_number}.pdf");
-})->name('estimate.pdf');
-
 Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('user.')->group(function () {
     Route::get('/dashboard', [UserController::class, 'index'])->name('dashboard');
     Route::get('/api/notifications', [NotificationsController::class, 'index'])->name('notifications');
@@ -179,7 +166,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::post('/api/add-daily-customer/json', [AdminController::class, 'JSonaddDailyCustomer'])->name('jsonDailyCustomers');
     Route::post('/api/add/estimates', [AdminController::class, 'storeEstimate'])->name('estimates.store');
     Route::get('/api/wg/{wgId}/roll/{roll}/products', [AdminController::class, 'productsByRoll'])
-    ->name('products.byRoll');
+        ->name('products.byRoll');
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
@@ -246,5 +233,75 @@ Route::group(['prefix' => 'api', 'as' => 'api.'], function () {
     Route::get('/random-image', [ApisPublic::class, 'randomImage'])->name('random-image');
 });
 
+Route::get('/test-estimate-pdf', function () {
+    $dummyEstimate = (object)[
+        'estimate_number' => 'EST-20250830-0001',
+        'issue_date'      => now()->toDateString(),
+        'due_date'        => now()->addDays(14)->toDateString(),
+        'client_name'     => 'Harry Potter',
+        'client_address'  => '4 Privet Drive, Little Whinging',
+        'client_email'    => 'thechosenone@hogwarts.edu',
+        'client_phone'    => '+94 71 234 5678',
+        'client_type'     => 'daily',
+        'po_number'       => 'PO-00123',
+        'notes'           => "Please handle this quote with extra care.\nInclude Gryffindor color samples if available.",
+        'discount_mode'   => 'percent',
+        'discount_value'  => 5,
+        'tax_mode'        => 'fixed',
+        'tax_value'       => 150,
+        'shipping'        => 500,
+        'status'          => 'draft',
+        'items' => [
+            [
+                'product_name' => 'Pull-up Banner',
+                'description' => 'Standard 2x6ft rollup banner with UV print',
+                'qty' => 2,
+                'unit' => 'pcs',
+                'unit_price' => 4500,
+                'base_price' => 4500,
+                'is_roll' => false,
+                'variants' => [
+                    [
+                        'variant_name' => 'Material',
+                        'variant_value' => 'Synthetic',
+                        'priceAdjustment' => 0,
+                        'subvariants' => [
+                            ['subvariant_name' => 'Thickness', 'subvariant_value' => '200gsm']
+                        ]
+                    ]
+                ]
+            ],
+            [
+                'product_name' => 'Canvas Print',
+                'description' => '12"x18" wall-hanging canvas with wooden frame',
+                'qty' => 1,
+                'unit' => 'pcs',
+                'unit_price' => 3200,
+                'base_price' => 3200,
+                'is_roll' => false,
+                'variants' => [],
+            ],
+        ]
+    ];
+
+    $dummyCompany = (object)[
+        'name'    => 'Printair Advertising',
+        'address' => 'No. 123, Kandy Road, Kadawatha',
+        'phone'   => '+94 77 123 4567',
+        'email'   => 'hello@printair.lk',
+        'website' => 'printair.lk',
+    ];
+
+    $dummyUser = (object)[
+        'name' => 'Thejan Vishmitha',
+    ];
+
+    return Pdf::loadView('pdfs.estimate', [
+        'estimate'    => $dummyEstimate,
+        'userDetails' => $dummyUser,
+        'company'     => $dummyCompany,
+        'logoPath'    => public_path('images/printair-logo.png'), // optional
+    ])->stream('Test-Quotation.pdf');
+});
 
 require __DIR__ . '/auth.php';
