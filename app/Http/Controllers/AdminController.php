@@ -2773,6 +2773,7 @@ class AdminController extends Controller
             ->with([
                 'workingGroup:id,name',
                 'customer',            // morph (users or daily_customers)
+                'creator',
             ])
             ->withCount('items')       // item_count for table badges
             ->when($customerType, fn($q) => $q->where('customer_type', $customerType))
@@ -4120,6 +4121,71 @@ class AdminController extends Controller
             }
 
             return redirect()->back()->withInput()->with('error', 'Failed to update customer. Please try again.');
+        }
+    }
+
+    public function updateEstimateStatus(Request $request, Estimate $estimate)
+    {
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['draft', 'published', 'expired'])],
+        ]);
+
+        try {
+            DB::transaction(function () use ($estimate, $validated, $request) {
+                $next = $validated['status'];
+
+                // Guard: don't allow publishing if already past valid_to (optional)
+                if ($next === 'published' && $estimate->valid_to && $estimate->valid_to->isPast()) {
+                    abort(422, 'Cannot publish an expired quotation. Extend the Valid To date first.');
+                }
+
+                $payload = ['status' => $next];
+
+                // published_at handling (optional; keep if you track first publish)
+                if ($next === 'published') {
+                    // Set published_at once if not previously set
+                    if (is_null($estimate->published_at)) {
+                        $payload['published_at'] = now();
+                    }
+                } else {
+                    // If moving away from published, you may clear it (business rule)
+                    // Comment this out if you want to preserve original published_at history
+                    $payload['published_at'] = null;
+                }
+
+                $estimate->update($payload);
+
+                // Optional: lightweight activity log if your app has it
+                if (class_exists(\App\Models\ActivityLog::class)) {
+                    \App\Models\ActivityLog::create([
+                        'user_id'     => Auth::id(),
+                        'action_type' => 'estimate_status_update',
+                        'description' => sprintf(
+                            'Changed estimate #%s status to %s (ID: %d)',
+                            $estimate->estimate_number,
+                            $next,
+                            $estimate->id
+                        ),
+                        'ip_address'  => $request->ip(),
+                        // 'meta' => ['from' => $estimate->getOriginal('status'), 'to' => $next],
+                    ]);
+                }
+            });
+
+            $success = ['success' => 'Status updated successfully.'];
+
+            if ($request->wantsJson()) {
+                return response()->json($success);
+            }
+
+            // Inertia-friendly redirect (303)
+            return back(303)->with($success);
+        } catch (Throwable $e) {
+            $message = $e->getMessage() ?: 'Failed to update status. Please try again.';
+            if ($request->wantsJson()) {
+                return response()->json(['error' => $message], 422);
+            }
+            return back()->withErrors(['status' => $message]);
         }
     }
 }

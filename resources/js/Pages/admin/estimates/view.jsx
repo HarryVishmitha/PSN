@@ -7,6 +7,7 @@ import { Icon } from "@iconify/react";
 import CookiesV from "@/Components/CookieConsent";
 import Alert from "@/Components/Alert";
 import Meta from "@/Components/Metaheads";
+import axios from "axios";
 
 /**
  * EstimateView (Admin)
@@ -23,6 +24,16 @@ const STATUSES = [
     { value: "published", label: "Published" },
     { value: "expired", label: "Expired" },
 ];
+
+const STATUS_OPTIONS = [
+    { value: "draft", label: "Draft" },
+    { value: "published", label: "Published" },
+    { value: "expired", label: "Expired" },
+];
+
+// Change this if your route name differs:
+const STATUS_ROUTE_NAME = "admin.estimates.updateStatus";
+
 
 const SORT_ICONS = {
     none: "mdi:unfold-more-horizontal",
@@ -66,6 +77,7 @@ export default function EstimateView({
     const debouncedPO = useDebounced(po);
     const debouncedMin = useDebounced(minTotal);
     const debouncedMax = useDebounced(maxTotal);
+    const [statusLoadingId, setStatusLoadingId] = useState(null); // which row is updating
 
     const buildQuery = () => ({
         per_page: perPage,
@@ -226,13 +238,76 @@ export default function EstimateView({
         });
     };
 
+    // Popover control & optimistic cache
+    const [statusMenuFor, setStatusMenuFor] = useState(null); // id or null
+    const [optimisticStatus, setOptimisticStatus] = useState({}); // { [id]: "draft" | ... }
+
+    const visibleStatusOf = (e) => optimisticStatus[e.id] ?? e.status;
+
+    const openStatusMenu = (id) => setStatusMenuFor(id);
+    const closeStatusMenu = () => setStatusMenuFor(null);
+
+    // Close popover on outside click
+    useEffect(() => {
+        const onDocClick = (ev) => {
+            const menu = document.getElementById("estimate-status-menu");
+            if (!menu) return;
+            if (!menu.contains(ev.target)) setStatusMenuFor(null);
+        };
+        document.addEventListener("mousedown", onDocClick);
+        return () => document.removeEventListener("mousedown", onDocClick);
+    }, []);
+
+    const updateEstimateStatus = async (estimate, next) => {
+        if (!estimate?.id || visibleStatusOf(estimate) === next) {
+            closeStatusMenu();
+            return;
+        }
+
+        // Optimistic UI + loader
+        setOptimisticStatus((m) => ({ ...m, [estimate.id]: next }));
+        setStatusLoadingId(estimate.id);
+
+        try {
+            await axios.patch(route(STATUS_ROUTE_NAME, estimate.id), { status: next });
+
+            // Optional: force-refresh server truth (but keep UI smooth)
+            await router.reload({
+                only: ["estimates", "filters", "aggregates"],
+                preserveState: true,
+                preserveScroll: true,
+            });
+
+            setAlert({ type: "success", message: `Status updated to ${next}.` });
+        } catch (err) {
+            // Rollback optimistic change on error
+            setOptimisticStatus((m) => {
+                const copy = { ...m };
+                delete copy[estimate.id];
+                return copy;
+            });
+            setAlert({
+                type: "danger",
+                message:
+                    err?.response?.data?.error || "Failed to update status. Try again.",
+            });
+        } finally {
+            setStatusLoadingId(null);
+            closeStatusMenu();
+        }
+    };
+
+
+
     return (
         <>
             {/* Category-style quick tokens */}
             <style>{`
         .btn-circle { width: 38px; height: 38px; border-radius: 50%;
           display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 0; border: 0;}
-        .scroll-sm { scrollbar-width: thin; }
+        .scroll-sm { scrollbar-width: thin; }.dropdown-menu.show {
+    display: block;
+  }
       `}</style>
 
             <Head title="Estimates - Admin Dashboard" />
@@ -389,12 +464,15 @@ export default function EstimateView({
                                         {headCell("total_amount", "Total (LKR)")}
                                         {headCell("status", "Status")}
                                         <th className="text-uppercase small fw-semibold text-secondary">Items</th>
+                                        <th className="text-uppercase small fw-semibold text-secondary">Added by</th>
                                         <th className="text-uppercase small fw-semibold text-secondary text-center">Actions</th>
+
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {estimates?.data?.length ? (
                                         estimates.data.map((e, idx) => (
+                                            console.log(e),
                                             <tr key={e.id} className="tw-text-sm">
                                                 {/* Estimate # + PO */}
                                                 <td className="tw-font-medium tw-whitespace-nowrap">
@@ -438,12 +516,95 @@ export default function EstimateView({
                                                 </td>
 
                                                 {/* Status */}
-                                                <td className="tw-whitespace-nowrap">{badge(e.status)}</td>
+                                                {/* Status (clickable) */}
+                                                <td className="position-relative tw-whitespace-nowrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(ev) => {
+                                                            ev.stopPropagation();
+                                                            if (statusLoadingId) return; // prevent menu while loading
+                                                            statusMenuFor === e.id ? closeStatusMenu() : openStatusMenu(e.id);
+                                                        }}
+                                                        className="btn p-0 border-0 bg-transparent d-inline-flex align-items-center gap-2"
+                                                        title={statusLoadingId === e.id ? "Updating..." : "Change status"}
+                                                        aria-haspopup="true"
+                                                        aria-expanded={statusMenuFor === e.id}
+                                                        disabled={statusLoadingId === e.id}
+                                                    >
+                                                        {badge(visibleStatusOf(e))}
+                                                        {statusLoadingId === e.id && (
+                                                            <span className="spinner-border spinner-border-sm" role="status" />
+                                                        )}
+                                                    </button>
+
+                                                    {/* Inline popover */}
+                                                    {statusMenuFor === e.id && (
+                                                        <div
+                                                            id="estimate-status-menu"
+                                                            className="dropdown-menu show shadow-sm border-0 radius-12 tw-p-2"
+                                                            style={{ position: "absolute", inset: "auto auto 0 0", transform: "translateY(100%)", minWidth: 200, zIndex: 20 }}
+                                                            role="menu"
+                                                        >
+                                                            <div className="tw-text-xs tw-text-zinc-500 tw-uppercase tw-font-semibold tw-px-3 tw-py-2">
+                                                                Set status
+                                                            </div>
+                                                            <div className="list-group list-group-flush">
+                                                                {STATUS_OPTIONS.map((opt) => {
+                                                                    const active = visibleStatusOf(e) === opt.value;
+                                                                    return (
+                                                                        <button
+                                                                            key={opt.value}
+                                                                            type="button"
+                                                                            className={`list-group-item list-group-item-action d-flex align-items-center justify-content-between tw-text-sm ${active ? "bg-neutral-100" : ""
+                                                                                }`}
+                                                                            onClick={(ev) => {
+                                                                                ev.stopPropagation();
+                                                                                updateEstimateStatus(e, opt.value);
+                                                                            }}
+                                                                            role="menuitem"
+                                                                        >
+                                                                            <span className="d-flex align-items-center gap-2">
+                                                                                {opt.value === "draft" && <Icon icon="mdi:note-edit-outline" />}
+                                                                                {opt.value === "published" && <Icon icon="mdi:check-circle-outline" />}
+                                                                                {opt.value === "expired" && <Icon icon="mdi:timer-off-outline" />}
+                                                                                {opt.label}
+                                                                            </span>
+                                                                            {active && <Icon icon="mdi:check" className="tw-text-zinc-600" />}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </td>
+
 
                                                 {/* Items count */}
                                                 <td className="text-center tw-whitespace-nowrap">
                                                     {e.items_count ?? e.items?.length ?? 0}
                                                 </td>
+
+                                                <td className="tw-whitespace-nowrap">
+                                                    <div className="d-flex align-items-center">
+                                                        {e.creator?.profile_picture ? (
+                                                            <img
+                                                                src={e.creator.profile_picture}
+                                                                alt={e.creator.name}
+                                                                className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden"
+                                                            />
+                                                        ) : (
+                                                            <img
+                                                                src="/assets/images/user.png"
+                                                                alt="No Profile"
+                                                                className="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden"
+                                                            />
+                                                        )}
+                                                        <span className="text-md mb-0 fw-normal text-secondary-light">
+                                                            {e.creator?.name || "Unknown"}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
 
                                                 {/* Actions */}
                                                 <td className="text-center">

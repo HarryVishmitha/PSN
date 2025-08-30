@@ -183,6 +183,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
+    Route::patch('/api/estimate/{estimate}/status/update', [AdminController::class, 'updateEstimateStatus'])->name('estimates.updateStatus');
     Route::get('/categories', [AdminController::class, 'CategoryView'])->name('category.view');
     // Route::get('/categories/create', [AdminController::class, 'CategoryCreate'])->name('category.create');
     Route::post('/api/category/add', [AdminController::class, 'CategoryStore'])->name('category.store');
@@ -231,7 +232,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::patch('/api/product/{product}/rolls', [AdminController::class, 'syncProductRolls'])->name('product.rolls.sync');
     Route::post('/api/product/{product}/rolls/{roll}/default', [AdminController::class, 'setDefaultProductRoll'])->name('product.rolls.default');
     Route::delete('/api/product/{product}/rolls/{roll}', [AdminController::class, 'detachProductRoll'])->name('product.rolls.detach');
-    
+
     // Add more admin routes here
 });
 
