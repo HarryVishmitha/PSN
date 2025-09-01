@@ -254,32 +254,28 @@ Route::get('/test-estimate-pdf', function () {
         'items' => [
             [
                 'product_name' => 'Pull-up Banner',
-                'description' => 'Standard 2x6ft rollup banner with UV print',
-                'qty' => 2,
-                'unit' => 'pcs',
-                'unit_price' => 4500,
-                'base_price' => 4500,
-                'is_roll' => false,
-                'variants' => [
-                    [
-                        'variant_name' => 'Material',
-                        'variant_value' => 'Synthetic',
-                        'priceAdjustment' => 0,
-                        'subvariants' => [
-                            ['subvariant_name' => 'Thickness', 'subvariant_value' => '200gsm']
-                        ]
-                    ]
-                ]
+                'description'  => 'Standard 2x6ft rollup banner with UV print',
+                'qty'          => 2,
+                'unit'         => 'pcs',
+                'unit_price'   => 4500,
+                'base_price'   => 4500,
+                'is_roll'      => false,
+                'variants'     => [[
+                    'variant_name'   => 'Material',
+                    'variant_value'  => 'Synthetic',
+                    'priceAdjustment' => 0,
+                    'subvariants'    => [['subvariant_name' => 'Thickness', 'subvariant_value' => '200gsm']]
+                ]]
             ],
             [
                 'product_name' => 'Canvas Print',
-                'description' => '12"x18" wall-hanging canvas with wooden frame',
-                'qty' => 1,
-                'unit' => 'pcs',
-                'unit_price' => 3200,
-                'base_price' => 3200,
-                'is_roll' => false,
-                'variants' => [],
+                'description'  => '12"x18" wall-hanging canvas with wooden frame',
+                'qty'          => 1,
+                'unit'         => 'pcs',
+                'unit_price'   => 3200,
+                'base_price'   => 3200,
+                'is_roll'      => false,
+                'variants'     => [],
             ],
         ]
     ];
@@ -292,16 +288,62 @@ Route::get('/test-estimate-pdf', function () {
         'website' => 'printair.lk',
     ];
 
-    $dummyUser = (object)[
-        'name' => 'Thejan Vishmitha',
-    ];
+    $dummyUser = (object)['name' => 'Thejan Vishmitha'];
 
-    return Pdf::loadView('pdfs.estimate', [
-        'estimate'    => $dummyEstimate,
-        'userDetails' => $dummyUser,
-        'company'     => $dummyCompany,
-        'logoPath'    => public_path('images/printair-logo.png'), // optional
-    ])->stream('Test-Quotation.pdf');
+    // 1) Render the Blade to PDF
+    $pdf = Pdf::setOptions([
+        'isRemoteEnabled'    => true,   // allow file:/// and http(s) if needed
+        'isHtml5ParserEnabled' => true,
+    ])
+        ->loadView('pdfs.estimate', [
+            'estimate'    => $dummyEstimate,
+            'userDetails' => $dummyUser,
+            'company'     => $dummyCompany,
+            'logoPath'    => asset('assets/images/logo-full.png'),
+        ]);
+
+    // 2) Access Dompdf internals
+    $dompdf  = $pdf->getDomPDF();
+    $dompdf->render();
+
+    // 3) Build the repeating footer on every page
+    $canvas  = $dompdf->getCanvas();
+    $w       = $canvas->get_width();
+    $h       = $canvas->get_height();
+
+    $metrics = $dompdf->getFontMetrics();
+    // Try your embedded family; Dompdf will fall back if it’s not found.
+    $font    = method_exists($metrics, 'getFont')
+        ? $metrics->getFont('Be Vietnam Pro', 'normal')
+        : $metrics->get_font('Be Vietnam Pro', 'normal');
+
+    $size    = 9;
+
+    $left    = 'printair.lk';
+    $center  = 'Page {PAGE_NUM} of {PAGE_COUNT}';
+    $right   = 'System Approved';
+
+    // y-position ~ 10–12mm from bottom (adjust to taste)
+    $y = $h - 28; // Dompdf units are points; 28pt ≈ 9.9mm
+
+    // X positions
+    $leftX   = 22; // small padding from left
+    $centerX = ($w / 2) - ($metrics->getTextWidth($center, $font, $size) / 2);
+    $rightX  = $w - 22 - $metrics->getTextWidth($right, $font, $size);
+
+    // Brand color for left; muted gray for the others
+    $brand   = [0.957, 0.251, 0.196]; // #f44032
+    $muted   = [0.42,  0.45,  0.52];
+
+    $canvas->page_text($leftX,   $y, $left,   $font, $size, $brand);
+    $canvas->page_text($centerX, $y, $center, $font, $size, $muted);
+    $canvas->page_text($rightX,  $y, $right,  $font, $size, $muted);
+
+    // 4) Stream the already-rendered PDF (don’t trigger a 2nd render)
+    return response($dompdf->output(), 200, [
+        'Content-Type'        => 'application/pdf',
+        'Content-Disposition' => 'inline; filename="Test-Quotation.pdf"',
+    ]);
 });
 
 require __DIR__ . '/auth.php';
