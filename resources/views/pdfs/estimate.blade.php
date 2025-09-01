@@ -4,7 +4,8 @@ $money = fn($n) => 'LKR ' . number_format((float)($n ?? 0), 2);
 $isDraft = isset($estimate->status) && strtolower($estimate->status) === 'draft';
 
 // Fallbacks
-$company = $company ?? (object)[
+// Fallbacks
+$company = (object)[
     'name' => 'Printair Advertising',
     'address' => 'No. 67/D/1, Uggashena Road, Walpola, Ragama, Sri Lanka.',
     'phone' => '+94 76 886 0175',
@@ -12,11 +13,12 @@ $company = $company ?? (object)[
     'website' => 'www.printair.lk',
 ];
 
+
 $meta = (object)[
     'number' => $estimate->estimate_number ?? 'EST-YYYYMMDD-0001',
     'issue' => \Illuminate\Support\Str::of($estimate->issue_date ?? now()->toDateString())->toString(),
     'due' => \Illuminate\Support\Str::of($estimate->due_date ?? now()->addDays(14)->toDateString())->toString(),
-    'sales' => $userDetails->name ?? '—',
+    'sales' => $estimate->creator->name ?? '—',
     'po' => $estimate->po_number ?? null,
 ];
 
@@ -29,18 +31,18 @@ $client = (object)[
 ];
 
 // Totals (use your backend-calculated values if provided)
-$subtotal = collect($estimate->items ?? [])->sum(fn($i) => (float)$i['qty'] * (float)$i['unit_price']);
+$subtotal     = (float)($estimate->subtotal_amount ?? 0);
 $discountMode = $estimate->discount_mode ?? 'none';
-$discountVal = (float)($estimate->discount_value ?? 0);
-$discountAmt = $discountMode === 'percent' ? ($subtotal * min(100, max(0, $discountVal)) / 100.0) : ($discountMode === 'fixed' ? $discountVal : 0);
+$discountVal  = (float)($estimate->discount_value ?? 0);
+$discountAmt  = (float)($estimate->discount_amount ?? 0);
 
-$taxMode = $estimate->tax_mode ?? 'none';
-$taxVal = (float)($estimate->tax_value ?? 0);
-$taxBase = max(0, $subtotal - $discountAmt);
-$taxAmt = $taxMode === 'percent' ? ($taxBase * min(100, max(0, $taxVal)) / 100.0) : ($taxMode === 'fixed' ? $taxVal : 0);
+$taxMode      = $estimate->tax_mode ?? 'none';
+$taxVal       = (float)($estimate->tax_value ?? 0);
+$taxAmt       = (float)($estimate->tax_amount ?? 0);
 
-$shipping = (float)($estimate->shipping ?? 0);
-$grand = max(0, $taxBase + $taxAmt + $shipping);
+$shipping     = (float)($estimate->shipping_amount ?? 0);
+$grand        = (float)($estimate->total_amount ?? max(0, $subtotal - $discountAmt + $taxAmt + $shipping));
+
 
 // Optional QR code (base64 PNG). Provide $qrPng if you have one.
 // $qrPng = 'data:image/png;base64,'.base64_encode(\SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')->size(100)->generate(route('estimates.show', $estimate->id)));
@@ -543,7 +545,7 @@ $logoUrl = 'file:///' . str_replace('\\', '/', $logoPath); // or use base64 if y
         $__num = $meta->number ?? ($estimate->estimate_number ?? '—');
         $__issue = $meta->issue ?? ($estimate->issue_date ?? now()->toDateString());
         $__due = $meta->due ?? ($estimate->due_date ?? now()->addDays(14)->toDateString());
-        $__sales = $meta->sales ?? ($userDetails->name ?? '—');
+        $__sales = $meta->sales ?? ($estimate->creator->name ?? '—');
         $__po = $meta->po ?? ($estimate->po_number ?? null);
 
         $clientObj = isset($client) ? $client : (object)[
@@ -581,7 +583,7 @@ $logoUrl = 'file:///' . str_replace('\\', '/', $logoPath); // or use base64 if y
                     <td>
                         <div class="meta-box">
                             <div class="meta-label">Sales Rep</div>
-                            <div class="meta-value">{{ $__sales }}</div>
+                            <div class="meta-value">{{ $estimate->creator->name ?? '—' }}</div>
                         </div>
                     </td>
                 </tr>
@@ -645,54 +647,39 @@ $logoUrl = 'file:///' . str_replace('\\', '/', $logoPath); // or use base64 if y
                 <tbody>
                     @forelse(($estimate->items ?? []) as $i => $it)
                     @php
-                    $qty = (float)($it['qty'] ?? 0);
-                    $uprice= (float)($it['unit_price'] ?? 0);
-                    $line = $qty * $uprice;
-                    $isRoll= !empty($it['is_roll']);
-                    $name = $it['product_name'] ?? $it['description'] ?? 'Item';
+                    // $it is an Eloquent model (EstimateItem)
+                    $qty = (float)($it->quantity ?? 0);
+                    $uprice = (float)($it->unit_price ?? 0);
+                    $line = (float)($it->line_total ?? ($qty * $uprice));
+                    $isRoll = (bool)($it->is_roll ?? false);
+                    $name = $it->product->name ?? $it->description ?? 'Item';
                     @endphp
                     <tr>
                         <td>{{ $i+1 }}</td>
                         <td>
                             <div style="font-weight:600">{{ $name }}</div>
 
-                            {{-- extra info --}}
                             <div class="small-muted" style="margin-top:2px;">
                                 @if($isRoll)
                                 @php
-                                $w = $it['cut_width_in'] ?? null;
-                                $h = $it['cut_height_in'] ?? null;
-                                $size = $it['size'] ?? (($w && $h) ? ($w.'" × '.$h.'"') : null);
+                                $w = $it->cut_width_in ?? null;
+                                $h = $it->cut_height_in ?? null;
+                                $size = ($w && $h) ? (number_format($w,2).'" × '.number_format($h,2).'"') : null;
                                 @endphp
                                 @if($size) Size: {{ $size }} @endif
-                                @if(!empty($it['offcut_price_per_sqft'])) • Offcut: {{ $money($it['offcut_price_per_sqft']) }}/ft² @endif
-                                @else
-                                Base: {{ number_format((float)($it['base_price'] ?? 0), 2) }}
+                                @if(!is_null($it->offcut_price_per_sqft))
+                                • Offcut: {{ $money($it->offcut_price_per_sqft) }}/ft²
+                                @endif
                                 @endif
                             </div>
 
-                            {{-- variants as small badges --}}
-                            @if(!empty($it['variants']) && is_iterable($it['variants']))
-                            <div style="margin-top:2px;">
-                                @foreach($it['variants'] as $v)
-                                <span class="badge">{{ $v['variant_name'] ?? 'Var' }}: {{ $v['variant_value'] ?? '' }}</span>
-                                @if(!empty($v['subvariants']))
-                                @foreach($v['subvariants'] as $sv)
-                                <span class="badge">{{ $sv['subvariant_name'] ?? 'Sub' }}: {{ $sv['subvariant_value'] ?? '' }}</span>
-                                @endforeach
-                                @endif
-                                @endforeach
-                            </div>
-                            @endif
-
-                            {{-- free text desc --}}
-                            @if(!empty($it['description']))
-                            <div class="small-muted" style="margin-top:2px;">{{ $it['description'] }}</div>
+                            @if(!empty($it->description))
+                            <div class="small-muted" style="margin-top:2px;">{{ $it->description }}</div>
                             @endif
                         </td>
 
-                        <td class="text-right">{{ rtrim(rtrim(number_format($qty,2), '0'), '.') }}</td>
-                        <td>{{ $it['unit'] ?? '—' }}</td>
+                        <td class="text-right">{{ number_format($qty, 2) }}</td>
+                        <td>{{ $it->unit ?? '—' }}</td>
                         <td class="text-right">{{ $money($uprice) }}</td>
                         <td class="text-right">{{ $money($line) }}</td>
                     </tr>
@@ -718,7 +705,13 @@ $logoUrl = 'file:///' . str_replace('\\', '/', $logoPath); // or use base64 if y
                                     <li>Prices are in LKR and valid until {{ \Carbon\Carbon::parse($meta->due)->format('Y-m-d') }}.</li>
                                     <li>Lead time: 2–5 business days after confirmation &amp; payment.</li>
                                     <li>Color variance ±5% may occur due to print profiles.</li>
+                                    <li>All sales are final; no refunds or exchanges. (Because products are customized.)</li>
+                                    <li>The final decision of considering refunds or exchanges are in the company owner or the manager.</li>
+                                    <li>Product images are for illustrative purposes only and may differ from the actual product.</li>
+                                    <li>To start the printing process you need to pay at least 60% of the total amount. (Or the amount that admins or company personals asks.)</li>
                                     <li>Delivery available; shipping charges may apply.</li>
+                                    <li>Other company policies or T&C may applied.</li>
+                                    <li>Please contact us for any inquiries or clarifications.</li>
                                 </ul>
                             </div>
                         </div>
@@ -766,37 +759,108 @@ $logoUrl = 'file:///' . str_replace('\\', '/', $logoPath); // or use base64 if y
         <!-- ===== Payment Methods ===== -->
         <section class="section page-break-before">
             <div class="card mt-312as">
-                <h3>Payment Method — Bank Transfer</h3>
-                <table class="kv-table" style="margin-top:4px;">
-                    <tr>
-                        <td class="kv-k" style="width:140px;">Bank Name</td>
-                        <td>Commercial Bank of Ceylon PLC</td>
-                    </tr>
-                    <tr>
-                        <td class="kv-k">Branch</td>
-                        <td>Kadawatha Branch</td>
-                    </tr>
-                    <tr>
-                        <td class="kv-k">Account Name</td>
-                        <td>Printair Advertising</td>
-                    </tr>
-                    <tr>
-                        <td class="kv-k">Account Number</td>
-                        <td>123456789012</td>
-                    </tr>
-                    <tr>
-                        <td class="kv-k">SWIFT Code</td>
-                        <td>CCBL-LKLX</td>
-                    </tr>
-                </table>
+                @if(isset($payments) && count($payments))
+                <div style="margin-top: 18px;">
+                    <h4 style="margin-bottom: 8px;">Payment Methods</h4>
+                    @foreach($payments as $pm)
+                    <div style="margin-bottom: 10px;">
+                        <strong>{{ $pm['display_name'] }}</strong><br>
 
-                <div class="small-muted" style="margin-top:10px;">
-                    <strong>Note:</strong> After transferring, please send the receipt to <span style="color:var(--brand); font-weight:500;">finance@printair.lk</span> or WhatsApp <strong>+94 76 886 0175</strong> for order processing.
+                        @if($pm['bank_name'] || $pm['account_name'] || $pm['account_number'])
+                        <div>
+                            <div><strong>Bank:</strong> {{ $pm['bank_name'] ?? '—' }}</div>
+                            <div><strong>Branch:</strong> {{ $pm['branch'] ?? '—' }}</div>
+                            <div><strong>Account Name:</strong> {{ $pm['account_name'] ?? '—' }}</div>
+                            <div><strong>Account Number:</strong> {{ $pm['account_number'] ?? '—' }}</div>
+                            <div><strong>SWIFT Code:</strong> {{ $pm['swift'] ?? '—' }}</div>
+                        </div>
+                        @endif
+
+                        @if(!empty($pm['instructions']))
+                        <div style="margin-top: 4px;">{!! nl2br(e($pm['instructions'])) !!}</div>
+                        @endif
+
+                    </div>
+                    @endforeach
+                    <div style="margin-top: 0px;">
+                        <!-- Payment Confirmation (drop-in block) -->
+                        <div style="margin-top:12px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; padding:10px 12px;">
+                            <h3 style="margin:0 0 6px 0; font-size:12.5px; color:#111827;">Payment Confirmation</h3>
+                            <p style="margin:4px 0 8px 0; color:#374151; line-height:1.45;">
+                                After you make the transfer, please share your <strong>payment receipt</strong> so we can confirm your order and start production promptly.
+                            </p>
+
+                            <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                                <tr>
+                                    <td style="width:110px; color:#6b7280; padding:2px 0;">Email</td>
+                                    <td style="padding:2px 0;">
+                                        <a href="mailto:contact@printair.lk" style="color:#111827; text-decoration:none;">contact@printair.lk</a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280; padding:2px 0;">WhatsApp</td>
+                                    <td style="padding:2px 0;">
+                                        <a href="https://wa.me/94768860175" style="color:#111827; text-decoration:none;">+94 76 886 0175</a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div style="margin-top:8px; color:#6b7280; font-size:10.5px;">
+                                <div>Tips for faster processing:</div>
+                                <ul style="margin:6px 0 0 16px; padding:0;">
+                                    <li>Please include your <strong>Estimate No.</strong> (e.g., {{ $estimate->estimate_number ?? 'EST-XXXX' }}) in the message.</li>
+                                    <li>Attach a clear <strong>photo/PDF</strong> of the receipt (ensure the reference number is visible).</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
+                @endif
+
             </div>
         </section>
 
     </main>
+    {{-- Dompdf page numbers + footer text --}}
+    <script type="text/php">
+        if (isset($pdf)) {
+    // Margins (in points; Dompdf uses 72 pt/inch)
+    $marginX = 28; // ~10mm
+    $y = $pdf->get_height() - 24; // a bit above bottom edge
+
+    // Texts
+    $leftText   = "printair.lk";
+    $centerText = "Page {PAGE_NUM} of {PAGE_COUNT}";
+    $rightText  = "System Authorized";
+
+    // Font & size (fallback to Helvetica if custom font missing)
+    $font = $fontMetrics->getFont('Be Vietnam Pro', 'normal');
+    if (!$font) { $font = $fontMetrics->getFont('helvetica', 'normal'); }
+    $size = 9;
+
+    // Colors (black)
+    $color = [0,0,0];
+
+    // Canvas width
+    $w = $pdf->get_width();
+
+    // Measure widths
+    $leftW   = $fontMetrics->getTextWidth($leftText,   $font, $size);
+    $centerW = $fontMetrics->getTextWidth($centerText, $font, $size);
+    $rightW  = $fontMetrics->getTextWidth($rightText,  $font, $size);
+
+    // X positions
+    $leftX   = $marginX;
+    $centerX = ($w - $centerW) / 2;
+    $rightX  = $w - $marginX - $rightW;
+
+    // Draw
+    $pdf->page_text($leftX,   $y, $leftText,   $font, $size, $color);
+    $pdf->page_text($centerX, $y, $centerText, $font, $size, $color);
+    $pdf->page_text($rightX,  $y, $rightText,  $font, $size, $color);
+}
+</script>
 
 </body>
 

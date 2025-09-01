@@ -63,6 +63,7 @@ use Illuminate\Database\QueryException;
 use Throwable;
 use App\Http\Requests\Admin\SyncProductRollsRequest;
 use Illuminate\Support\Facades\Validator;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class AdminController extends Controller
 {
@@ -3056,225 +3057,281 @@ class AdminController extends Controller
 
     public function storeEstimate(Request $request)
     {
-        // 1) Validate incoming shape (kept close to yours, tightened a bit)
+        // 0) Validate input to match AddE.jsx payload (and your previous rules)
         $data = $request->validate([
-            'estimate_number'        => ['required', 'string', 'max:64'],
-            'working_group_id'       => ['required', 'integer', 'exists:working_groups,id'],
-            'client_id'              => ['required', 'integer'],
-            'client_name'            => ['required', 'string', 'max:255'],
-            'client_address'         => ['nullable', 'string'],
-            'client_phone'           => ['nullable', 'string', 'max:64'],
-            'client_email'           => ['nullable', 'email', 'max:255'],
-            'client_type'            => ['required', 'in:system,daily'],
-            'issue_date'             => ['required', 'date'],
-            'due_date'               => ['required', 'date', 'after_or_equal:issue_date'],
-            'notes'                  => ['nullable', 'string'],
-            'po_number'              => ['nullable', 'string', 'max:128'],
-            'shipment_id'            => ['nullable', 'string', 'max:128'],
-            'discount_amount'        => ['nullable', 'numeric', 'min:0'],
-            'tax_amount'             => ['nullable', 'numeric', 'min:0'],
-            'action'                 => ['required', 'in:draft,publish,download,print,expire'],
-            'items'                  => ['required', 'array', 'min:1'],
+            'estimate_number'  => ['required', 'string', 'max:64'],
+            'working_group_id' => ['required', 'integer', 'exists:working_groups,id'],
 
-            'items.*.product_id'     => ['required', 'integer', 'exists:products,id'],
-            'items.*.description'    => ['required', 'string'],
-            'items.*.qty'            => ['required', 'numeric', 'min:1'],
-            'items.*.unit'           => ['required', 'string', 'max:32'],
-            'items.*.unit_price'     => ['nullable', 'numeric', 'min:0'], // server recomputes for roll
+            // client snapshot
+            'client_id'        => ['required', 'integer'],
+            'client_name'      => ['required', 'string', 'max:255'],
+            'client_address'   => ['nullable', 'string'],
+            'client_phone'     => ['nullable', 'string', 'max:64'],
+            'client_email'     => ['nullable', 'email', 'max:255'],
+            'client_type'      => ['required', 'in:system,daily'],
 
-            'items.*.roll_id'                => ['nullable', 'integer', 'exists:rolls,id'],
+            // dates & meta
+            'issue_date'       => ['required', 'date'],
+            'due_date'         => ['required', 'date', 'after_or_equal:issue_date'],
+            'po_number'        => ['nullable', 'string', 'max:128'],
+            'shipment_id'      => ['nullable', 'string', 'max:128'],
+            'notes'            => ['nullable', 'string'],  // internal notes (UI "Internal Notes")
+
+            // totals config from UI (server stays authoritative)
+            'discount_mode'    => ['required', 'in:none,fixed,percent'],
+            'discount_value'   => ['nullable', 'numeric', 'min:0'],
+            'tax_mode'         => ['required', 'in:none,fixed,percent'],
+            'tax_value'        => ['nullable', 'numeric', 'min:0'],
+            'shipping'         => ['nullable', 'numeric', 'min:0'],
+
+            // action & items
+            'action'           => ['required', 'in:draft,publish,download,print,expire'],
+            'items'            => ['required', 'array', 'min:1'],
+
+            'items.*.product_id'    => ['required', 'integer', 'exists:products,id'],
+            'items.*.description'   => ['nullable', 'string'],
+            'items.*.qty'           => ['required', 'numeric', 'min:1'],
+            'items.*.unit'          => ['required', 'string', 'max:32'],
+            'items.*.unit_price'    => ['nullable', 'numeric', 'min:0'],
+
             'items.*.is_roll'                => ['boolean'],
+            'items.*.roll_id'                => ['nullable', 'integer', 'exists:rolls,id'],
             'items.*.cut_width_in'           => ['nullable', 'numeric', 'min:0'],
             'items.*.cut_height_in'          => ['nullable', 'numeric', 'min:0'],
             'items.*.offcut_price_per_sqft'  => ['nullable', 'numeric', 'min:0'],
 
-            'items.*.variant_id'     => ['nullable', 'integer', 'exists:product_variants,id'],
-            'items.*.subvariant_id'  => ['nullable', 'integer', 'exists:product_subvariants,id'],
+            'items.*.variant_id'     => ['nullable', 'integer'],
+            'items.*.subvariant_id'  => ['nullable', 'integer'],
         ]);
 
         DB::beginTransaction();
         try {
-            // 2) Create estimate shell
             $isPublished = in_array($data['action'], ['publish', 'download', 'print'], true);
 
-            $estimate = Estimate::create([
-                'estimate_number'      => $data['estimate_number'],
-                'working_group_id'     => $data['working_group_id'],
-                'customer_type'        => $data['client_type'] === 'system'
-                    ? User::class
-                    : DailyCustomer::class,
-                'customer_id'          => $data['client_id'],
-                'status'               => $isPublished ? 'published' : 'draft',
-                'valid_from'           => $data['issue_date'],
-                'valid_to'             => $data['due_date'],
-                'po_number'            => $data['po_number'] ?? null,
-                'billing_address_id'   => null, // Keep null unless you create Address below
-                'notes'                => $data['notes'] ?? null,
-                'subtotal_amount'      => 0,
-                'discount_amount'      => (float)($data['discount_amount'] ?? 0),
-                'tax_amount'           => (float)($data['tax_amount'] ?? 0),
-                'total_amount'         => 0,
-                'created_by'           => Auth::id(),
-                'published_at'         => $isPublished ? now() : null,
+            // 1) Create header (with client snapshot + money modes)
+            $estimate = \App\Models\Estimate::create([
+                'estimate_number'    => $data['estimate_number'],
+                'working_group_id'   => $data['working_group_id'],
+                'customer_type'      => $data['client_type'] === 'system'
+                    ? \App\Models\User::class
+                    : \App\Models\DailyCustomer::class,
+                'customer_id'        => $data['client_id'],
+                'status'             => $isPublished ? 'published' : 'draft',
+                'valid_from'         => $data['issue_date'],
+                'valid_to'           => $data['due_date'],
+                'po_number'          => $data['po_number'] ?? null,
+                'billing_address_id' => null,
+                'internal_notes'     => $data['notes'] ?? null, // internal notes
+                'subtotal_amount'    => 0,
+                'discount_amount'    => 0,
+                'tax_amount'         => 0,
+                'total_amount'       => 0,
+                'created_by'         => Auth::id(),
+                'published_at'       => $isPublished ? now() : null,
+
+                // snapshot & modes (new columns)
+                'client_name'        => $data['client_name'],
+                'client_email'       => $data['client_email'] ?? null,
+                'client_phone'       => $data['client_phone'] ?? null,
+                'client_address'     => $data['client_address'] ?? null,
+
+                'discount_mode'      => $data['discount_mode'],
+                'discount_value'     => (float)($data['discount_value'] ?? 0),
+                'tax_mode'           => $data['tax_mode'],
+                'tax_value'          => (float)($data['tax_value'] ?? 0),
+                'shipping_amount'    => (float)($data['shipping'] ?? 0),
             ]);
 
-            // 3) Line items — authoritative pricing for roll items
+            // 2) Persist items + compute authoritative subtotal
             $subtotal = 0.0;
 
             foreach ($data['items'] as $idx => $item) {
-                /** @var Product $product */
-                $product = Product::findOrFail($item['product_id']);
-                $qty     = (float) $item['qty'];
+                /** @var \App\Models\Product $product */
+                $product = \App\Models\Product::findOrFail($item['product_id']);
+                $qty     = (float)$item['qty'];
                 $isRoll  = !empty($item['is_roll']);
 
                 if ($isRoll) {
-                    // 3a) Validate roll compatibility on the server
-                    $roll = Roll::findOrFail((int)$item['roll_id']);
+                    /** @var \App\Models\Roll $roll */
+                    $roll = \App\Models\Roll::findOrFail((int)$item['roll_id']);
 
+                    // Compatibility check if you maintain a pivot product_rolls
                     $compatible = DB::table('product_rolls')
                         ->where('product_id', $product->id)
                         ->where('roll_id', $roll->id)
                         ->exists();
 
                     if (!$compatible) {
-                        throw ValidationException::withMessages([
+                        throw \Illuminate\Validation\ValidationException::withMessages([
                             "items.$idx.roll_id" => "Selected roll is not compatible with the product.",
                         ]);
                     }
 
-                    // 3b) Geometry in inches → convert to feet only for area
                     $w_in = (float) ($item['cut_width_in'] ?? 0);
                     $h_in = (float) ($item['cut_height_in'] ?? 0);
-
                     if ($w_in <= 0 || $h_in <= 0) {
-                        throw ValidationException::withMessages([
+                        throw \Illuminate\Validation\ValidationException::withMessages([
                             "items.$idx.cut_width_in"  => "Width and height must be greater than zero.",
                             "items.$idx.cut_height_in" => "Width and height must be greater than zero.",
                         ]);
                     }
 
-                    // Ensure customer width does not exceed roll width (all in inches)
-                    $rollW_in = (float) $roll->roll_width * 12; // already inches
+                    // roll width: DB typically stores in feet; adjust if yours is inches already
+                    $rollW_in = (float) ($roll->roll_width * 12);
                     if ($w_in > $rollW_in) {
-                        throw ValidationException::withMessages([
+                        throw \Illuminate\Validation\ValidationException::withMessages([
                             "items.$idx.cut_width_in" => "Width {$w_in}\" exceeds roll width {$rollW_in}\".",
                         ]);
                     }
 
-                    // Areas (ft²)
+                    // areas in ft²
                     $w_ft = $w_in / 12.0;
                     $h_ft = $h_in / 12.0;
-
                     $fixedAreaFt2  = $w_ft * $h_ft;
                     $offcut_in     = max($rollW_in - $w_in, 0.0);
                     $offcutAreaFt2 = ($offcut_in / 12.0) * $h_ft;
 
-                    // Pricing
-                    $pricePerSqFt       = (float) $product->price_per_sqft;             // product’s own base
+                    $pricePerSqFt       = (float) $product->price_per_sqft;
                     $offcutPricePerSqFt = (float) ($item['offcut_price_per_sqft'] ?? $roll->offcut_price);
 
-                    $areaPrice   = $fixedAreaFt2  * $pricePerSqFt;
-                    $offcutPrice = $offcutAreaFt2 * $offcutPricePerSqFt;
-                    $unitPrice   = round($areaPrice + $offcutPrice, 2);
-                    $lineTotal   = round($unitPrice * $qty, 2);
-                    $subtotal   += $lineTotal;
+                    $unitPrice = round(($fixedAreaFt2 * $pricePerSqFt) + ($offcutAreaFt2 * $offcutPricePerSqFt), 2);
+                    $lineTotal = round($unitPrice * $qty, 2);
+                    $subtotal += $lineTotal;
 
                     $estimate->items()->create([
-                        'product_id'             => $product->id,
-                        'variant_id'             => $item['variant_id']     ?? null,
-                        'subvariant_id'          => $item['subvariant_id']  ?? null,
-                        'description'            => $item['description'],
-                        'quantity'               => $qty,
-                        'unit_price'             => $unitPrice,
-                        'line_total'             => $lineTotal,
-                        'roll_id'                => $roll->id,
-                        'is_roll'                => 1,
-                        'cut_width_in'           => $w_in,
-                        'cut_height_in'          => $h_in,
-                        'offcut_price_per_sqft'  => $offcutPricePerSqFt,
-                        'unit'                   => $item['unit'] ?? 'sq.ft',
+                        'product_id'            => $product->id,
+                        'variant_id'            => $item['variant_id']    ?? null,
+                        'subvariant_id'         => $item['subvariant_id'] ?? null,
+                        'description'           => $item['description']   ?? '',
+                        'quantity'              => $qty,
+                        'unit'                  => $item['unit'] ?? 'sq.ft',
+                        'unit_price'            => $unitPrice,
+                        'line_total'            => $lineTotal,
+                        'is_roll'               => true,
+                        'roll_id'               => $roll->id,
+                        'cut_width_in'          => $w_in,
+                        'cut_height_in'         => $h_in,
+                        'offcut_price_per_sqft' => $offcutPricePerSqFt,
                     ]);
                 } else {
-                    // 3c) Standard product line; accept client unit_price but ensure >= 0
                     $unitPrice = isset($item['unit_price'])
                         ? max(0, (float)$item['unit_price'])
-                        : (float) $product->price;
+                        : (float) ($product->price ?? 0);
 
                     $lineTotal = round($qty * $unitPrice, 2);
                     $subtotal += $lineTotal;
 
                     $estimate->items()->create([
                         'product_id'    => $product->id,
-                        'variant_id'    => $item['variant_id']     ?? null,
-                        'subvariant_id' => $item['subvariant_id']  ?? null,
-                        'description'   => $item['description'],
+                        'variant_id'    => $item['variant_id']    ?? null,
+                        'subvariant_id' => $item['subvariant_id'] ?? null,
+                        'description'   => $item['description']   ?? '',
                         'quantity'      => $qty,
+                        'unit'          => $item['unit'] ?? ($product->unit_of_measure ?? 'unit'),
                         'unit_price'    => $unitPrice,
                         'line_total'    => $lineTotal,
-                        'roll_id'       => null,
-                        'is_roll'       => 0,
-                        'unit'          => $item['unit'],
+                        'is_roll'       => false,
                     ]);
                 }
             }
 
-            // 4) Totals (non-negative guard for discount/tax)
-            $discount = max(0, (float)($data['discount_amount'] ?? 0));
-            $tax      = max(0, (float)($data['tax_amount'] ?? 0));
-            $grand    = round($subtotal - $discount + $tax, 2);
+            // 3) Totals using modes (server authoritative)
+            $discount = match ($data['discount_mode']) {
+                'fixed'   => max(0, (float)($data['discount_value'] ?? 0)),
+                'percent' => max(0, min(100, (float)($data['discount_value'] ?? 0))) * $subtotal / 100,
+                default   => 0,
+            };
+            $taxBase = max(0, $subtotal - $discount);
+            $tax     = match ($data['tax_mode']) {
+                'fixed'   => max(0, (float)($data['tax_value'] ?? 0)),
+                'percent' => max(0, min(100, (float)($data['tax_value'] ?? 0))) * $taxBase / 100,
+                default   => 0,
+            };
+            $shipping = (float)($data['shipping'] ?? 0);
+            $grand    = round(max(0, $taxBase + $tax + $shipping), 2);
 
             $estimate->update([
                 'subtotal_amount' => round($subtotal, 2),
-                'discount_amount' => $discount,
-                'tax_amount'      => $tax,
+                'discount_amount' => round($discount, 2),
+                'tax_amount'      => round($tax, 2),
                 'total_amount'    => $grand,
             ]);
 
-            // 5) Next estimate number (same logic family as yours, but returns EST-YYYYMMDD-####)
-            $today = now()->format('Ymd');
-            $lastToday = Estimate::where('estimate_number', 'like', "EST-$today-%")
-                ->orderBy('id', 'desc')
-                ->first();
-
-            $nextSuffix = 1600;
-            if ($lastToday) {
-                // get numeric suffix after last dash
-                $parts = explode('-', $lastToday->estimate_number);
-                $lastSuffix = (int) end($parts);
-                $nextSuffix = $lastSuffix + 1;
-            }
-            $nextEstimateNumber = sprintf('EST-%s-%d', $today, $nextSuffix);
-
-            ActivityLog::create([
-                'user_id'     => auth::id(),
-                'action_type' => 'estimate_added',
-                'description' => 'Admin added estimate: ' . $data['estimate_number'],
+            // 4) Write changelog entry (created)
+            DB::table('estimate_logs')->insert([
+                'estimate_id' => $estimate->id,
+                'actor_id'    => Auth::id(),
+                'type'        => 'created',
+                'from_status' => null,
+                'to_status'   => $estimate->status,
+                'payload'     => json_encode([
+                    'subtotal' => $subtotal,
+                    'discount' => $discount,
+                    'tax' => $tax,
+                    'shipping' => $shipping,
+                    'client' => [
+                        'name' => $estimate->client_name,
+                        'email' => $estimate->client_email,
+                        'phone' => $estimate->client_phone
+                    ],
+                ]),
                 'ip_address'  => $request->ip(),
+                'created_at'  => now(),
+                'updated_at'  => now(),
             ]);
+
+            // 5) Next estimate number (race‑safe with lock)
+            $nextEstimateNumber = (function () {
+                $today = now()->format('Ymd');
+                $last = \App\Models\Estimate::where('estimate_number', 'like', "EST-$today-%")
+                    ->lockForUpdate()
+                    ->orderByDesc('id')
+                    ->first();
+                $next = 1600;
+                if ($last) {
+                    $parts = explode('-', $last->estimate_number);
+                    $suffix = (int) end($parts);
+                    $next = $suffix + 1;
+                }
+                return sprintf('EST-%s-%d', $today, $next);
+            })();
+
+            $pdfUrl = null;
+            if (in_array($data['action'], ['download', 'print'])) {
+                try {
+                    $pdfUrl = app(EstimatePdfService::class)->generate($estimate->id, true);
+                } catch (\Throwable $e) {
+                    Log::error('PDF generation failed', ['error' => $e->getMessage()]);
+                }
+            }
+
+            // open pdfurl in new window
+            
+
+            // 7) Activity log (optional, if you use it elsewhere)
+            try {
+                \App\Models\ActivityLog::create([
+                    'user_id'     => Auth::id(),
+                    'action_type' => 'estimate_added',
+                    'description' => 'Admin added estimate: ' . $data['estimate_number'],
+                    'ip_address'  => $request->ip(),
+                ]);
+            } catch (\Throwable $e) {
+                // keep silent; not critical
+            }
 
             DB::commit();
 
-            // (Optional) generate PDF only when requested
-            $pdfUrl = null;
-            // if (in_array($data['action'], ['download','print'], true)) {
-            //     /** @var EstimatePdfService $pdf */
-            //     $pdf = app(EstimatePdfService::class);
-            //     $pdfUrl = $pdf->generate($estimate->id, true);
-            // }
-
             return response()->json([
-                'msgtype'               => 'success',
-                'message'               => 'Estimate saved successfully.',
-                'download_url'          => $pdfUrl,
-                'estimate_id'           => $estimate->id,
-                'next_estimate_number'  => $nextEstimateNumber,
+                'msgtype'            => 'success',
+                'message'            => 'Estimate saved successfully.',
+                'download_url'       => $pdfUrl,             // opened by UI for download/print
+                'id'                 => $estimate->id,            // UI expects `id`
+                'nextEstimateNumber' => $nextEstimateNumber,      // UI expects camelCase
             ], 200);
-        } catch (ValidationException $ve) {
+        } catch (\Illuminate\Validation\ValidationException $ve) {
             DB::rollBack();
-            Log::warning('storeEstimate validation failed', [
-                'errors' => $ve->errors(),
-                'payload' => $request->all(),
-            ]);
+            Log::warning('storeEstimate validation failed', ['errors' => $ve->errors()]);
             return response()->json([
                 'msgtype' => 'error',
                 'message' => 'Please fix the highlighted errors.',
@@ -3282,16 +3339,14 @@ class AdminController extends Controller
             ], 422);
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('storeEstimate failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::error('storeEstimate failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
                 'msgtype' => 'error',
                 'message' => 'Failed to save estimate. Please try again.',
             ], 500);
         }
     }
+
 
     public function previewEstimate(Estimate $estimate)
     {

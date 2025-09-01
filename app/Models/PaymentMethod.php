@@ -51,4 +51,5 @@ class PaymentMethod extends Model
     public static function lockedImmutableFields(): array {
         return ['code','type','flow'];
     }
+    public function scopeStaticOrManual($q) { return $q->whereIn('type', ['static','manual']); }
 }
