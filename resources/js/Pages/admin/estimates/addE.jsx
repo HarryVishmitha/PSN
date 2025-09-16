@@ -457,6 +457,19 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
         if (!selectedProduct) return;
         const isRoll = selectedProduct.pricing_method === 'roll';
 
+        if (isRoll) {
+            if (!selectedRollId) {
+                setAlert({ type: 'danger', message: 'Please choose a roll for this product.' });
+                return;
+            }
+            // optionally ensure the chosen roll is among boundRolls
+            const chosen = boundRolls.find(r => String(r.id) === String(selectedRollId));
+            if (!chosen) {
+                setAlert({ type: 'danger', message: 'Selected roll is not bound to this product.' });
+                return;
+            }
+        }
+
         // validation: fixed width cannot exceed roll width (both in inches)
         const rollWidthInches = Number(modalForm.rollSizeInches * 12) || 0;
         if (isRoll && Number(modalForm.fixedWidthIn) > rollWidthInches) {
@@ -596,6 +609,41 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             setLoading(false);
         }
     };
+
+    // Rolls that are bound to the selected product (try several common shapes)
+    const boundRolls = useMemo(() => {
+        if (!selectedProduct) return [];
+        const pid = String(selectedProduct.id);
+
+        return (rolls || []).filter((r) => {
+            // common patterns your backend might send
+            if (r.product_id) return String(r.product_id) === pid;                 // single foreign key
+            if (Array.isArray(r.product_ids)) return r.product_ids.map(String).includes(pid); // array of ids
+            if (Array.isArray(r.products)) return r.products.some(p => String(p.id) === pid); // joined objects
+            // fallback (if no binding info at all, show nothing to avoid mistakes)
+            return false;
+        });
+    }, [rolls, selectedProduct]);
+
+    useEffect(() => {
+        if (!selectedProduct || selectedProduct.pricing_method !== 'roll') return;
+
+        // reset when product changes
+        setSelectedRollId(null);
+
+        if (boundRolls.length === 1) {
+            const only = boundRolls[0];
+            setSelectedRollId(only.id);
+            const inches = parseRollWidthToInches(only);
+            setModalForm(m => ({
+                ...m,
+                rollSizeInches: inches,
+                // prime offcut rate if present on the roll
+                pricePerOffcutSqFt: (only?.offcut_price ?? m.pricePerOffcutSqFt ?? 0),
+            }));
+        }
+    }, [selectedProduct, boundRolls]);
+
 
     /* ------------------------------------------------------------
        UI
@@ -1233,25 +1281,28 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
                                                 className="form-select"
                                                 value={selectedRollId || ''}
                                                 onChange={(e) => {
-                                                    const roll = rolls.find(r => String(r.id) === String(e.target.value));
+                                                    const roll = boundRolls.find(r => String(r.id) === String(e.target.value));
                                                     setSelectedRollId(roll?.id ?? null);
                                                     const inches = parseRollWidthToInches(roll); // normalize to inches
                                                     setModalForm(m => ({
                                                         ...m,
                                                         rollSizeInches: inches,
-                                                        // default offcut if provided by roll
                                                         pricePerOffcutSqFt: roll?.offcut_price ?? m.pricePerOffcutSqFt ?? 0,
                                                     }));
                                                 }}
+                                                disabled={!boundRolls.length}
                                             >
-                                                <option value="">— Select —</option>
-                                                {rolls.map(r => (
+                                                <option value="">
+                                                    {boundRolls.length ? '— Select —' : 'No rolls bound to this product'}
+                                                </option>
+                                                {boundRolls.map(r => (
                                                     <option key={r.id} value={r.id}>
                                                         {`${r.roll_type} (${r.roll_size || r.roll_width}" ) — LKR${Number(r.price_rate_per_sqft).toFixed(2)}/ft²`}
                                                     </option>
                                                 ))}
                                             </select>
                                         </div>
+
 
                                         <div className="tw-grid tw-grid-cols-2 tw-gap-2">
                                             <div>
