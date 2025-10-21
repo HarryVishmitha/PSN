@@ -41,8 +41,11 @@ class EstimatePdfService
 
         if ($save) {
             Storage::disk('public')->put($path, $pdf->output());
+            // Return absolute URL using APP_URL from .env
+            // return config('app.url') . Storage::url($path);
             return Storage::url($path);
         }
+
 
         return $pdf->download($filename);
     }

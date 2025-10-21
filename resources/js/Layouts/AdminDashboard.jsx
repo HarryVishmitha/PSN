@@ -409,6 +409,34 @@ const AdminDashboard = ({ children, userDetails }) => {
                                 </ul>
                             </li>
 
+                            {/* Offers */}
+                            <li className='dropdown'>
+                                <Link href={route('admin.offers.index')}>
+                                    <Icon icon='mdi:tag-multiple-outline' className='menu-icon' alt='offers' />
+                                    <span>Offers</span>
+                                </Link>
+                                <ul className='sidebar-submenu'>
+                                    <li>
+                                        <Link
+                                            href={route('admin.offers.create')}
+                                            className={url === '/admin/offers/create' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-success-600 w-auto' />{" "}
+                                            Create New Offer
+                                        </Link>
+                                    </li>
+                                    <li>
+                                        <Link
+                                            href={route('admin.offers.index')}
+                                            className={url === '/admin/offers' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
+                                            All Offers
+                                        </Link>
+                                    </li>
+                                </ul>
+                            </li>
+
                             <li className='dropdown'>
                                 <Link href={route('admin.siteSettings')}>
                                     <Icon icon='material-symbols:settings-outline' className='menu-icon tw-text-red-500' alt='designs' />

@@ -20,7 +20,7 @@ import axios from 'axios'
 import ProductCard from '@/Components/ProductCard';
 
 
-const Home = () => {
+const Home = ({ offers = [] }) => {
 
     const [theme, setTheme] = useState('light');
     const containerRef = useRef(null);
@@ -757,7 +757,7 @@ const Home = () => {
             {/*  */}
             {/*  */}
             {/* Offers / Promotions */}
-            <Offers />
+            {offers && offers.length > 0 && <Offers offers={offers} />}
 
 
             {/*  */}

@@ -613,15 +613,15 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     // Rolls that are bound to the selected product (try several common shapes)
     const boundRolls = useMemo(() => {
         if (!selectedProduct) return [];
-        const pid = String(selectedProduct.id);
+        
+        // The product has roll_ids array from the backend
+        const productRollIds = selectedProduct.roll_ids || [];
+        if (!productRollIds.length) return [];
 
+        // Filter rolls that match the product's roll_ids
         return (rolls || []).filter((r) => {
-            // common patterns your backend might send
-            if (r.product_id) return String(r.product_id) === pid;                 // single foreign key
-            if (Array.isArray(r.product_ids)) return r.product_ids.map(String).includes(pid); // array of ids
-            if (Array.isArray(r.products)) return r.products.some(p => String(p.id) === pid); // joined objects
-            // fallback (if no binding info at all, show nothing to avoid mistakes)
-            return false;
+            const rollId = String(r.id);
+            return productRollIds.map(String).includes(rollId);
         });
     }, [rolls, selectedProduct]);
 

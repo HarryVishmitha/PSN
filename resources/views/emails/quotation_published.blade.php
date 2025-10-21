@@ -1,39 +1,4 @@
-@php
-$estimate = (object) [
-    'estimate_number' => 'QTN-2023-001',
-    'client_name' => 'John Doe',
-    'issue_date' => '2023-10-01',
-    'due_date' => '2023-10-15',
-    'subtotal_amount' => 100000,
-    'discount_amount' => 5000,
-    'tax_amount' => 15000,
-    'shipping' => 2000,
-    'total_amount' => 112000,
-    'items' => [
-        [
-            'product_name' => 'Business Cards',
-            'description' => 'Premium quality business cards',
-            'qty' => 500,
-            'unit' => 'pcs',
-            'unit_price' => 20,
-            'is_roll' => false,
-            'size' => null,
-        ],
-        [
-            'product_name' => 'Roll-up Banners',
-            'description' => 'High-quality roll-up banners',
-            'qty' => 2,
-            'unit' => 'units',
-            'unit_price' => 7500,
-            'is_roll' => true,
-            'size' => '2x6 ft',
-        ],
-    ],
-];
-$viewUrl = 'https://example.com/quotation/view/QTN-2023-001';
-$downloadUrl = 'https://example.com/quotation/download/QTN-2023-001';
-$companyPhone = '+94 76 886 0175';
-@endphp
+{{-- Variables passed from QuotationPublished Mailable: $estimate, $viewUrl, $downloadUrl, $companyPhone --}}
 
 <!DOCTYPE html>
 <html lang="en" style="margin:0;padding:0;">
@@ -145,25 +110,25 @@ $companyPhone = '+94 76 886 0175';
                   </tr>
                 </thead>
                 <tbody>
-                  @foreach($estimate->items as $it)
+                  @foreach($estimate->items as $item)
                   <tr style="transition: background-color 0.2s ease;">
                     <td style="padding:14px 16px;border-top:1px solid #e5e7eb;background-color:#ffffff;">
-                      <div style="font-weight:600;color:#111827;font-size:14px;">{{ $it['product_name'] ?? 'Item' }}</div>
-                      @if(!empty($it['description']))
-                        <div style="color:#6b7280;font-size:13px;margin-top:3px;">{{ $it['description'] }}</div>
+                      <div style="font-weight:600;color:#111827;font-size:14px;">{{ $item->product->name ?? 'Item' }}</div>
+                      @if(!empty($item->description))
+                        <div style="color:#6b7280;font-size:13px;margin-top:3px;">{{ $item->description }}</div>
                       @endif
-                      @if(!empty($it['is_roll']) && !empty($it['size']))
-                        <div style="color:#6b7280;font-size:13px;margin-top:3px;">Size: {{ $it['size'] }}</div>
+                      @if($item->is_roll && $item->cut_width_in && $item->cut_height_in)
+                        <div style="color:#6b7280;font-size:13px;margin-top:3px;">Size: {{ $item->cut_width_in }}" × {{ $item->cut_height_in }}"</div>
                       @endif
                     </td>
                     <td align="center" style="padding:14px 16px;border-top:1px solid #e5e7eb;color:#111827;background-color:#ffffff;font-size:14px;">
-                      {{ (int)($it['qty'] ?? 1) }}
+                      {{ (int)($item->quantity ?? 1) }}
                     </td>
                     <td align="right" style="padding:14px 16px;border-top:1px solid #e5e7eb;color:#111827;background-color:#ffffff;font-size:14px;">
-                      {{ $it['unit'] ?? '-' }}
+                      {{ $item->unit ?? '-' }}
                     </td>
                     <td align="right" style="padding:14px 16px;border-top:1px solid #e5e7eb;color:#111827;background-color:#ffffff;font-size:14px;font-weight:600;">
-                      LKR {{ number_format( (float)($it['qty'] ?? 0) * (float)($it['unit_price'] ?? 0), 2) }}
+                      LKR {{ number_format($item->line_total, 2) }}
                     </td>
                   </tr>
                   @endforeach
@@ -198,7 +163,7 @@ $companyPhone = '+94 76 886 0175';
                 <tr>
                   <td style="padding:6px 0;color:#4b5563;font-size:14px;">Shipping</td>
                   <td align="right" style="padding:6px 0;color:#111827;font-size:14px;font-weight:500;">
-                    LKR {{ number_format($estimate->shipping ?? 0, 2) }}
+                    LKR {{ number_format($estimate->shipping_amount ?? 0, 2) }}
                   </td>
                 </tr>
                 <tr>

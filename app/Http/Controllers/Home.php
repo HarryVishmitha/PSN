@@ -22,10 +22,22 @@ class Home extends Controller
 {
     public function index()
     {
+        // Get active offers
+        $offers = \App\Models\Offer::where('status', 'active')
+            ->where('start_date', '<=', now())
+            ->where('end_date', '>=', now())
+            ->whereHas('workingGroups', function ($query) {
+                $query->where('name', 'public');
+            })
+            ->with(['products:id,name', 'workingGroups:id,name'])
+            ->latest()
+            ->take(10)
+            ->get();
 
         return Inertia::render('Home', [
             'canLogin' => Route::has('login'),
-            'canRegister' => Route::has('register')
+            'canRegister' => Route::has('register'),
+            'offers' => $offers
         ]);
     }
 
@@ -722,5 +734,45 @@ class Home extends Controller
             ->get();
 
         return response()->json($designs);
+    }
+
+    // ==================== OFFERS ====================
+
+    public function activeOffers()
+    {
+        $offers = \App\Models\Offer::where('status', 'active')
+            ->where('start_date', '<=', now())
+            ->where('end_date', '>=', now())
+            ->with(['products' => function ($q) {
+                $q->select('products.id', 'products.name', 'products.slug')
+                    ->where('status', 'published')
+                    ->whereHas('workingGroup', function ($wg) {
+                        $wg->whereRaw('LOWER(name) = ?', ['public']);
+                    });
+            }])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json($offers);
+    }
+
+    public function offerDetail($id, $name = null)
+    {
+        $offer = \App\Models\Offer::where('id', $id)
+            ->with(['products.images', 'products.categories'])
+            ->firstOrFail();
+
+        // Filter products to only show published and public
+        $offer->setRelation('products', $offer->products->filter(function ($product) {
+            return $product->status === 'published'
+                && $product->workingGroup
+                && strtolower($product->workingGroup->name) === 'public';
+        }));
+
+        return Inertia::render('OfferView', [
+            'offer' => $offer,
+            'canLogin' => Route::has('login'),
+            'canRegister' => Route::has('register'),
+        ]);
     }
 }

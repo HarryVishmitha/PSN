@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Icon } from '@iconify/react';
+import { Link } from '@inertiajs/react';
 import AOS from 'aos';
 
 const getTimeRemaining = (endTime) => {
@@ -11,62 +12,14 @@ const getTimeRemaining = (endTime) => {
     return { total, days, hours, minutes, seconds };
 };
 
-const LimitedOffers = () => {
-    const offers = [
-        {
-            id: 1,
-            title: 'Custom Mug Offer',
-            desc: 'Get 10% off on all custom mugs!',
-            image: 'https://picsum.photos/300/200?random=1',
-            discount: '10% OFF',
-            oldPrice: 1500,
-            newPrice: 1350,
-            expiresAt: new Date(Date.now() + 2 * 86400000),
-        },
-        {
-            id: 2,
-            title: 'Flyer Bundle Deal',
-            desc: 'Buy 2 Get 1 Free on all flyers.',
-            image: 'https://picsum.photos/300/200?random=2',
-            discount: 'B2G1 FREE',
-            oldPrice: 3000,
-            newPrice: 2000,
-            expiresAt: new Date(Date.now() + 1 * 86400000 + 3600000),
-        },
-        {
-            id: 3,
-            title: 'T-Shirt Flash Sale',
-            desc: 'Flat 20% off on printed t-shirts.',
-            image: 'https://picsum.photos/300/200?random=3',
-            discount: '20% OFF',
-            oldPrice: 2500,
-            newPrice: 2000,
-            expiresAt: new Date(Date.now() + 6 * 3600000),
-        },
-        {
-            id: 4,
-            title: 'Poster Weekend Deal',
-            desc: 'Save big on A2 poster prints.',
-            image: 'https://picsum.photos/300/200?random=4',
-            discount: '15% OFF',
-            oldPrice: 1000,
-            newPrice: 850,
-            expiresAt: new Date(Date.now() + 3 * 86400000),
-        },
-        {
-            id: 5,
-            title: 'Sticker Pack Discount',
-            desc: '30% off when you order over 100 stickers.',
-            image: 'https://picsum.photos/300/200?random=5',
-            discount: '30% OFF',
-            oldPrice: 500,
-            newPrice: 350,
-            expiresAt: new Date(Date.now() + 5 * 86400000),
-        },
-    ];
+const LimitedOffers = ({ offers = [] }) => {
+    // If no offers passed, don't render anything
+    if (!offers || offers.length === 0) {
+        return null;
+    }
 
     const [timers, setTimers] = useState(
-        offers.map((offer) => getTimeRemaining(offer.expiresAt))
+        offers.map((offer) => getTimeRemaining(offer.end_date))
     );
 
     const scrollRef = useRef(null);
@@ -75,10 +28,10 @@ const LimitedOffers = () => {
     useEffect(() => {
         AOS.init({ duration: 1000 });
         const interval = setInterval(() => {
-            setTimers(offers.map((offer) => getTimeRemaining(offer.expiresAt)));
+            setTimers(offers.map((offer) => getTimeRemaining(offer.end_date)));
         }, 1000);
         return () => clearInterval(interval);
-    }, []);
+    }, [offers]);
 
     // Auto scroll
     useEffect(() => {
@@ -154,6 +107,25 @@ const LimitedOffers = () => {
 
                     {offers.map((offer, i) => {
                         const t = timers[i];
+                        
+                        // Format discount badge based on offer type
+                        const getDiscountBadge = () => {
+                            if (offer.offer_type === 'percentage') {
+                                return `${offer.discount_value}% OFF`;
+                            } else if (offer.offer_type === 'fixed') {
+                                return `LKR ${offer.discount_value} OFF`;
+                            } else if (offer.offer_type === 'buy_x_get_y') {
+                                return 'BUY X GET Y';
+                            } else if (offer.offer_type === 'free_shipping') {
+                                return 'FREE SHIPPING';
+                            }
+                            return 'SPECIAL OFFER';
+                        };
+
+                        // Generate offer URL with slug
+                        const offerSlug = offer.name.toLowerCase().replace(/\s+/g, '-');
+                        const offerUrl = `/offers/${offer.id}/${offerSlug}`;
+
                         return (
                             <div
                                 key={offer.id}
@@ -162,31 +134,47 @@ const LimitedOffers = () => {
                                 data-aos-delay={i * 100}
                             >
                                 <div className="tw-relative tw-overflow-hidden">
-                                    <img
-                                        src={offer.image}
-                                        alt={offer.title}
-                                        className="tw-w-full tw-h-40 tw-object-cover tw-transition-transform tw-duration-300 hover:tw-scale-105"
-                                    />
+                                    {offer.image ? (
+                                        <img
+                                            src={`/storage/${offer.image}`}
+                                            alt={offer.name}
+                                            className="tw-w-full tw-h-40 tw-object-cover tw-transition-transform tw-duration-300 hover:tw-scale-105"
+                                        />
+                                    ) : (
+                                        <div className="tw-w-full tw-h-40 tw-bg-gradient-to-br tw-from-[#667eea] tw-to-[#764ba2] tw-flex tw-items-center tw-justify-center">
+                                            <div className="tw-text-white tw-text-center">
+                                                <Icon icon="mdi:tag-multiple-outline" className="tw-text-6xl tw-mb-2" />
+                                                <p className="tw-text-sm tw-font-semibold">Special Offer</p>
+                                            </div>
+                                        </div>
+                                    )}
                                     <span className="tw-absolute tw-top-2 tw-left-2 tw-bg-[#f44032] tw-text-white tw-text-xs tw-font-bold tw-px-3 tw-py-1 tw-rounded">
-                                        {offer.discount}
+                                        {getDiscountBadge()}
                                     </span>
                                 </div>
 
                                 <div className="tw-p-4 tw-flex tw-flex-col tw-flex-grow">
                                     <h5 className="tw-font-semibold tw-leading-tight tw-mb-1 tw-line-clamp-1">
-                                        {offer.title}
+                                        {offer.name}
                                     </h5>
 
                                     <p className="tw-text-sm tw-text-gray-600 tw-line-clamp-2 tw-mb-2">
-                                        {offer.desc}
+                                        {offer.description || 'Limited time offer - Don\'t miss out!'}
                                     </p>
 
                                     <div className="tw-text-sm tw-text-gray-800 tw-font-semibold tw-mb-2">
-                                        <span className="tw-text-gray-400 tw-line-through tw-mr-2">LKR {offer.oldPrice}</span>
-                                        <span className="tw-text-[#f44032]">LKR {offer.newPrice}</span>
+                                        <span className="tw-text-[#f44032] tw-text-base">
+                                            Use Code: <span className="tw-font-bold">{offer.code}</span>
+                                        </span>
                                     </div>
 
-                                    <div className="tw-text-xs tw-text-white tw-bg-gray-800 tw-inline-block tw-px-3 tw-py-1 tw-rounded-full tw-mb-4 self-start">
+                                    {offer.min_purchase_amt > 0 && (
+                                        <p className="tw-text-xs tw-text-gray-500 tw-mb-2">
+                                            Min. purchase: LKR {offer.min_purchase_amt}
+                                        </p>
+                                    )}
+
+                                    <div className="tw-text-xs tw-text-white tw-bg-gray-800 tw-inline-block tw-px-3 tw-py-1 tw-rounded-full tw-mb-4 tw-self-start">
                                         {t.total > 0 ? (
                                             <span>
                                                 Ends in: {t.days}d {t.hours}h {t.minutes}m {t.seconds}s
@@ -196,9 +184,12 @@ const LimitedOffers = () => {
                                         )}
                                     </div>
 
-                                    <button className="tw-mt-auto tw-bg-[#f44032] tw-text-white tw-w-full tw-py-2 tw-rounded tw-text-sm hover:tw-bg-red-600 tw-transition tw-text-center">
-                                        Shop Now
-                                    </button>
+                                    <Link
+                                        href={offerUrl}
+                                        className="tw-mt-auto tw-bg-[#f44032] tw-text-white tw-w-full tw-py-2 tw-rounded tw-text-sm hover:tw-bg-red-600 tw-transition tw-text-center tw-block"
+                                    >
+                                        View Offer
+                                    </Link>
                                 </div>
                             </div>
                         );

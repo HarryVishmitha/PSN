@@ -297,6 +297,34 @@ export default function EstimateView({
         }
     };
 
+    // Send email handler
+    const [emailSendingId, setEmailSendingId] = useState(null);
+
+    const sendEmail = async (estimate) => {
+        if (!estimate?.id) return;
+        
+        setEmailSendingId(estimate.id);
+        setAlert(null);
+
+        try {
+            const response = await axios.post(route('admin.estimates.sendEmail', estimate.id));
+            
+            setAlert({
+                type: 'success',
+                message: response.data?.message || 'Email sent successfully!'
+            });
+        } catch (err) {
+            const errorMsg = err?.response?.data?.message || 'Failed to send email. Please try again.';
+            setAlert({
+                type: 'danger',
+                message: errorMsg
+            });
+        } finally {
+            setEmailSendingId(null);
+        }
+    };
+
+
 
 
     return (
@@ -618,6 +646,22 @@ export default function EstimateView({
                                                         >
                                                             <Icon icon="majesticons:eye-line" className="icon text-xl" />
                                                         </Link>
+
+                                                        {/* Send Email */}
+                                                        <button
+                                                            type="button"
+                                                            className="bg-primary-focus bg-hover-primary-200 text-primary-600 fw-medium w-40-px h-40-px d-flex justify-content-center align-items-center rounded-circle"
+                                                            title={e.client_email ? `Send email to ${e.client_email}` : "No email available"}
+                                                            aria-label={`Send email for estimate ${e.estimate_number}`}
+                                                            onClick={() => sendEmail(e)}
+                                                            disabled={!e.client_email || emailSendingId === e.id}
+                                                        >
+                                                            {emailSendingId === e.id ? (
+                                                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                            ) : (
+                                                                <Icon icon="mdi:email-send-outline" className="icon text-xl" />
+                                                            )}
+                                                        </button>
 
                                                         {/* Edit */}
                                                         <Link

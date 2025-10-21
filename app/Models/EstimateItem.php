@@ -43,6 +43,14 @@ class EstimateItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+    public function subvariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductSubvariant::class, 'subvariant_id');
+    }
     public function roll(): BelongsTo
     {
         return $this->belongsTo(Roll::class);

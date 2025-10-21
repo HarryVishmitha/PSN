@@ -13,6 +13,7 @@ class Offer extends Model
     protected $fillable = [
         'name',
         'description',
+        'image',
         'code',
         'offer_type',
         'discount_value',
@@ -23,6 +24,13 @@ class Offer extends Model
         'per_customer_limit',
         'status',
         'created_by',
+    ];
+
+    protected $casts = [
+        'start_date' => 'datetime',
+        'end_date' => 'datetime',
+        'discount_value' => 'decimal:2',
+        'min_purchase_amt' => 'decimal:2',
     ];
 
     public function creator(): BelongsTo

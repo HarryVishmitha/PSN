@@ -39,6 +39,8 @@ Route::post('/api/share/{token}/verify', [DesignShareLinkController::class, 'ver
 Route::get('/api/trending-products', [Home::class, 'trending'])->name('trending.products');
 Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap')->withoutMiddleware([\App\Http\Middleware\HandleInertiaRequests::class]);
 Route::get('/api/products/{product}/designs', [Home::class, 'DesignlistForProduct']);
+Route::get('/api/active-offers', [Home::class, 'activeOffers'])->name('active.offers');
+Route::get('/offers/{id}/{name?}', [Home::class, 'offerDetail'])->name('offer.view');
 Route::post('/api/design-uploads', [UserDesignUploadController::class, 'storeFile'])->name('userUploadDesign');
 Route::post('/api/design-links', [UserDesignUploadController::class, 'storeLink'])->name('userLinkDesign');
 Route::post('/api/design-hire',    [UserDesignUploadController::class, 'storeHire']);
@@ -169,6 +171,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
         ->name('products.byRoll');
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
+    Route::post('/api/estimate/{estimate}/send-email', [AdminController::class, 'sendEstimateEmail'])->name('estimates.sendEmail');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
     Route::patch('/api/estimate/{estimate}/status/update', [AdminController::class, 'updateEstimateStatus'])->name('estimates.updateStatus');
     Route::get('/categories', [AdminController::class, 'CategoryView'])->name('category.view');
@@ -219,6 +222,15 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::patch('/api/product/{product}/rolls', [AdminController::class, 'syncProductRolls'])->name('product.rolls.sync');
     Route::post('/api/product/{product}/rolls/{roll}/default', [AdminController::class, 'setDefaultProductRoll'])->name('product.rolls.default');
     Route::delete('/api/product/{product}/rolls/{roll}', [AdminController::class, 'detachProductRoll'])->name('product.rolls.detach');
+
+    // Offers Management
+    Route::get('/offers', [AdminController::class, 'offersIndex'])->name('offers.index');
+    Route::get('/offers/create', [AdminController::class, 'offersCreate'])->name('offers.create');
+    Route::post('/api/offers', [AdminController::class, 'offersStore'])->name('offers.store');
+    Route::get('/offers/{offer}/edit', [AdminController::class, 'offersEdit'])->name('offers.edit');
+    Route::put('/api/offers/{offer}', [AdminController::class, 'offersUpdate'])->name('offers.update');
+    Route::delete('/api/offers/{offer}', [AdminController::class, 'offersDestroy'])->name('offers.destroy');
+    Route::patch('/api/offers/{offer}/toggle', [AdminController::class, 'offersToggleStatus'])->name('offers.toggle');
 
     // Add more admin routes here
 });
