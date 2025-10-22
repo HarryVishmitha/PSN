@@ -671,7 +671,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                     <footer className='d-footer text-sm'>
                         <div className='row align-items-center justify-content-between'>
                             <div className='col-auto'>
-                                <p className='mb-0'>© {currentYear} Printair. All Rights Reserved.</p>
+                                <p className='mb-0'>&copy; {currentYear} Printair. All Rights Reserved.</p>
                             </div>
                             <div className='col-auto'>
                                 <p className='mb-0'>
@@ -687,3 +687,5 @@ const AdminDashboard = ({ children, userDetails }) => {
 };
 
 export default AdminDashboard;
+
+

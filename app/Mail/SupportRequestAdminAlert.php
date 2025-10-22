@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\SupportRequest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -25,14 +26,18 @@ class SupportRequestAdminAlert extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'New customer request ' . $this->supportRequest->reference,
+            subject: 'New Customer Request: ' . $this->supportRequest->reference,
+            from: new Address(
+                config('mail.from.address'),
+                config('mail.from.name', 'Printair')
+            ),
         );
     }
 
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.support_requests.admin_alert',
+            view: 'emails.support_requests.admin_alert',
             with: [
                 'request' => $this->supportRequest,
                 'adminUrl' => $this->adminUrl,
@@ -45,4 +50,3 @@ class SupportRequestAdminAlert extends Mailable
         return [];
     }
 }
-

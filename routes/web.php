@@ -264,4 +264,20 @@ Route::get('/test/quotation-email', function () {
     return response($emailContent);
 })->name('test.quotation.email');
 
+Route::get('/test/support-request-email', function () {
+    $request = \App\Models\SupportRequest::with('files')->latest()->first();
+    
+    if (!$request) {
+        return response('<h1>No support requests found</h1><p>Please create a support request first to preview the email template.</p>');
+    }
+    
+    $adminUrl = route('admin.requests.show', $request);
+    $emailContent = view('emails.support_requests.admin_alert', [
+        'request' => $request,
+        'adminUrl' => $adminUrl
+    ])->render();
+    
+    return response($emailContent);
+})->name('test.support.request.email');
+
 require __DIR__ . '/auth.php';
