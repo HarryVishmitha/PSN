@@ -89,7 +89,7 @@ const Header = () => {
                 </Link>
 
                 <div className="tw-hidden md:tw-flex tw-items-center tw-space-x-6">
-                    <Link href={route('requests.quotations')} className="tw-text-gray-500 hover:tw-text-[#f44032]">
+                    <Link href={route('requests.create')} className="tw-text-gray-500 hover:tw-text-[#f44032]">
                         <i className="fa-solid fa-file-pen tw-me-1"></i> Ask for Quote
                     </Link>
                     {/* <Link href={route('cart')} className="tw-relative tw-text-gray-500 hover:tw-text-[#f44032]">
@@ -303,7 +303,7 @@ const Header = () => {
                         {/* Divider + CTA Links */}
                         < div className="tw-border-t tw-my-6 tw-pt-4 tw-grid tw-gap-4" >
                             <Link
-                                href={route('requests.quotations')}
+                                href={route('requests.create')}
                                 className="tw-text-gray-600 hover:tw-text-[#f44032] tw-flex tw-items-center tw-gap-2"
                                 onClick={() => setMobileNavOpen(false)}
                             >

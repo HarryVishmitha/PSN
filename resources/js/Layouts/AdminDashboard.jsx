@@ -289,6 +289,19 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     <span>Categories</span>
                                 </Link>
                             </li>
+                            <li className='mb-3'>
+                                <Link
+                                    to='/admin/requests'
+                                    href={route('admin.requests.index')}
+                                    className={url === '/admin/requests' ? 'active-page' : ''}
+                                >
+                                    <Icon
+                                        icon='mdi:headset'
+                                        className='menu-icon'
+                                    />
+                                    <span>Support Requests</span>
+                                </Link>
+                            </li>
                             <li className='dropdown'>
                                 <Link href={route('admin.inventory')}>
                                     <Icon icon='lsicon:inventory-filled' className='menu-icon' />

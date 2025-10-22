@@ -13,9 +13,41 @@ const getTimeRemaining = (endTime) => {
 };
 
 const LimitedOffers = ({ offers = [] }) => {
-    // If no offers passed, don't render anything
+    useEffect(() => {
+        AOS.init({ duration: 1000 });
+    }, []);
+
+    // If no offers, show empty state
     if (!offers || offers.length === 0) {
-        return null;
+        return (
+            <section className="tw-bg-[#f9f9f9] tw-py-20 tw-px-4">
+                <div className="tw-max-w-4xl tw-mx-auto tw-text-center" data-aos="fade-up">
+                    <div className="tw-bg-white tw-rounded-2xl tw-shadow-lg tw-p-12">
+                        <div className="tw-mb-6">
+                            <Icon 
+                                icon="mdi:tag-off-outline" 
+                                className="tw-text-8xl tw-text-gray-300 tw-mx-auto tw-mb-4" 
+                            />
+                        </div>
+                        <h3 className="tw-text-2xl tw-font-bold tw-text-gray-800 tw-mb-3">
+                            No Active Offers Right Now
+                        </h3>
+                        <p className="tw-text-gray-600 tw-mb-6">
+                            Stay tuned! Amazing deals and exclusive offers are coming soon.
+                        </p>
+                        <div className="tw-flex tw-justify-center tw-gap-4 tw-flex-wrap">
+                            <Link
+                                href="/products"
+                                className="tw-bg-[#f44032] tw-text-white tw-px-6 tw-py-3 tw-rounded-lg hover:tw-bg-red-600 tw-transition tw-inline-flex tw-items-center tw-gap-2"
+                            >
+                                <Icon icon="mdi:shopping-outline" className="tw-text-xl" />
+                                Browse Products
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        );
     }
 
     const [timers, setTimers] = useState(

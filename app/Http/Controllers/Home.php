@@ -22,12 +22,16 @@ class Home extends Controller
 {
     public function index()
     {
-        // Get active offers
+        // Get active offers - show all offers with no working groups OR offers assigned to public working group
         $offers = \App\Models\Offer::where('status', 'active')
             ->where('start_date', '<=', now())
             ->where('end_date', '>=', now())
-            ->whereHas('workingGroups', function ($query) {
-                $query->where('name', 'public');
+            ->where(function ($query) {
+                // No working groups assigned (available to all) OR has public working group
+                $query->whereDoesntHave('workingGroups')
+                    ->orWhereHas('workingGroups', function ($q) {
+                        $q->whereRaw('LOWER(name) = ?', ['public']);
+                    });
             })
             ->with(['products:id,name', 'workingGroups:id,name'])
             ->latest()
@@ -137,9 +141,11 @@ class Home extends Controller
                 ->where('status', 'published')
                 ->whereNull('deleted_at')
                 ->whereHas('workingGroup', function ($query) {
-                    $query->where('status', 'public');
+                    $query->whereRaw('LOWER(name) = ?', ['public']);
+                    $query->where('status', 'active');
                 })
                 ->orderByDesc('views_count')
+                ->orderByDesc('created_at') // Recently added as secondary sort
                 ->take(5)
                 ->get();
 

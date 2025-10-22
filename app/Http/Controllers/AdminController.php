@@ -4397,7 +4397,7 @@ class AdminController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
             'usage_limit' => 'nullable|integer|min:0',
             'per_customer_limit' => 'nullable|integer|min:0',
-            'status' => 'required|in:active,inactive,scheduled',
+            'status' => 'required|in:draft,active,expired,disabled',
             'product_ids' => 'nullable|array',
             'product_ids.*' => 'exists:products,id',
             'working_group_ids' => 'nullable|array',
@@ -4484,7 +4484,7 @@ class AdminController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
             'usage_limit' => 'nullable|integer|min:0',
             'per_customer_limit' => 'nullable|integer|min:0',
-            'status' => 'required|in:active,inactive,scheduled',
+            'status' => 'required|in:draft,active,expired,disabled',
             'product_ids' => 'nullable|array',
             'product_ids.*' => 'exists:products,id',
             'working_group_ids' => 'nullable|array',
@@ -4565,7 +4565,7 @@ class AdminController extends Controller
     public function offersToggleStatus(\App\Models\Offer $offer)
     {
         try {
-            $newStatus = $offer->status === 'active' ? 'inactive' : 'active';
+            $newStatus = $offer->status === 'active' ? 'disabled' : 'active';
             $offer->update(['status' => $newStatus]);
 
             ActivityLog::create([

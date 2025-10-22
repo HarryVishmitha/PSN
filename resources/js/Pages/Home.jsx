@@ -757,7 +757,7 @@ const Home = ({ offers = [] }) => {
             {/*  */}
             {/*  */}
             {/* Offers / Promotions */}
-            {offers && offers.length > 0 && <Offers offers={offers} />}
+            <Offers offers={offers} />
 
 
             {/*  */}

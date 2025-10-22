@@ -149,7 +149,7 @@ const ProductCard = ({
                         ))}
                     </div>
                     <div className="tw-text-[11px] tw-text-gray-500">
-                        ({views.length} {safeViews === 1 ? 'view' : 'views'})
+                        ({safeViews} {safeViews === 1 ? 'view' : 'views'})
                     </div>
                 </div>
 

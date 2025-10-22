@@ -18,8 +18,10 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use App\Http\Controllers\UserDesignUploadController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\Admin\AdminWidgetApiController;
+use App\Http\Controllers\Admin\SupportRequestController as AdminSupportRequestController;
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
+use App\Http\Controllers\SupportRequestController;
 
 Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
@@ -30,7 +32,13 @@ Route::get('/api/categories', [Home::class, 'fetchCategories']);
 Route::get('/api/category/all', [Home::class, 'categories'])->name('categories.all');
 Route::get('/gallery/designs', [Home::class, 'designs'])->name('designs.all');
 Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.categories');
-Route::get('/requests/quotations', [Home::class, 'quotations'])->name('requests.quotations');
+Route::get('/requests/new', [SupportRequestController::class, 'create'])->name('requests.create');
+Route::post('/requests', [SupportRequestController::class, 'store'])->name('requests.store');
+Route::get('/requests/thank-you/{token}', [SupportRequestController::class, 'thankYou'])->name('requests.thankyou');
+Route::get('/request/track/{token}', [SupportRequestController::class, 'track'])->name('requests.track');
+Route::get('/request/track/{token}/files/{file}', [SupportRequestController::class, 'downloadFile'])
+    ->whereNumber('file')
+    ->name('requests.files.download');
 Route::get('/api/most-popular-products', [Home::class, 'mostPProducts'])->name('mostPopularProducts');
 Route::get('/product/{id}/{name}', [Home::class, 'productDetail'])->name('productDetail');
 Route::get('/share/{token}', fn($token) => Inertia::render('SharedDesigns', ['token' => $token]))->name('share.page');
@@ -125,6 +133,11 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::patch('/api/users/{id}/assign-working-group', [AdminController::class, 'assignWorkingGroup'])->name('assignWorkingGroup');
     Route::patch('/api/users/{id}/update-status', [AdminController::class, 'updateStatus'])->name('updateStatus');
     Route::delete('/api/users/{id}', [AdminController::class, 'deleteUser'])->name('deleteUser');
+
+    Route::get('/requests', [AdminSupportRequestController::class, 'index'])->name('requests.index');
+    Route::get('/requests/{supportRequest}', [AdminSupportRequestController::class, 'show'])->name('requests.show');
+    Route::post('/requests/{supportRequest}/reply', [AdminSupportRequestController::class, 'reply'])->name('requests.reply');
+
     Route::get('/roles', [AdminController::class, 'roles'])->name('roles');
     Route::post('/api/roles', [AdminController::class, 'storeRole'])->name('storeRole');
     Route::patch('/api/roles/{id}', [AdminController::class, 'updateRole'])->name('updateRole');
