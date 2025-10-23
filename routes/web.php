@@ -31,6 +31,7 @@ Route::get('/api/category/all', [Home::class, 'categories'])->name('categories.a
 Route::get('/gallery/designs', [Home::class, 'designs'])->name('designs.all');
 Route::get('/api/nav-categories', [Home::class, 'navCategories'])->name('nav.categories');
 Route::get('/requests/quotations', [Home::class, 'quotations'])->name('requests.quotations');
+Route::get('/quote', fn() => redirect()->route('requests.quotations'))->name('quote.alias');
 Route::get('/api/most-popular-products', [Home::class, 'mostPProducts'])->name('mostPopularProducts');
 Route::get('/product/{id}/{name}', [Home::class, 'productDetail'])->name('productDetail');
 Route::get('/share/{token}', fn($token) => Inertia::render('SharedDesigns', ['token' => $token]))->name('share.page');
@@ -168,6 +169,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::get('/api/wg/{wgId}/roll/{roll}/products', [AdminController::class, 'productsByRoll'])
         ->name('products.byRoll');
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
+    Route::delete('/api/estimates/{estimate}', [AdminController::class, 'destroyEstimate'])->name('estimates.destroy');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
     Route::patch('/api/estimate/{estimate}/status/update', [AdminController::class, 'updateEstimateStatus'])->name('estimates.updateStatus');
