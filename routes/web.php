@@ -22,6 +22,11 @@ use App\Http\Controllers\Admin\SupportRequestController as AdminSupportRequestCo
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
 use App\Http\Controllers\SupportRequestController;
+use App\Models\SupportRequest;
+use App\Mail\SupportRequestSubmitted;
+use App\Mail\SupportRequestUpdated;
+use App\Models\SupportRequestMessage;
+use Illuminate\Support\Facades\Mail;
 
 Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
@@ -265,19 +270,40 @@ Route::get('/test/quotation-email', function () {
 })->name('test.quotation.email');
 
 Route::get('/test/support-request-email', function () {
-    $request = \App\Models\SupportRequest::with('files')->latest()->first();
-    
-    if (!$request) {
-        return response('<h1>No support requests found</h1><p>Please create a support request first to preview the email template.</p>');
+    $supportRequest = SupportRequest::first(); // Replace with a valid SupportRequest instance
+
+    if (!$supportRequest) {
+        return 'No support request found to test.';
     }
+
+    Mail::to('vishmithathejan154@gmail.com')->send(new SupportRequestSubmitted($supportRequest));
+
+    return 'Test email sent to vishmithathejan154@gmail.com';
+});
+
+Route::get('/test/support-request-updated-email', function () {
+    $supportRequest = SupportRequest::first();
+
+    if (!$supportRequest) {
+        return 'No support request found to test.';
+    }
+
+    // Get the first message or create a dummy one
+    $message = $supportRequest->messages()->first();
     
-    $adminUrl = route('admin.requests.show', $request);
-    $emailContent = view('emails.support_requests.admin_alert', [
-        'request' => $request,
-        'adminUrl' => $adminUrl
-    ])->render();
-    
-    return response($emailContent);
-})->name('test.support.request.email');
+    if (!$message) {
+        // Create a dummy message for testing
+        $message = new SupportRequestMessage([
+            'support_request_id' => $supportRequest->id,
+            'sender_id' => $supportRequest->user_id ?? 1,
+            'sender_type' => 'customer',
+            'body' => 'This is a test update message. We have reviewed your request and will be processing it shortly. Our team is working diligently to ensure your requirements are met.',
+        ]);
+    }
+
+    Mail::to('vishmithathejan154@gmail.com')->send(new SupportRequestUpdated($supportRequest, $message));
+
+    return 'Test updated email sent to vishmithathejan154@gmail.com';
+});
 
 require __DIR__ . '/auth.php';
