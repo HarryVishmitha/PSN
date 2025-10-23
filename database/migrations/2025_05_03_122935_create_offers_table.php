@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->text('description');
             $table->string('code')->nullable();
-            $table->enum('offer_type', ['percent','fixed','bogo','bundle','free_shipping']);
+            $table->enum('offer_type', ['percentage','fixed','buy_x_get_y','free_shipping']);
             $table->decimal('discount_value',15,2);
             $table->decimal('min_purchase_amt',15,2)->default(0);
             $table->dateTime('start_date');

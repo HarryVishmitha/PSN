@@ -1,6 +1,7 @@
 import { Icon } from '@iconify/react';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Link } from '@inertiajs/react';
 
 const Footer = () => {
     const [popularProducts, setPopularProducts] = useState([]);
@@ -78,7 +79,7 @@ const Footer = () => {
                             [...Array(4)].map((_, i) => (
                                 <li key={i} className="tw-h-4 tw-bg-gray-700 tw-rounded tw-animate-pulse tw-w-3/4 tw-mx-auto md:tw-mx-0" />
                             ))
-                        ) : (
+                        ) : popularProducts.length > 0 ? (
                             popularProducts.map((product, index) => (
                                 <li key={index}>
                                     <Link
@@ -89,6 +90,8 @@ const Footer = () => {
                                     </Link>
                                 </li>
                             ))
+                        ) : (
+                            <li className="tw-text-gray-400 tw-text-xs">No products available yet</li>
                         )}
                     </ul>
                 </div>

@@ -13,15 +13,15 @@ class RolesTableSeeder extends Seeder
      */
     public function run()
     {
-        // Add default roles
-        Role::create([
-            'name' => 'user',
-            'description' => 'Default role for regular users',
-        ]);
+        // Add default roles idempotently
+        Role::firstOrCreate(
+            ['name' => 'user'],
+            ['description' => 'Default role for regular users']
+        );
 
-        Role::create([
-            'name' => 'admin',
-            'description' => 'Role for system administrators',
-        ]);
+        Role::firstOrCreate(
+            ['name' => 'admin'],
+            ['description' => 'Role for system administrators']
+        );
     }
 }

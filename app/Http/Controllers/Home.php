@@ -22,10 +22,26 @@ class Home extends Controller
 {
     public function index()
     {
+        // Get active offers - show all offers with no working groups OR offers assigned to public working group
+        $offers = \App\Models\Offer::where('status', 'active')
+            ->where('start_date', '<=', now())
+            ->where('end_date', '>=', now())
+            ->where(function ($query) {
+                // No working groups assigned (available to all) OR has public working group
+                $query->whereDoesntHave('workingGroups')
+                    ->orWhereHas('workingGroups', function ($q) {
+                        $q->whereRaw('LOWER(name) = ?', ['public']);
+                    });
+            })
+            ->with(['products:id,name', 'workingGroups:id,name'])
+            ->latest()
+            ->take(10)
+            ->get();
 
         return Inertia::render('Home', [
             'canLogin' => Route::has('login'),
-            'canRegister' => Route::has('register')
+            'canRegister' => Route::has('register'),
+            'offers' => $offers
         ]);
     }
 
@@ -125,9 +141,11 @@ class Home extends Controller
                 ->where('status', 'published')
                 ->whereNull('deleted_at')
                 ->whereHas('workingGroup', function ($query) {
-                    $query->where('status', 'public');
+                    $query->whereRaw('LOWER(name) = ?', ['public']);
+                    $query->where('status', 'active');
                 })
                 ->orderByDesc('views_count')
+                ->orderByDesc('created_at') // Recently added as secondary sort
                 ->take(5)
                 ->get();
 
@@ -722,5 +740,45 @@ class Home extends Controller
             ->get();
 
         return response()->json($designs);
+    }
+
+    // ==================== OFFERS ====================
+
+    public function activeOffers()
+    {
+        $offers = \App\Models\Offer::where('status', 'active')
+            ->where('start_date', '<=', now())
+            ->where('end_date', '>=', now())
+            ->with(['products' => function ($q) {
+                $q->select('products.id', 'products.name', 'products.slug')
+                    ->where('status', 'published')
+                    ->whereHas('workingGroup', function ($wg) {
+                        $wg->whereRaw('LOWER(name) = ?', ['public']);
+                    });
+            }])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json($offers);
+    }
+
+    public function offerDetail($id, $name = null)
+    {
+        $offer = \App\Models\Offer::where('id', $id)
+            ->with(['products.images', 'products.categories'])
+            ->firstOrFail();
+
+        // Filter products to only show published and public
+        $offer->setRelation('products', $offer->products->filter(function ($product) {
+            return $product->status === 'published'
+                && $product->workingGroup
+                && strtolower($product->workingGroup->name) === 'public';
+        }));
+
+        return Inertia::render('OfferView', [
+            'offer' => $offer,
+            'canLogin' => Route::has('login'),
+            'canRegister' => Route::has('register'),
+        ]);
     }
 }

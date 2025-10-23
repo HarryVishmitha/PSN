@@ -30,10 +30,12 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { CartProvider } from "./context/CartContext";
 
-const appName = import.meta.env.VITE_APP_NAME || 'Printair';
+const rawAppName = import.meta.env.VITE_APP_NAME || 'Printair';
+// Strip the default Laravel suffix so document titles use the brand only
+const appName = rawAppName.replace(/\s*-\s*Laravel$/i, '').trim() || 'Printair';
 
 createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
+    title: (title) => (title ? `${title} - ${appName}` : appName),
     resolve: (name) =>
         resolvePageComponent(
             `./Pages/${name}.jsx`,

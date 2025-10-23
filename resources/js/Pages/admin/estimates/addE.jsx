@@ -666,20 +666,15 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     const boundRolls = useMemo(() => {
         if (!selectedProduct) return [];
 
-        // Primary: product → roll_ids
-        if (Array.isArray(selectedProduct.roll_ids) && selectedProduct.roll_ids.length) {
-            const idSet = new Set(selectedProduct.roll_ids.map(String));
-            return (rolls || []).filter(r => idSet.has(String(r.id)));
-        }
+        // The product has roll_ids array from the backend
+        const productRollIds = selectedProduct.roll_ids || [];
+        if (!productRollIds.length) return [];
 
-        // Fallback (only if some roll objects carry product bindings in future):
-        const pid = String(selectedProduct.id);
-        return (rolls || []).filter(r => {
-            const set = extractBoundProductIds(r);
-            return set.size > 0 && set.has(pid);
+        // Filter rolls that match the product's roll_ids
+        return (rolls || []).filter((r) => {
+            const rollId = String(r.id);
+            return productRollIds.map(String).includes(rollId);
         });
-
-        // If neither exists, show none (safer than letting users pick the wrong roll)
     }, [rolls, selectedProduct]);
 
 

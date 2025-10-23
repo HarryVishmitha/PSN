@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Models\WorkingGroup;
@@ -3740,6 +3742,66 @@ class AdminController extends Controller
         ]);
     }
 
+    public function sendEstimateEmail(Estimate $estimate)
+    {
+        try {
+            // Check if client email is available
+            if (empty($estimate->client_email)) {
+                return response()->json([
+                    'msgtype' => 'error',
+                    'message' => 'No email address found for this client.',
+                ], 400);
+            }
+
+            // Generate PDF if needed
+            $pdfUrl = null;
+            try {
+                $pdfUrl = app(EstimatePdfService::class)->generate($estimate->id, true);
+            } catch (\Throwable $e) {
+                Log::error('PDF generation failed for email', [
+                    'estimate_id' => $estimate->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            // Send email
+            Mail::to($estimate->client_email)
+                ->send(new \App\Mail\QuotationPublished($estimate, $pdfUrl));
+
+            // Log activity
+            ActivityLog::create([
+                'user_id'     => Auth::id(),
+                'action_type' => 'estimate_email_sent',
+                'description' => "Admin sent estimate email for {$estimate->estimate_number} to {$estimate->client_email}",
+                'ip_address'  => request()->ip(),
+            ]);
+
+            Log::info('Quotation email sent manually', [
+                'estimate_id' => $estimate->id,
+                'email' => $estimate->client_email,
+                'sent_by' => Auth::id()
+            ]);
+
+            return response()->json([
+                'msgtype' => 'success',
+                'message' => 'Email sent successfully to ' . $estimate->client_email,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Failed to send quotation email manually', [
+                'estimate_id' => $estimate->id,
+                'email' => $estimate->client_email,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'msgtype' => 'error',
+                'message' => 'Failed to send email: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function CategoryView(Request $request)
     {
         $query = Category::query()
@@ -4606,6 +4668,266 @@ class AdminController extends Controller
                 return response()->json(['error' => $message], 422);
             }
             return back()->withErrors(['status' => $message]);
+        }
+    }
+
+    // ==================== OFFER MANAGEMENT ====================
+
+    public function offersIndex(Request $request)
+    {
+        $query = \App\Models\Offer::with(['creator:id,name', 'products', 'workingGroups'])
+            ->withCount('usages');
+
+        // Search
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('code', 'LIKE', "%{$search}%")
+                    ->orWhere('description', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Filter by status
+        if ($status = $request->input('status')) {
+            $query->where('status', $status);
+        }
+
+        // Filter by offer type
+        if ($offerType = $request->input('offer_type')) {
+            $query->where('offer_type', $offerType);
+        }
+
+        // Sorting
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc');
+        $query->orderBy($sortBy, $sortDir);
+
+        // Pagination
+        $perPage = $request->input('per_page', 10);
+        $offers = $query->paginate($perPage)->withQueryString();
+
+        return Inertia::render('admin/offers/index', [
+            'userDetails' => Auth::user(),
+            'offers' => $offers,
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+                'offer_type' => $offerType,
+                'sort_by' => $sortBy,
+                'sort_dir' => $sortDir,
+                'per_page' => $perPage,
+            ],
+        ]);
+    }
+
+    public function offersCreate()
+    {
+        $products = Product::orderBy('name')->get(['id', 'name', 'pricing_method']);
+        $workingGroups = WorkingGroup::orderBy('name')->get(['id', 'name']);
+
+        return Inertia::render('admin/offers/create', [
+            'userDetails' => Auth::user(),
+            'products' => $products,
+            'workingGroups' => $workingGroups,
+        ]);
+    }
+
+    public function offersStore(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'code' => 'required|string|max:50|unique:offers,code',
+            'offer_type' => 'required|in:percentage,fixed,buy_x_get_y,free_shipping',
+            'discount_value' => 'required|numeric|min:0',
+            'min_purchase_amt' => 'nullable|numeric|min:0',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'usage_limit' => 'nullable|integer|min:0',
+            'per_customer_limit' => 'nullable|integer|min:0',
+            'status' => 'required|in:draft,active,expired,disabled',
+            'product_ids' => 'nullable|array',
+            'product_ids.*' => 'exists:products,id',
+            'working_group_ids' => 'nullable|array',
+            'working_group_ids.*' => 'exists:working_groups,id',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            // Handle image upload
+            $imagePath = null;
+            if ($request->hasFile('image')) {
+                $imagePath = $request->file('image')->store('offers', 'public');
+            }
+
+            $offer = \App\Models\Offer::create([
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'image' => $imagePath,
+                'code' => strtoupper($validated['code']),
+                'offer_type' => $validated['offer_type'],
+                'discount_value' => $validated['discount_value'],
+                'min_purchase_amt' => $validated['min_purchase_amt'] ?? 0,
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'usage_limit' => $validated['usage_limit'] ?? null,
+                'per_customer_limit' => $validated['per_customer_limit'] ?? null,
+                'status' => $validated['status'],
+                'created_by' => Auth::id(),
+            ]);
+
+            // Attach products if provided
+            if (!empty($validated['product_ids'])) {
+                $offer->products()->attach($validated['product_ids']);
+            }
+
+            // Attach working groups if provided
+            if (!empty($validated['working_group_ids'])) {
+                $offer->workingGroups()->attach($validated['working_group_ids']);
+            }
+
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action_type' => 'offer_created',
+                'description' => 'Admin created offer: ' . $offer->name,
+                'ip_address' => $request->ip(),
+            ]);
+
+            DB::commit();
+
+            return redirect()->route('admin.offers.index')->with('success', 'Offer created successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error creating offer', ['error' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['error' => 'Failed to create offer. Please try again.']);
+        }
+    }
+
+    public function offersEdit(\App\Models\Offer $offer)
+    {
+        $offer->load(['products', 'workingGroups']);
+        $products = Product::orderBy('name')->get(['id', 'name', 'pricing_method']);
+        $workingGroups = WorkingGroup::orderBy('name')->get(['id', 'name']);
+
+        return Inertia::render('admin/offers/edit', [
+            'userDetails' => Auth::user(),
+            'offer' => $offer,
+            'products' => $products,
+            'workingGroups' => $workingGroups,
+        ]);
+    }
+
+    public function offersUpdate(Request $request, \App\Models\Offer $offer)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'code' => 'required|string|max:50|unique:offers,code,' . $offer->id,
+            'offer_type' => 'required|in:percentage,fixed,buy_x_get_y,free_shipping',
+            'discount_value' => 'required|numeric|min:0',
+            'min_purchase_amt' => 'nullable|numeric|min:0',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'usage_limit' => 'nullable|integer|min:0',
+            'per_customer_limit' => 'nullable|integer|min:0',
+            'status' => 'required|in:draft,active,expired,disabled',
+            'product_ids' => 'nullable|array',
+            'product_ids.*' => 'exists:products,id',
+            'working_group_ids' => 'nullable|array',
+            'working_group_ids.*' => 'exists:working_groups,id',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            // Handle image upload
+            $imagePath = $offer->image;
+            if ($request->hasFile('image')) {
+                // Delete old image if exists
+                if ($offer->image && Storage::disk('public')->exists($offer->image)) {
+                    Storage::disk('public')->delete($offer->image);
+                }
+                $imagePath = $request->file('image')->store('offers', 'public');
+            }
+
+            $offer->update([
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'image' => $imagePath,
+                'code' => strtoupper($validated['code']),
+                'offer_type' => $validated['offer_type'],
+                'discount_value' => $validated['discount_value'],
+                'min_purchase_amt' => $validated['min_purchase_amt'] ?? 0,
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'usage_limit' => $validated['usage_limit'] ?? null,
+                'per_customer_limit' => $validated['per_customer_limit'] ?? null,
+                'status' => $validated['status'],
+            ]);
+
+            // Sync products
+            $offer->products()->sync($validated['product_ids'] ?? []);
+
+            // Sync working groups
+            $offer->workingGroups()->sync($validated['working_group_ids'] ?? []);
+
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action_type' => 'offer_updated',
+                'description' => 'Admin updated offer: ' . $offer->name,
+                'ip_address' => $request->ip(),
+            ]);
+
+            DB::commit();
+
+            return redirect()->route('admin.offers.index')->with('success', 'Offer updated successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error updating offer', ['error' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['error' => 'Failed to update offer. Please try again.']);
+        }
+    }
+
+    public function offersDestroy(\App\Models\Offer $offer)
+    {
+        try {
+            $offerName = $offer->name;
+            $offer->delete();
+
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action_type' => 'offer_deleted',
+                'description' => 'Admin deleted offer: ' . $offerName,
+                'ip_address' => request()->ip(),
+            ]);
+
+            return response()->json(['success' => true, 'message' => 'Offer deleted successfully!']);
+        } catch (\Exception $e) {
+            Log::error('Error deleting offer', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to delete offer.'], 500);
+        }
+    }
+
+    public function offersToggleStatus(\App\Models\Offer $offer)
+    {
+        try {
+            $newStatus = $offer->status === 'active' ? 'disabled' : 'active';
+            $offer->update(['status' => $newStatus]);
+
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action_type' => 'offer_status_changed',
+                'description' => "Admin changed offer '{$offer->name}' status to {$newStatus}",
+                'ip_address' => request()->ip(),
+            ]);
+
+            return response()->json(['success' => true, 'status' => $newStatus]);
+        } catch (\Exception $e) {
+            Log::error('Error toggling offer status', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to update status.'], 500);
         }
     }
 }

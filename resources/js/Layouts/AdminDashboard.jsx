@@ -289,6 +289,19 @@ const AdminDashboard = ({ children, userDetails }) => {
                                     <span>Categories</span>
                                 </Link>
                             </li>
+                            <li className='mb-3'>
+                                <Link
+                                    to='/admin/requests'
+                                    href={route('admin.requests.index')}
+                                    className={url === '/admin/requests' ? 'active-page' : ''}
+                                >
+                                    <Icon
+                                        icon='mdi:headset'
+                                        className='menu-icon'
+                                    />
+                                    <span>Support Requests</span>
+                                </Link>
+                            </li>
                             <li className='dropdown'>
                                 <Link href={route('admin.inventory')}>
                                     <Icon icon='lsicon:inventory-filled' className='menu-icon' />
@@ -404,6 +417,34 @@ const AdminDashboard = ({ children, userDetails }) => {
                                         >
                                             <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
                                             All Quotations
+                                        </Link>
+                                    </li>
+                                </ul>
+                            </li>
+
+                            {/* Offers */}
+                            <li className='dropdown'>
+                                <Link href={route('admin.offers.index')}>
+                                    <Icon icon='mdi:tag-multiple-outline' className='menu-icon' alt='offers' />
+                                    <span>Offers</span>
+                                </Link>
+                                <ul className='sidebar-submenu'>
+                                    <li>
+                                        <Link
+                                            href={route('admin.offers.create')}
+                                            className={url === '/admin/offers/create' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-success-600 w-auto' />{" "}
+                                            Create New Offer
+                                        </Link>
+                                    </li>
+                                    <li>
+                                        <Link
+                                            href={route('admin.offers.index')}
+                                            className={url === '/admin/offers' ? 'active-page' : ''}
+                                        >
+                                            <i className='ri-circle-fill circle-icon text-primary-600 w-auto' />{" "}
+                                            All Offers
                                         </Link>
                                     </li>
                                 </ul>
@@ -630,7 +671,7 @@ const AdminDashboard = ({ children, userDetails }) => {
                     <footer className='d-footer text-sm'>
                         <div className='row align-items-center justify-content-between'>
                             <div className='col-auto'>
-                                <p className='mb-0'>© {currentYear} Printair. All Rights Reserved.</p>
+                                <p className='mb-0'>&copy; {currentYear} Printair. All Rights Reserved.</p>
                             </div>
                             <div className='col-auto'>
                                 <p className='mb-0'>
@@ -646,3 +687,5 @@ const AdminDashboard = ({ children, userDetails }) => {
 };
 
 export default AdminDashboard;
+
+

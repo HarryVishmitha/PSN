@@ -14,6 +14,7 @@ use App\Models\OfferProduct;
 use App\Models\OfferUsage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
@@ -275,7 +276,22 @@ class CartController extends Controller
         $width    = array_key_exists('width', $data)  ? (float)$data['width']  : null;
         $height   = array_key_exists('height', $data) ? (float)$data['height'] : null;
 
-        $unitPrice = $this->computeUnitPrice($product, $sizeUnit, $width, $height, $data['unit_price_override'] ?? null);
+        // Compute the correct price on the backend (NEVER trust frontend prices)
+        // Pass variant IDs to include variant-based price adjustments
+        $unitPrice = $this->computeUnitPrice(
+            $product, 
+            $sizeUnit, 
+            $width, 
+            $height, 
+            $data['unit_price_override'] ?? null,
+            $variantId,
+            $subvariantId
+        );
+        
+        // If frontend sent a price, validate it matches our calculation (security check)
+        if (isset($data['unit_price']) && $data['unit_price'] !== null) {
+            $this->validatePrice((float)$data['unit_price'], $unitPrice, 'unit_price for ' . $product->name);
+        }
 
         DB::transaction(function () use (
             $cart,
@@ -328,8 +344,8 @@ class CartController extends Controller
 
             if ($existing) {
                 $existing->quantity   += $quantity;
-                $existing->unit_price  = $unitPrice;
-                $existing->{$totalCol} = $existing->quantity * $existing->unit_price;
+                $existing->unit_price  = $unitPrice; // Always recalculate on backend
+                $existing->{$totalCol} = round($existing->quantity * $existing->unit_price, 2); // Recalculate total
                 $existing->save();
             } else {
                 $item = new CartItem();
@@ -361,8 +377,8 @@ class CartController extends Controller
                 $item->{$designCol}             = $designId;
                 $item->user_design_upload_id    = $userDesignId;
                 $item->quantity                 = $quantity;
-                $item->unit_price               = $unitPrice;
-                $item->{$totalCol}              = $quantity * $unitPrice;
+                $item->unit_price               = $unitPrice; // Backend-calculated price
+                $item->{$totalCol}              = round($quantity * $unitPrice, 2); // Backend-calculated total
                 $item->size_unit                = $sizeUnit;
                 $item->width                    = $width;
                 $item->height                   = $height;
@@ -433,14 +449,29 @@ class CartController extends Controller
         $width    = array_key_exists('width', $data)  ? (float)$data['width']  : $item->width;
         $height   = array_key_exists('height', $data) ? (float)$data['height'] : $item->height;
 
-        $unitPrice = $this->computeUnitPrice($product, $sizeUnit, $width, $height, $data['unit_price_override'] ?? null);
-
         $designId = $data['design_id'] ?? $data['product_design_id'] ?? $item->{$designCol};
 
-        // variants
+        // variants (get these first for price calculation)
         $variantId    = $data['variant_id']    ?? ($hasVar ? $item->variant_id    : null);
         $subvariantId = $data['subvariant_id'] ?? ($hasVar ? $item->subvariant_id : null);
         $variantSku   = $data['variant_sku']   ?? ($hasVar ? $item->variant_sku   : null);
+
+        // Compute the correct price on the backend (NEVER trust frontend prices)
+        // Pass variant IDs to include variant-based price adjustments
+        $unitPrice = $this->computeUnitPrice(
+            $product, 
+            $sizeUnit, 
+            $width, 
+            $height, 
+            $data['unit_price_override'] ?? null,
+            $variantId,
+            $subvariantId
+        );
+        
+        // If frontend sent a price, validate it matches our calculation (security check)
+        if (isset($data['unit_price']) && $data['unit_price'] !== null) {
+            $this->validatePrice((float)$data['unit_price'], $unitPrice, 'unit_price for ' . $product->name);
+        }
 
         // options
         $options   = $data['options'] ?? $data['selected_options'] ?? ($hasOpt ? $item->options : null);
@@ -454,10 +485,10 @@ class CartController extends Controller
             $area  = round($wFeet * $hFeet, 4);
         }
 
-        // persist
+        // persist (always use backend-calculated values)
         $item->quantity              = $qty;
-        $item->unit_price            = $unitPrice;
-        $item->{$totalCol}           = $qty * $unitPrice;
+        $item->unit_price            = $unitPrice; // Backend-calculated price
+        $item->{$totalCol}           = round($qty * $unitPrice, 2); // Backend-calculated total
         $item->size_unit             = $sizeUnit;
         $item->width                 = $width;
         $item->height                = $height;
@@ -675,19 +706,100 @@ class CartController extends Controller
      |  Calculations
      |============================================================ */
 
-    protected function computeUnitPrice(Product $product, ?string $sizeUnit, ?float $w, ?float $h, ?float $override): float
+    /**
+     * Compute variant price adjustments from database
+     * Returns the total price adjustment for selected variants
+     * 
+     * SECURITY: Fetches price adjustments from database, not from frontend
+     */
+    protected function computeVariantAdjustments(Product $product, ?int $variantId, ?int $subvariantId): float
     {
+        $adjustment = 0.0;
+        
+        // Add variant price adjustment
+        if ($variantId) {
+            $variant = $product->variants()->where('id', $variantId)->first();
+            if ($variant) {
+                $adjustment += (float)($variant->price_adjustment ?? 0);
+                
+                // Add subvariant price adjustment
+                if ($subvariantId) {
+                    $subvariant = $variant->subvariants()->where('id', $subvariantId)->first();
+                    if ($subvariant) {
+                        $adjustment += (float)($subvariant->price_adjustment ?? 0);
+                    }
+                }
+            }
+        }
+        
+        return round($adjustment, 2);
+    }
+
+    /**
+     * Compute the expected unit price based on product pricing method
+     * 
+     * This matches the pricing logic in AdminController::storeEstimate()
+     * 
+     * PRICING LOGIC:
+     * - Standard products: product.price + variant_adjustments
+     * - Roll-based products: area (sqft) × product.price_per_sqft (NO variant adjustments)
+     * 
+     * NOTE: Roll-based products are for ORDER REQUESTS ONLY, not direct purchase.
+     * Prices are estimates - Printair team will verify and adjust as needed.
+     * 
+     * SECURITY: All prices are calculated on backend. Frontend prices are only
+     * used for display and are validated against backend calculations.
+     */
+    protected function computeUnitPrice(Product $product, ?string $sizeUnit, ?float $w, ?float $h, ?float $override, ?int $variantId = null, ?int $subvariantId = null): float
+    {
+        // Admin override - only trust if from authenticated admin (checked in caller)
         if ($override !== null) return max(0, (float)$override);
 
+        $basePrice = 0.0;
+
+        // Roll-based pricing (price per square foot)
+        // Matches AdminController::storeEstimate() logic - NO variant adjustments for rolls
         if (($product->pricing_method ?? null) === 'roll' && $w && $h) {
             $wFeet = ($sizeUnit === 'in') ? ($w / 12.0) : $w;
             $hFeet = ($sizeUnit === 'in') ? ($h / 12.0) : $h;
             $area  = max(0.0, $wFeet * $hFeet);
             $rate  = (float)($product->price_per_sqft ?? 0);
-            return round($area * $rate, 2);
+            $basePrice = $area * $rate;
+            
+            // Roll-based products don't use variant adjustments
+            // Return base price only (matching estimate calculation)
+            return round($basePrice, 2);
         }
 
-        return round((float)($product->price ?? 0), 2);
+        // Standard pricing (fixed price per item)
+        $basePrice = (float)($product->price ?? 0);
+
+        // Add variant adjustments ONLY for standard products
+        $variantAdjustment = $this->computeVariantAdjustments($product, $variantId, $subvariantId);
+
+        return round($basePrice + $variantAdjustment, 2);
+    }
+
+        /**
+     * Validate that frontend-provided price matches backend calculation
+     * Prevents price manipulation attacks
+     */
+    protected function validatePrice(float $providedPrice, float $expectedPrice, string $context = 'price'): void
+    {
+        $tolerance = 0.02; // Allow 2 cent tolerance for floating point precision
+        $diff = abs($providedPrice - $expectedPrice);
+        
+        if ($diff > $tolerance) {
+            Log::warning("Price validation failed in {$context}", [
+                'provided' => $providedPrice,
+                'expected' => $expectedPrice,
+                'difference' => $diff,
+                'ip' => request()->ip(),
+                'user_id' => optional(request()->user())->id,
+            ]);
+            
+            throw new \Exception("Invalid {$context}. Please refresh and try again.");
+        }
     }
 
     protected function eligibleSubtotalForOffer(Cart $cart, Offer $offer): float
@@ -874,6 +986,25 @@ class CartController extends Controller
                 'tax'      => (float)$cart->{$cols['tax']},
                 'total'    => (float)$cart->{$cols['grand']},
             ],
+
+            // Important notices for customers
+            'notices' => [
+                'all_products' => 'All products are custom orders. Prices shown are estimates only. The Printair team will review your order and confirm final pricing.',
+                'roll_based_products' => $this->hasRollBasedProducts($cart) 
+                    ? 'Roll-based products in your cart are for ORDER REQUESTS ONLY and cannot be purchased directly. Our team will verify dimensions and provide final pricing.'
+                    : null,
+            ],
         ];
+    }
+
+    /**
+     * Check if cart contains any roll-based products
+     */
+    protected function hasRollBasedProducts(Cart $cart): bool
+    {
+        $productIds = $cart->items->pluck('product_id')->unique()->all();
+        return \App\Models\Product::whereIn('id', $productIds)
+            ->where('pricing_method', 'roll')
+            ->exists();
     }
 }
