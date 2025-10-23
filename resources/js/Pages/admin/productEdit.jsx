@@ -18,6 +18,7 @@ import Meta from '@/Components/Metaheads';
 import 'react-quill-new/dist/quill.snow.css';
 import ReactQuill from 'react-quill-new';
 import ReactSelect from 'react-select';
+import CreatableSelect from 'react-select/creatable';
 
 const Productedit = ({ userDetails, workingGroups, categories, providers, productDetails }) => {
   // Global states
@@ -61,6 +62,32 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
   // Images state for product images
   const [uploadedImages, setUploadedImages] = useState([]);
 
+  // Tags
+  const [allTags, setAllTags] = useState([]); // All tags fetched from DB
+  const [selectedTags, setSelectedTags] = useState([]); // Tags selected in the form
+  const [isTagLoading, setIsTagLoading] = useState(false);
+
+  // Fetch all available tags from the backend
+  useEffect(() => {
+    const fetchTags = async () => {
+      setIsTagLoading(true);
+      try {
+        const res = await axios.get('/admin/api/json-tags');
+        const tagOptions = res.data.tags.map(tag => ({
+          value: tag.id,
+          label: tag.name
+        }));
+        setAllTags(tagOptions);
+      } catch (err) {
+        console.error('Failed to fetch tags', err);
+      } finally {
+        setIsTagLoading(false);
+      }
+    };
+
+    fetchTags();
+  }, []);
+
   // -----------------------
   // INITIALIZATION FROM productDetails
   // -----------------------
@@ -79,6 +106,13 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
         label: cat.name,
       }));
       setSelectedCategories(prodCategories);
+
+      // Map tags to the format required by CreatableSelect
+      const prodTags = (productDetails.tags || []).map(tag => ({
+        value: tag.id,
+        label: tag.name,
+      }));
+      setSelectedTags(prodTags);
 
       // Pricing method and price details
       setPricingMethod(productDetails.pricing_method || 'standard');
@@ -661,6 +695,23 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
       data.append('pricePerSqft', pricePerSqft);
     }
     data.append('categories', JSON.stringify(selectedCategories.map(cat => cat.value)));
+    
+    // Extract new tags and existing tag IDs
+    // Handle case where selectedTags might be null
+    const tagsArray = selectedTags || [];
+    const existingTagIds = tagsArray.filter(t => t.value && !isNaN(t.value)).map(t => t.value);
+    const newTagNames = tagsArray.filter(t => isNaN(t.value)).map(t => t.label);
+
+    console.log('Selected Tags:', selectedTags);
+    console.log('Existing Tag IDs:', existingTagIds);
+    console.log('New Tag Names:', newTagNames);
+
+    // Append existing tag IDs
+    data.append('tags', JSON.stringify(existingTagIds));
+    
+    // Append new tag names separately (if backend supports batch create)
+    data.append('newTags', JSON.stringify(newTagNames));
+    
     // Process images: Ensure the primary image is the first image
     const primaryIndex = uploadedImages.findIndex(img => img.isPrimary);
     let sortedImages = [];
@@ -918,6 +969,24 @@ const Productedit = ({ userDetails, workingGroups, categories, providers, produc
                       <Icon icon="ic:outline-add" width="24px" />
                       Add new category
                     </div>
+
+                    <div className="form-group mb-3">
+                      <label className="form-label">Add Tags (optional)</label>
+                      <CreatableSelect
+                        isMulti
+                        isClearable
+                        options={allTags}
+                        value={selectedTags}
+                        onChange={(newValue) => setSelectedTags(newValue)}
+                        isLoading={isTagLoading}
+                        classNamePrefix="react-select"
+                        placeholder="Type and press enter to add new tags"
+                      />
+                      {errors.tags && (
+                        <div className="invalid-feedback d-block">{errors.tags}</div>
+                      )}
+                    </div>
+
                     <hr />
                   </div>
                   <div className="form-group d-flex align-items-center justify-content-end gap-8 mt-3">

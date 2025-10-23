@@ -786,6 +786,11 @@ export default function CartPage() {
     const items = cart?.items || [];
     const totals = cart?.totals || { subtotal: 0, discount: 0, shipping: 0, tax: 0, total: 0 };
 
+    // Check if cart contains any roll-based products
+    const hasRollBasedProducts = useMemo(() => {
+        return items.some(item => (item.pricing_method || "").toLowerCase() === "roll");
+    }, [items]);
+
     /* ---------------- Actions ---------------- */
     const onUpdateLine = async (itemId, payload) => {
         try {
@@ -980,9 +985,24 @@ export default function CartPage() {
                                     <div className="tw-flex tw-justify-between tw-font-semibold tw-pt-2 tw-border-t"><span className="tw-text-gray-700">Total</span><span className="tw-text-primary tw-font-bold tw-text-base">Rs. {formatMoney(totals.total)}</span></div>
                                 </div>
 
-                                <button onClick={() => router.visit("/checkout")} disabled={items.length === 0} className="tw-w-full tw-text-center tw-bg-[#f44032] tw-text-white tw-py-3 tw-rounded-lg tw-font-medium disabled:tw-opacity-50" title={items.length === 0 ? "Add items to proceed" : "Checkout"}>Proceed to Checkout</button>
+                                <button onClick={() => router.visit("/checkout")} disabled={items.length === 0} className="tw-w-full tw-text-center tw-bg-[#f44032] tw-text-white tw-py-3 tw-rounded-lg tw-font-medium disabled:tw-opacity-50" title={items.length === 0 ? "Add items to proceed" : "Place Order"}>
+                                    Place Order
+                                </button>
 
-                                <p className="tw-text-xs tw-text-gray-400 tw-mt-3 tw-text-center">Shipping &amp; taxes calculated at checkout</p>
+                                {hasRollBasedProducts && (
+                                    <div className="tw-bg-blue-50 tw-border tw-border-blue-200 tw-rounded-lg tw-p-3 tw-mt-3">
+                                        <div className="tw-flex tw-items-start tw-gap-2">
+                                            <Icon icon="mdi:information-outline" className="tw-text-blue-600 tw-text-lg tw-mt-0.5 tw-flex-shrink-0" />
+                                            <p className="tw-text-xs tw-text-blue-800 tw-leading-relaxed">
+                                                Our team will review your order and contact you with a quotation and other details. Payment will be available after admin confirmation.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <p className="tw-text-xs tw-text-gray-400 tw-mt-3 tw-text-center">
+                                    {hasRollBasedProducts ? "Order details will be confirmed by our team" : "Shipping & taxes calculated at checkout"}
+                                </p>
 
                                 <Link href="/products/all" className="tw-block tw-text-sm tw-text-center tw-mt-3 tw-py-2 tw-text-black tw-rounded-md tw-border tw-border-black hover:tw-bg-black hover:tw-text-white">Continue Shopping</Link>
                             </div>
@@ -1004,10 +1024,16 @@ export default function CartPage() {
                             <div className="tw-text-lg tw-font-semibold">Rs. {formatMoney(totals.total)}</div>
                         </div>
                         <button onClick={() => router.visit("/checkout")} className="tw-inline-flex tw-items-center tw-gap-2 tw-bg-[#f44032] tw-text-white tw-px-4 tw-py-2 tw-rounded-xl">
-                            <Icon icon="mdi:lock-outline" />
-                            Checkout
+                            <Icon icon="mdi:cart-check" />
+                            Place Order
                         </button>
                     </div>
+                    {hasRollBasedProducts && (
+                        <div className="tw-mt-2 tw-text-xs tw-text-gray-600 tw-flex tw-items-center tw-gap-1">
+                            <Icon icon="mdi:information-outline" className="tw-text-blue-600" />
+                            <span>Our team will review and contact you with quotation details</span>
+                        </div>
+                    )}
                 </div>
             )}
 

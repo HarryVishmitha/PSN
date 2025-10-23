@@ -1749,7 +1749,7 @@ class AdminController extends Controller
         ]);
 
         // Eager load all necessary relationships on the product model.
-        $product->load(['categories', 'images', 'variants.subvariants', 'workingGroup', 'provider', 'inventories']);
+        $product->load(['categories', 'images', 'variants.subvariants', 'workingGroup', 'provider', 'inventories', 'tags']);
         Log::info($product);
         // Retrieve additional data for the form.
         $workingGroups = WorkingGroup::where('status', 'active')->orderBy('name')->get();
@@ -1792,7 +1792,12 @@ class AdminController extends Controller
             'variants'               => 'nullable|string', // Expecting JSON string
             'categories'             => 'required|string',   // Expecting JSON string
             'images'                 => 'required|array|min:1|max:2048',
+            'tags'                   => 'nullable|string',  // expecting JSON array of tag IDs
+            'newTags'                => 'nullable|string',  // expecting JSON array of tag names
         ]);
+
+        $tagIds = json_decode($request->input('tags'), true) ?? [];
+        $newTagNames = json_decode($request->input('newTags'), true) ?? [];
 
         DB::beginTransaction();
 
@@ -1847,6 +1852,37 @@ class AdminController extends Controller
                 $product->categories()->sync($incomingCategories);
             } else {
                 Log::info('Product categories unchanged.');
+            }
+
+            // --------- Tags: Sync if Changed ---------
+            // Create new tags if they don't exist
+            $newTagIds = [];
+            foreach ($newTagNames as $tagName) {
+                $tagName = trim($tagName);
+                if (!$tagName) continue;
+
+                $tag = \App\Models\Tag::firstOrCreate(
+                    ['name' => $tagName],
+                    ['created_at' => now(), 'updated_at' => now()]
+                );
+
+                $newTagIds[] = $tag->id;
+            }
+
+            // Merge existing tag IDs with newly created tag IDs
+            $allTagIds = array_merge($tagIds, $newTagIds);
+            
+            // Get current tag IDs for comparison
+            $currentTagIds = $product->tags()->pluck('id')->toArray();
+            sort($allTagIds);
+            sort($currentTagIds);
+            
+            // Only sync if tags have changed
+            if ($allTagIds !== $currentTagIds) {
+                $product->tags()->sync($allTagIds);
+                Log::info('Product tags updated.');
+            } else {
+                Log::info('Product tags unchanged.');
             }
 
             // --------- Handle Inventory and Variants ---------

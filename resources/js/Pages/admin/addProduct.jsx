@@ -623,9 +623,16 @@ const AddProduct = ({ userDetails, workingGroups, categories, providers }) => {
         }
         data.append('pricePerSqft', pricePerSqft || '0');
         data.append('categories', JSON.stringify(selectedCategories.map(cat => cat.value)));
+        
         // Extract new tags and existing tag IDs
-        const existingTagIds = selectedTags.filter(t => t.value && !isNaN(t.value)).map(t => t.value);
-        const newTagNames = selectedTags.filter(t => isNaN(t.value)).map(t => t.label);
+        // Handle case where selectedTags might be null
+        const tagsArray = selectedTags || [];
+        const existingTagIds = tagsArray.filter(t => t.value && !isNaN(t.value)).map(t => t.value);
+        const newTagNames = tagsArray.filter(t => isNaN(t.value)).map(t => t.label);
+
+        console.log('Selected Tags:', selectedTags);
+        console.log('Existing Tag IDs:', existingTagIds);
+        console.log('New Tag Names:', newTagNames);
 
         // Append existing tag IDs
         data.append('tags', JSON.stringify(existingTagIds));
