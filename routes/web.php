@@ -188,6 +188,7 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::get('/api/wg/{wgId}/roll/{roll}/products', [AdminController::class, 'productsByRoll'])
         ->name('products.byRoll');
     Route::put('/api/estimates/{estimate}/edit', [AdminController::class, 'updateEstimate'])->name('estimates.update');
+    Route::delete('/api/estimates/{estimate}', [AdminController::class, 'destroyEstimate'])->name('estimates.destroy');
     Route::get('/estimate/{estimate}/preview', [AdminController::class, 'previewEstimate'])->name('estimate.preview');
     Route::post('/api/estimate/{estimate}/send-email', [AdminController::class, 'sendEstimateEmail'])->name('estimates.sendEmail');
     Route::get('/estimate/{estimate}/edit')->name('estimates.edit');
@@ -290,7 +291,7 @@ Route::get('/test/support-request-updated-email', function () {
 
     // Get the first message or create a dummy one
     $message = $supportRequest->messages()->first();
-    
+
     if (!$message) {
         // Create a dummy message for testing
         $message = new SupportRequestMessage([

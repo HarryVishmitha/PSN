@@ -13,9 +13,9 @@ const PreviewEstimate = ({ userDetails, workingGroups, estimate }) => {
     
     return (
         <>
-            <Head title={'Preview of '.estimate.estimate_number} />
+            <Head title={`Preview of ${estimate?.estimate_number || ''}`} />
             <Meta
-                title={estimate.estimate_number + 'Preview - Admin Dashboard'}
+                title={`${estimate?.estimate_number || ''} Preview - Admin Dashboard`}
                 description="Estimate preview page for admin dashboard"
             />
 

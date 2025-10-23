@@ -63,6 +63,57 @@ const parseRollWidthToInches = (roll) => {
     return Number(w) || 0;
 };
 
+// Normalize many possible backend shapes into a Set of product-id strings
+const extractBoundProductIds = (r) => {
+    const bag = new Set();
+
+    // direct single key variants
+    if (r.product_id != null) bag.add(String(r.product_id));
+    if (r.productId != null) bag.add(String(r.productId));
+    if (r.product?.id != null) bag.add(String(r.product.id));
+    if (r.pivot?.product_id != null) bag.add(String(r.pivot.product_id));
+
+    // arrays of ids
+    const arrKeys = [
+        'product_ids', 'products_ids', 'allowed_product_ids',
+        'bound_product_ids', 'linked_product_ids',
+    ];
+    arrKeys.forEach(k => {
+        const v = r[k];
+        if (Array.isArray(v)) v.forEach(id => bag.add(String(id)));
+    });
+
+    // arrays of objects with id
+    const objArrKeys = [
+        'products', 'bound_products', 'linked_products',
+        'bindings', 'roll_products',
+    ];
+    objArrKeys.forEach(k => {
+        const v = r[k];
+        if (Array.isArray(v)) v.forEach(o => {
+            if (o?.id != null) bag.add(String(o.id));
+            if (o?.product_id != null) bag.add(String(o.product_id));
+        });
+    });
+
+    // CSV strings
+    const csvKeys = ['product_ids_csv', 'bound_product_ids_csv'];
+    csvKeys.forEach(k => {
+        const v = r[k];
+        if (typeof v === 'string' && v.trim()) {
+            v.split(',').map(s => s.trim()).filter(Boolean).forEach(id => bag.add(String(id)));
+        }
+    });
+
+    // meta buckets
+    if (r.meta?.product_ids) {
+        const v = r.meta.product_ids;
+        (Array.isArray(v) ? v : String(v).split(',')).forEach(id => bag.add(String(id)));
+    }
+
+    return bag;
+};
+
 const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }) => {
     /* ------------------------------------------------------------
        Core State
@@ -233,6 +284,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             setWgProducts(data.products || []);
             setWgDailyCustomers(data.dailyCustomers || []);
             setRolls(data.rolls || []);
+            console.log('WG data', data);
             if ((data.rolls || []).length === 1) setSelectedRollId(String(data.rolls[0].id));
         } catch (e) {
             const msg = e.response?.data?.message || e.message || 'Unknown error';
@@ -613,7 +665,7 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
     // Rolls that are bound to the selected product (try several common shapes)
     const boundRolls = useMemo(() => {
         if (!selectedProduct) return [];
-        
+
         // The product has roll_ids array from the backend
         const productRollIds = selectedProduct.roll_ids || [];
         if (!productRollIds.length) return [];
@@ -624,6 +676,8 @@ const AddE = ({ userDetails, workingGroups, estimate = null, newEstimateNumber }
             return productRollIds.map(String).includes(rollId);
         });
     }, [rolls, selectedProduct]);
+
+
 
     useEffect(() => {
         if (!selectedProduct || selectedProduct.pricing_method !== 'roll') return;
