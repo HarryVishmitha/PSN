@@ -25,8 +25,10 @@ class AppServiceProvider extends ServiceProvider
     {
         Vite::prefetch(concurrency: 3);
         Relation::enforceMorphMap([
-            'user'          => \App\Models\User::class,
-            'dailycustomer' => \App\Models\DailyCustomer::class,
+            'user'            => \App\Models\User::class,
+            'dailycustomer'   => \App\Models\DailyCustomer::class,
+            'cart'            => \App\Models\Cart::class,
+            \App\Models\Cart::class => \App\Models\Cart::class,
         ]);
     }
 }

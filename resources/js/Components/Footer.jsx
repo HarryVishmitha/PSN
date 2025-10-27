@@ -64,10 +64,10 @@ const Footer = () => {
                 <div className='md:tw-text-left tw-text-center'>
                     <h4 className="tw-text-lg tw-font-semibold tw-mb-3 tw-text-white">Quick Links</h4>
                     <ul className="tw-space-y-2 tw-text-sm tw-text-gray-500">
-                        <li><a href="/" className="hover:tw-text-white">Home</a></li>
-                        <li><a href="/products" className="hover:tw-text-white">Products</a></li>
-                        <li><a href="/about" className="hover:tw-text-white">About Us</a></li>
-                        <li><a href="/contact" className="hover:tw-text-white">Contact</a></li>
+                        <li><Link href="/" className="hover:tw-text-white">Home</Link></li>
+                        <li><Link href="/products" className="hover:tw-text-white">Products</Link></li>
+                        <li><Link href="/about-us" className="hover:tw-text-white">About Us</Link></li>
+                        <li><Link href="/contact" className="hover:tw-text-white">Contact</Link></li>
                     </ul>
                 </div>
 
@@ -115,16 +115,16 @@ const Footer = () => {
 
                     {/* Social Icons */}
                     <div className="tw-flex tw-space-x-3 tw-justify-center md:tw-justify-start">
-                        <a href="https://www.facebook.com/Printair/" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                        <a href="https://www.facebook.com/Printair/" target="_blank" rel="noopener noreferrer" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
                             <Icon icon="mdi:facebook" className="tw-text-xl" />
                         </a>
-                        <a href="https://www.instagram.com/printairsl/" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                        <a href="https://www.instagram.com/printairsl/" target="_blank" rel="noopener noreferrer" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
                             <Icon icon="mdi:instagram" className="tw-text-xl" />
                         </a>
-                        <a href="https://www.tiktok.com/@printair2?is_from_webapp=1&sender_device=pc" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                        <a href="https://www.tiktok.com/@printair2?is_from_webapp=1&sender_device=pc" target="_blank" rel="noopener noreferrer" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
                             <Icon icon="ic:baseline-tiktok" className="tw-text-xl" />
                         </a>
-                        <a href="https://youtube.com/@printairadvertising3730?si=TNTcyKiTcRrESCJm" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
+                        <a href="https://youtube.com/@printairadvertising3730?si=TNTcyKiTcRrESCJm" target="_blank" rel="noopener noreferrer" className="tw-bg-white/10 hover:tw-bg-white/20 tw-p-2 tw-rounded-full">
                             <Icon icon="mdi:youtube" className="tw-text-xl" />
                         </a>
                     </div>

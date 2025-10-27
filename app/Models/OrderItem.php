@@ -13,7 +13,32 @@ class OrderItem extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'order_id','product_id','variant_id','subvariant_id','quantity','unit_price','line_total',
+        'order_id',
+        'product_id',
+        'variant_id',
+        'subvariant_id',
+        'name',
+        'description',
+        'pricing_method',
+        'size_unit',
+        'width',
+        'height',
+        'quantity',
+        'unit_price',
+        'line_total',
+        'options',
+        'design_id',
+        'user_design_upload_id',
+        'hire_designer',
+    ];
+
+    protected $casts = [
+        'options'        => 'array',
+        'hire_designer'  => 'boolean',
+        'unit_price'     => 'decimal:2',
+        'line_total'     => 'decimal:2',
+        'width'          => 'decimal:3',
+        'height'         => 'decimal:3',
     ];
 
     public function order(): BelongsTo

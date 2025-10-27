@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use App\Models\Category;
 use Illuminate\Support\Facades\Log;
 use App\Models\Product;
+use App\Models\Cart;
 use Illuminate\Support\Facades\DB;
 use App\Models\WorkingGroup;
 use Illuminate\Support\Str;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductView;
 use App\Models\Design;
+use App\Models\ShippingMethod;
 
 class Home extends Controller
 {
@@ -42,6 +44,14 @@ class Home extends Controller
             'canLogin' => Route::has('login'),
             'canRegister' => Route::has('register'),
             'offers' => $offers
+        ]);
+    }
+
+    public function aboutUs()
+    {
+        return Inertia::render('AboutUs', [
+            'canLogin' => Route::has('login'),
+            'canRegister' => Route::has('register')
         ]);
     }
 
@@ -525,9 +535,182 @@ class Home extends Controller
         // return Inertia::render('Cart');
     }
 
-    public function checkout()
+    public function checkout(Request $request)
     {
-        return Inertia::render('Checkout');
+        try {
+            $user = $request->user();
+
+            // Ensure every visitor has a stable cart session identifier.
+            $sessionKey = '_cart_sess';
+            if (!$request->session()->has($sessionKey)) {
+                $request->session()->put($sessionKey, Str::random(32));
+            }
+            $sessionId = $request->session()->get($sessionKey);
+
+            $cartQuery = Cart::query()
+                ->where('status', 'open')
+                ->with([
+                    'items.product' => function ($q) {
+                        $q->select('id', 'name', 'pricing_method', 'price', 'price_per_sqft', 'unit_of_measure')
+                            ->with(['images' => fn($qq) => $qq->select('id', 'product_id', 'image_url', 'is_primary', 'image_order')]);
+                    },
+                    'items.userDesignUpload',
+                    'items.adjustments',
+                    'adjustments',
+                    'billingAddress',
+                    'shippingAddress',
+                ]);
+
+            if ($user) {
+                $cartQuery->where(function ($query) use ($user, $sessionId) {
+                    $query->where('user_id', $user->id);
+                    if ($sessionId) {
+                        $query->orWhere(function ($guest) use ($sessionId) {
+                            $guest->whereNull('user_id')->where('session_id', $sessionId);
+                        });
+                    }
+                });
+            } else {
+                $cartQuery->where('session_id', $sessionId);
+            }
+
+            $cart = $cartQuery->first();
+
+            if (!$cart) {
+                return redirect()
+                    ->route('cart')
+                    ->withErrors(['cart' => 'We could not locate an active cart for this session.']);
+            }
+
+            $cart->loadMissing(['items.product.images']); // Guarantee relationships for mapping.
+
+            if ($cart->items->isEmpty()) {
+                return redirect()
+                    ->route('cart')
+                    ->withErrors(['cart' => 'Your cart is empty.']);
+            }
+
+            $cartItems = $cart->items->map(function ($item) {
+                $product = $item->product;
+                $primaryImage = optional(
+                    $product?->images
+                        ->sortBy([
+                            ['is_primary', 'desc'],
+                            ['image_order', 'asc'],
+                            ['id', 'asc'],
+                        ])
+                        ->first()
+                )->image_url;
+
+                $pricingMethod = $product?->pricing_method;
+                $unitLabel = $pricingMethod === 'roll'
+                    ? 'per sq.ft'
+                    : ($product?->unit_of_measure ?: 'piece');
+
+                $unitPrice = (float) $item->unit_price;
+
+                return [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'name' => $product?->name,
+                    'quantity' => (int) $item->quantity,
+                    'pricing_method' => $pricingMethod,
+                    'unit_price' => $unitPrice,
+                    'total_price' => (float) $item->total_price,
+                    'display_price' => 'Rs ' . number_format($unitPrice, 2) . ' ' . $unitLabel,
+                    'size_unit' => $item->size_unit,
+                    'width' => $item->width,
+                    'height' => $item->height,
+                    'area' => $item->area,
+                    'options' => $item->options ?? $item->selected_options,
+                    'design_id' => $item->design_id,
+                    'user_design_upload_id' => $item->user_design_upload_id,
+                    'thumbnail_url' => $primaryImage,
+                    'meta' => $item->meta,
+                    'adjustments' => $item->adjustments->map(fn($adj) => [
+                        'type' => $adj->type,
+                        'code' => $adj->code,
+                        'label' => $adj->label,
+                        'amount' => (float) $adj->amount,
+                        'meta' => $adj->meta,
+                    ])->values(),
+                ];
+            })->values();
+
+            $totals = [
+                'subtotal' => (float) ($cart->subtotal ?? $cart->subtotal_amount ?? 0),
+                'discount' => (float) abs($cart->discount_total ?? $cart->discount_amount ?? 0),
+                'shipping' => (float) ($cart->shipping_total ?? $cart->shipping_amount ?? 0),
+                'tax' => (float) ($cart->tax_total ?? $cart->tax_amount ?? 0),
+                'grand' => (float) ($cart->grand_total ?? $cart->total_amount ?? 0),
+            ];
+
+            $addresses = [
+                'billing' => $cart->billingAddress ? [
+                    'line1' => $cart->billingAddress->line1,
+                    'line2' => $cart->billingAddress->line2,
+                    'city' => $cart->billingAddress->city,
+                    'region' => $cart->billingAddress->region,
+                    'postal_code' => $cart->billingAddress->postal_code,
+                    'country' => $cart->billingAddress->country,
+                ] : null,
+                'shipping' => $cart->shippingAddress ? [
+                    'line1' => $cart->shippingAddress->line1,
+                    'line2' => $cart->shippingAddress->line2,
+                    'city' => $cart->shippingAddress->city,
+                    'region' => $cart->shippingAddress->region,
+                    'postal_code' => $cart->shippingAddress->postal_code,
+                    'country' => $cart->shippingAddress->country,
+                ] : null,
+            ];
+
+            $shippingMethods = ShippingMethod::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'description', 'cost'])
+                ->map(fn($method) => [
+                    'id' => $method->id,
+                    'name' => $method->name,
+                    'description' => $method->description,
+                    'cost' => (float) $method->cost,
+                ]);
+
+            $userData = $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone ?? null,
+            ] : null;
+
+            return Inertia::render('Checkout', [
+                'isAuthenticated' => (bool) $user,
+                'user' => $userData,
+                'cart' => [
+                    'id' => $cart->id,
+                    'items' => $cartItems,
+                    'totals' => $totals,
+                    'adjustments' => $cart->adjustments->map(fn($adj) => [
+                        'type' => $adj->type,
+                        'code' => $adj->code,
+                        'label' => $adj->label,
+                        'amount' => (float) $adj->amount,
+                        'meta' => $adj->meta,
+                    ])->values(),
+                    'addresses' => $addresses,
+                    'currency' => $cart->currency_code,
+                ],
+                'shippingMethods' => $shippingMethods,
+                'requiresGuestDetails' => !$user,
+                'guestRequiredFields' => $user ? [] : ['name', 'email', 'phone', 'billing_address'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to load checkout data: ' . $e->getMessage(), [
+                'exception' => $e,
+            ]);
+
+            return redirect()
+                ->back()
+                ->withErrors(['error' => 'Failed to load checkout data.']);
+        }
     }
 
     public function designs()
@@ -780,5 +963,27 @@ class Home extends Controller
             'canLogin' => Route::has('login'),
             'canRegister' => Route::has('register'),
         ]);
+    }
+
+    public function shippingMethods(): JsonResponse
+    {
+        try {
+            $methods = ShippingMethod::query()
+                ->orderBy('name')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $methods,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch shipping methods: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve shipping methods.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

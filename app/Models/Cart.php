@@ -193,6 +193,20 @@ class Cart extends Model
         ])->save();
     }
 
+    public function recalculateTotals(): object
+    {
+        $this->recomputeTotals();
+        $this->refresh();
+
+        return (object) [
+            'subtotal' => (float) $this->subtotal,
+            'discount' => (float) $this->discount_total,
+            'tax'      => (float) $this->tax_total,
+            'shipping' => (float) $this->shipping_total,
+            'grand'    => (float) $this->grand_total,
+        ];
+    }
+
     /** Item helpers */
     public function addItem(array $attributes): CartItem
     {

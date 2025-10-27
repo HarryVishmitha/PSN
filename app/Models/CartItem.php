@@ -100,6 +100,21 @@ class CartItem extends Model
         return $this->hasMany(CartItemAdjustment::class);
     }
 
+    /**
+     * Sum adjustments for the given type(s).
+     *
+     * @param  string|array<string>  $types
+     */
+    public function adjustmentSumByType(string|array $types): float
+    {
+        $types = (array) $types;
+        $adjustments = $this->relationLoaded('adjustments')
+            ? $this->getRelation('adjustments')
+            : $this->adjustments()->get();
+
+        return (float) $adjustments->whereIn('type', $types)->sum('amount');
+    }
+
     public function design()
     {
         // If your designs live in App\Models\Design and the FK is "design_id"

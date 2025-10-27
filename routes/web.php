@@ -29,6 +29,7 @@ use App\Models\SupportRequestMessage;
 use Illuminate\Support\Facades\Mail;
 
 Route::get('/', [Home::class, 'index'])->name('home');
+Route::get('/about-us', [Home::class, 'aboutUs'])->name('aboutUs');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
 Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
 Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
@@ -57,6 +58,10 @@ Route::get('/offers/{id}/{name?}', [Home::class, 'offerDetail'])->name('offer.vi
 Route::post('/api/design-uploads', [UserDesignUploadController::class, 'storeFile'])->name('userUploadDesign');
 Route::post('/api/design-links', [UserDesignUploadController::class, 'storeLink'])->name('userLinkDesign');
 Route::post('/api/design-hire',    [UserDesignUploadController::class, 'storeHire']);
+Route::get('/api/shipping-methods', [Home::class, 'shippingMethods'])->name('shipping.methods');
+Route::get('/checkout', [Home::class, 'checkout'])->name('checkout');
+Route::post('/api/checkout/review', [\App\Http\Controllers\CheckoutController::class, 'checkoutReview'])->name('checkout.review');
+Route::get('/thank-you/{order}', [\App\Http\Controllers\CheckoutController::class, 'thankyou'])->name('orders.thankyou');
 
 Route::get('/api/product-summaries', function (\Illuminate\Http\Request $req) {
     $ids = collect(explode(',', (string)$req->query('ids')))
