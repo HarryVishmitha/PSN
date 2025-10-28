@@ -18,6 +18,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use App\Http\Controllers\UserDesignUploadController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\Admin\AdminWidgetApiController;
+use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\SupportRequestController as AdminSupportRequestController;
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
@@ -247,6 +248,19 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::patch('/api/product/{product}/rolls', [AdminController::class, 'syncProductRolls'])->name('product.rolls.sync');
     Route::post('/api/product/{product}/rolls/{roll}/default', [AdminController::class, 'setDefaultProductRoll'])->name('product.rolls.default');
     Route::delete('/api/product/{product}/rolls/{roll}', [AdminController::class, 'detachProductRoll'])->name('product.rolls.detach');
+
+    // Order Management
+    Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [AdminOrderController::class, 'show'])
+        ->whereNumber('order')
+        ->name('orders.show');
+
+    Route::prefix('api/orders')->name('orders.')->group(function () {
+        Route::get('/products', [AdminOrderController::class, 'searchProducts'])->name('products');
+        Route::post('/preview-pricing', [AdminOrderController::class, 'previewPricing'])->name('preview');
+        Route::put('/{order}', [AdminOrderController::class, 'update'])->whereNumber('order')->name('update');
+        Route::post('/{order}/events', [AdminOrderController::class, 'storeEvent'])->whereNumber('order')->name('events.store');
+    });
 
     // Offers Management
     Route::get('/offers', [AdminController::class, 'offersIndex'])->name('offers.index');

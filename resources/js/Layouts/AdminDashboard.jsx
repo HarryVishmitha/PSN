@@ -422,6 +422,20 @@ const AdminDashboard = ({ children, userDetails }) => {
                                 </ul>
                             </li>
 
+                            {/* Orders */}
+                            <li className='mb-3'>
+                                <Link
+                                    href={route('admin.orders.index')}
+                                    className={url === '/admin/orders' || url.startsWith('/admin/orders/') ? 'active-page' : ''}
+                                >
+                                    <Icon
+                                        icon='solar:clipboard-text-bold-duotone'
+                                        className='menu-icon'
+                                    />
+                                    <span>Order Management</span>
+                                </Link>
+                            </li>
+
                             {/* Offers */}
                             <li className='dropdown'>
                                 <Link href={route('admin.offers.index')}>

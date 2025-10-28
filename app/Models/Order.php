@@ -24,8 +24,12 @@ class Order extends Model
         'shipping_address_id',
         'subtotal_amount',
         'discount_amount',
+        'discount_mode',
+        'discount_value',
         'shipping_amount',
         'tax_amount',
+        'tax_mode',
+        'tax_value',
         'total_amount',
         'design_status',
         'is_company',
@@ -47,9 +51,12 @@ class Order extends Model
         'is_company'        => 'boolean',
         'subtotal_amount'   => 'decimal:2',
         'discount_amount'   => 'decimal:2',
+        'discount_value'    => 'decimal:2',
         'shipping_amount'   => 'decimal:2',
         'tax_amount'        => 'decimal:2',
+        'tax_value'         => 'decimal:2',
         'total_amount'      => 'decimal:2',
+        'placed_at'         => 'datetime',
     ];
 
     public function customer(): MorphTo

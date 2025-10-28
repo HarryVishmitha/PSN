@@ -4367,8 +4367,15 @@ class AdminController extends Controller
             Gate::authorize('manage-payment-methods'); // matches your route gate
 
             $product->load([
-                'rolls' => fn($q) => $q->select('rolls.id', 'roll_type', 'roll_size', 'roll_width', 'roll_height')
-                    ->withPivot('is_default')
+                'rolls' => fn($q) => $q->select(
+                        'rolls.id',
+                        'roll_type',
+                        'roll_size',
+                        'roll_width',
+                        'roll_height',
+                        'price_rate_per_sqft',
+                        'offcut_price'
+                    )->withPivot('is_default')
             ]);
 
             return response()->json([

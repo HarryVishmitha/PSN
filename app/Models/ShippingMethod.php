@@ -15,6 +15,7 @@ class ShippingMethod extends Model
         'name',
         'description',
         'cost',
+        'estimated_eta',
         'created_by',
     ];
 
