@@ -561,6 +561,136 @@ class Home extends Controller
                     'shippingAddress',
                 ]);
 
+            // Fetch previously used addresses for authenticated users
+            $previousAddresses = [];
+            $suggestedBillingAddress = null;
+            $suggestedShippingAddress = null;
+            $previousPhones = [];
+            $suggestedPhone = null;
+            $previousWhatsApp = [];
+            $suggestedWhatsApp = null;
+
+            if ($user) {
+                // Get user's previous orders with addresses
+                $previousOrders = \App\Models\Order::where('user_id', $user->id)
+                    ->whereNotNull('billing_address_id')
+                    ->with(['billingAddress', 'shippingAddress'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(5)
+                    ->get();
+
+                // Collect unique addresses
+                $billingAddresses = [];
+                $shippingAddresses = [];
+                $billingFrequency = [];
+                $shippingFrequency = [];
+                $phoneNumbers = [];
+                $phoneFrequency = [];
+                $whatsappNumbers = [];
+                $whatsappFrequency = [];
+
+                foreach ($previousOrders as $order) {
+                    if ($order->billingAddress) {
+                        $key = md5(json_encode([
+                            $order->billingAddress->line1,
+                            $order->billingAddress->line2,
+                            $order->billingAddress->city,
+                            $order->billingAddress->region,
+                            $order->billingAddress->postal_code,
+                        ]));
+                        
+                        if (!isset($billingAddresses[$key])) {
+                            $billingAddresses[$key] = [
+                                'line1' => $order->billingAddress->line1,
+                                'line2' => $order->billingAddress->line2,
+                                'city' => $order->billingAddress->city,
+                                'region' => $order->billingAddress->region,
+                                'postal_code' => $order->billingAddress->postal_code,
+                                'country' => $order->billingAddress->country,
+                            ];
+                            $billingFrequency[$key] = 0;
+                        }
+                        $billingFrequency[$key]++;
+                    }
+
+                    if ($order->shippingAddress) {
+                        $key = md5(json_encode([
+                            $order->shippingAddress->line1,
+                            $order->shippingAddress->line2,
+                            $order->shippingAddress->city,
+                            $order->shippingAddress->region,
+                            $order->shippingAddress->postal_code,
+                        ]));
+                        
+                        if (!isset($shippingAddresses[$key])) {
+                            $shippingAddresses[$key] = [
+                                'line1' => $order->shippingAddress->line1,
+                                'line2' => $order->shippingAddress->line2,
+                                'city' => $order->shippingAddress->city,
+                                'region' => $order->shippingAddress->region,
+                                'postal_code' => $order->shippingAddress->postal_code,
+                                'country' => $order->shippingAddress->country,
+                            ];
+                            $shippingFrequency[$key] = 0;
+                        }
+                        $shippingFrequency[$key]++;
+                    }
+
+                    // Collect phone numbers
+                    if (!empty($order->contact_phone)) {
+                        $phone = $order->contact_phone;
+                        if (!isset($phoneNumbers[$phone])) {
+                            $phoneNumbers[$phone] = $phone;
+                            $phoneFrequency[$phone] = 0;
+                        }
+                        $phoneFrequency[$phone]++;
+                    }
+
+                    // Collect WhatsApp numbers
+                    if (!empty($order->contact_whatsapp)) {
+                        $whatsapp = $order->contact_whatsapp;
+                        if (!isset($whatsappNumbers[$whatsapp])) {
+                            $whatsappNumbers[$whatsapp] = $whatsapp;
+                            $whatsappFrequency[$whatsapp] = 0;
+                        }
+                        $whatsappFrequency[$whatsapp]++;
+                    }
+                }
+
+                // Sort by frequency and get most used
+                if (!empty($billingFrequency)) {
+                    arsort($billingFrequency);
+                    $mostUsedBillingKey = array_key_first($billingFrequency);
+                    $suggestedBillingAddress = $billingAddresses[$mostUsedBillingKey];
+                }
+
+                if (!empty($shippingFrequency)) {
+                    arsort($shippingFrequency);
+                    $mostUsedShippingKey = array_key_first($shippingFrequency);
+                    $suggestedShippingAddress = $shippingAddresses[$mostUsedShippingKey];
+                }
+
+                if (!empty($phoneFrequency)) {
+                    arsort($phoneFrequency);
+                    $mostUsedPhone = array_key_first($phoneFrequency);
+                    $suggestedPhone = $mostUsedPhone;
+                }
+
+                if (!empty($whatsappFrequency)) {
+                    arsort($whatsappFrequency);
+                    $mostUsedWhatsApp = array_key_first($whatsappFrequency);
+                    $suggestedWhatsApp = $mostUsedWhatsApp;
+                }
+
+                $previousAddresses = [
+                    'billing' => array_values($billingAddresses),
+                    'shipping' => array_values($shippingAddresses),
+                ];
+
+                $previousPhones = array_values($phoneNumbers);
+                $previousWhatsApp = array_values($whatsappNumbers);
+            }
+
             if ($user) {
                 $cartQuery->where(function ($query) use ($user, $sessionId) {
                     $query->where('user_id', $user->id);
@@ -701,6 +831,13 @@ class Home extends Controller
                 'shippingMethods' => $shippingMethods,
                 'requiresGuestDetails' => !$user,
                 'guestRequiredFields' => $user ? [] : ['name', 'email', 'phone', 'billing_address'],
+                'previousAddresses' => $previousAddresses,
+                'suggestedBillingAddress' => $suggestedBillingAddress,
+                'suggestedShippingAddress' => $suggestedShippingAddress,
+                'previousPhones' => $previousPhones,
+                'suggestedPhone' => $suggestedPhone,
+                'previousWhatsApp' => $previousWhatsApp,
+                'suggestedWhatsApp' => $suggestedWhatsApp,
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to load checkout data: ' . $e->getMessage(), [

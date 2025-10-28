@@ -100,6 +100,13 @@ export default function Checkout(props) {
         isAuthenticated = false,
         requiresGuestDetails = false,
         guestRequiredFields = [],
+        previousAddresses = { billing: [], shipping: [] },
+        suggestedBillingAddress = null,
+        suggestedShippingAddress = null,
+        previousPhones = [],
+        suggestedPhone = null,
+        previousWhatsApp = [],
+        suggestedWhatsApp = null,
     } = props;
 
     const items = cart.items ?? [];
@@ -112,6 +119,10 @@ export default function Checkout(props) {
     // UI toggles
     const [useCompany, setUseCompany] = useState(false);
     const [sameShip, setSameShip] = useState(true);
+    const [showBillingAddressList, setShowBillingAddressList] = useState(false);
+    const [showShippingAddressList, setShowShippingAddressList] = useState(false);
+    const [showPhoneList, setShowPhoneList] = useState(false);
+    const [showWhatsAppList, setShowWhatsAppList] = useState(false);
 
     // local toasts
     const [toasts, setToasts] = useState([]);
@@ -135,30 +146,30 @@ export default function Checkout(props) {
         first_name: firstName || '',
         last_name: lastName || '',
         email: user?.email || '',
-        phone_primary: user?.phone || '',
+        phone_primary: suggestedPhone || user?.phone || '',
         phone_alt_1: '',
         phone_alt_2: '',
-        whatsapp: '',
+        whatsapp: suggestedWhatsApp || '',
 
         // Company
         is_company: false,
         company_name: '',
 
-        // Billing
-        billing_address_line1: billing.line1 || '',
-        billing_address_line2: billing.line2 || '',
-        billing_city: billing.city || '',
-        billing_province: billing.province || '',
-        billing_postal: billing.postal || '',
+        // Billing - Use suggested address if available
+        billing_address_line1: suggestedBillingAddress?.line1 || billing.line1 || '',
+        billing_address_line2: suggestedBillingAddress?.line2 || billing.line2 || '',
+        billing_city: suggestedBillingAddress?.city || billing.city || '',
+        billing_province: suggestedBillingAddress?.region || billing.province || '',
+        billing_postal: suggestedBillingAddress?.postal_code || billing.postal || '',
         billing_country: 'LK',
 
-        // Shipping
+        // Shipping - Use suggested address if available
         shipping_same_as_billing: true,
-        shipping_address_line1: '',
-        shipping_address_line2: '',
-        shipping_city: '',
-        shipping_province: '',
-        shipping_postal: '',
+        shipping_address_line1: suggestedShippingAddress?.line1 || '',
+        shipping_address_line2: suggestedShippingAddress?.line2 || '',
+        shipping_city: suggestedShippingAddress?.city || '',
+        shipping_province: suggestedShippingAddress?.region || '',
+        shipping_postal: suggestedShippingAddress?.postal_code || '',
         shipping_country: 'LK',
 
         // Shipping method (gracefully handle empty)
@@ -169,6 +180,41 @@ export default function Checkout(props) {
         notes: '',
         accept_policy: false,
     });
+
+    // Helper function to apply address
+    const applyBillingAddress = (address) => {
+        setData({
+            ...data,
+            billing_address_line1: address.line1 || '',
+            billing_address_line2: address.line2 || '',
+            billing_city: address.city || '',
+            billing_province: address.region || '',
+            billing_postal: address.postal_code || '',
+        });
+        setShowBillingAddressList(false);
+    };
+
+    const applyShippingAddress = (address) => {
+        setData({
+            ...data,
+            shipping_address_line1: address.line1 || '',
+            shipping_address_line2: address.line2 || '',
+            shipping_city: address.city || '',
+            shipping_province: address.region || '',
+            shipping_postal: address.postal_code || '',
+        });
+        setShowShippingAddressList(false);
+    };
+
+    const applyPhone = (phone) => {
+        setData('phone_primary', phone);
+        setShowPhoneList(false);
+    };
+
+    const applyWhatsApp = (whatsapp) => {
+        setData('whatsapp', whatsapp);
+        setShowWhatsAppList(false);
+    };
 
     // mirror toggles into form
     useEffect(() => {
@@ -400,15 +446,57 @@ export default function Checkout(props) {
                                             clientErrors.phone_primary
                                         }
                                     >
-                                        <Input
-                                            value={data.phone_primary}
-                                            onChange={(e) =>
-                                                setData(
-                                                    'phone_primary',
-                                                    e.target.value,
-                                                )
-                                            }
-                                        />
+                                        <div className="tw-relative">
+                                            <Input
+                                                value={data.phone_primary}
+                                                onChange={(e) =>
+                                                    setData(
+                                                        'phone_primary',
+                                                        e.target.value,
+                                                    )
+                                                }
+                                            />
+                                            {isAuthenticated && previousPhones.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPhoneList(!showPhoneList)}
+                                                    className="tw-absolute tw-right-2 tw-top-1/2 tw--translate-y-1/2 tw-text-[#f44032] hover:tw-text-[#d63528] tw-transition"
+                                                    title="Use previous phone"
+                                                >
+                                                    <Icon icon="mdi:phone-clock" className="tw-text-xl" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {/* Previous Phone Numbers */}
+                                        {showPhoneList && previousPhones.length > 0 && (
+                                            <div className="tw-mt-2 tw-rounded-lg tw-border tw-border-blue-200 tw-bg-blue-50 tw-p-2">
+                                                <div className="tw-mb-1 tw-text-xs tw-font-semibold tw-text-blue-900">
+                                                    Select a previous number:
+                                                </div>
+                                                <div className="tw-space-y-1">
+                                                    {previousPhones.map((phone, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            type="button"
+                                                            onClick={() => applyPhone(phone)}
+                                                            className="tw-w-full tw-rounded-md tw-border tw-border-blue-300 tw-bg-white tw-px-3 tw-py-1.5 tw-text-left tw-text-sm hover:tw-bg-blue-100 tw-transition tw-flex tw-items-center tw-gap-2"
+                                                        >
+                                                            <Icon icon="mdi:phone" className="tw-text-blue-600" />
+                                                            {phone}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Suggested Phone Notification */}
+                                        {suggestedPhone && !showPhoneList && (
+                                            <div className="tw-mt-2 tw-rounded-lg tw-border tw-border-green-200 tw-bg-green-50 tw-px-2 tw-py-1.5 tw-flex tw-items-start tw-gap-2">
+                                                <Icon icon="mdi:check-circle" className="tw-text-green-600 tw-text-base tw-flex-shrink-0 tw-mt-0.5" />
+                                                <div className="tw-text-xs tw-text-green-800">
+                                                    Your most used phone number has been pre-filled.
+                                                </div>
+                                            </div>
+                                        )}
                                     </Field>
                                     <Field
                                         label="Alternative phone 1"
@@ -447,15 +535,57 @@ export default function Checkout(props) {
                                             clientErrors.whatsapp
                                         }
                                     >
-                                        <Input
-                                            value={data.whatsapp}
-                                            onChange={(e) =>
-                                                setData(
-                                                    'whatsapp',
-                                                    e.target.value,
-                                                )
-                                            }
-                                        />
+                                        <div className="tw-relative">
+                                            <Input
+                                                value={data.whatsapp}
+                                                onChange={(e) =>
+                                                    setData(
+                                                        'whatsapp',
+                                                        e.target.value,
+                                                    )
+                                                }
+                                            />
+                                            {isAuthenticated && previousWhatsApp.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowWhatsAppList(!showWhatsAppList)}
+                                                    className="tw-absolute tw-right-2 tw-top-1/2 tw--translate-y-1/2 tw-text-[#f44032] hover:tw-text-[#d63528] tw-transition"
+                                                    title="Use previous WhatsApp"
+                                                >
+                                                    <Icon icon="mdi:whatsapp" className="tw-text-xl" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {/* Previous WhatsApp Numbers */}
+                                        {showWhatsAppList && previousWhatsApp.length > 0 && (
+                                            <div className="tw-mt-2 tw-rounded-lg tw-border tw-border-blue-200 tw-bg-blue-50 tw-p-2">
+                                                <div className="tw-mb-1 tw-text-xs tw-font-semibold tw-text-blue-900">
+                                                    Select a previous number:
+                                                </div>
+                                                <div className="tw-space-y-1">
+                                                    {previousWhatsApp.map((whatsapp, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            type="button"
+                                                            onClick={() => applyWhatsApp(whatsapp)}
+                                                            className="tw-w-full tw-rounded-md tw-border tw-border-blue-300 tw-bg-white tw-px-3 tw-py-1.5 tw-text-left tw-text-sm hover:tw-bg-blue-100 tw-transition tw-flex tw-items-center tw-gap-2"
+                                                        >
+                                                            <Icon icon="mdi:whatsapp" className="tw-text-green-600" />
+                                                            {whatsapp}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Suggested WhatsApp Notification */}
+                                        {suggestedWhatsApp && !showWhatsAppList && (
+                                            <div className="tw-mt-2 tw-rounded-lg tw-border tw-border-green-200 tw-bg-green-50 tw-px-2 tw-py-1.5 tw-flex tw-items-start tw-gap-2">
+                                                <Icon icon="mdi:check-circle" className="tw-text-green-600 tw-text-base tw-flex-shrink-0 tw-mt-0.5" />
+                                                <div className="tw-text-xs tw-text-green-800">
+                                                    Your most used WhatsApp number has been pre-filled.
+                                                </div>
+                                            </div>
+                                        )}
                                     </Field>
                                 </div>
                             </Card>
@@ -490,7 +620,55 @@ export default function Checkout(props) {
 
                             {/* Billing */}
                             <Card className="tw-space-y-4">
-                                <SectionTitle>Billing Address</SectionTitle>
+                                <div className="tw-flex tw-items-center tw-justify-between">
+                                    <SectionTitle>Billing Address</SectionTitle>
+                                    {isAuthenticated && previousAddresses.billing.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowBillingAddressList(!showBillingAddressList)}
+                                            className="tw-text-sm tw-text-[#f44032] hover:tw-underline tw-flex tw-items-center tw-gap-1"
+                                        >
+                                            <Icon icon="mdi:map-marker-multiple" />
+                                            {showBillingAddressList ? 'Hide' : 'Use previous address'}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Previous Addresses List */}
+                                {showBillingAddressList && previousAddresses.billing.length > 0 && (
+                                    <div className="tw-rounded-lg tw-border tw-border-blue-200 tw-bg-blue-50 tw-p-3">
+                                        <div className="tw-mb-2 tw-text-xs tw-font-semibold tw-text-blue-900">
+                                            Select a previous address:
+                                        </div>
+                                        <div className="tw-space-y-2">
+                                            {previousAddresses.billing.map((addr, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    type="button"
+                                                    onClick={() => applyBillingAddress(addr)}
+                                                    className="tw-w-full tw-rounded-md tw-border tw-border-blue-300 tw-bg-white tw-p-2 tw-text-left tw-text-xs hover:tw-bg-blue-100 tw-transition"
+                                                >
+                                                    <div className="tw-font-medium tw-text-gray-900">{addr.line1}</div>
+                                                    {addr.line2 && <div className="tw-text-gray-600">{addr.line2}</div>}
+                                                    <div className="tw-text-gray-600">
+                                                        {addr.city}, {addr.region} {addr.postal_code}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Suggested Address Notification */}
+                                {suggestedBillingAddress && !showBillingAddressList && (
+                                    <div className="tw-rounded-lg tw-border tw-border-green-200 tw-bg-green-50 tw-p-3 tw-flex tw-items-start tw-gap-2">
+                                        <Icon icon="mdi:check-circle" className="tw-text-green-600 tw-text-lg tw-flex-shrink-0 tw-mt-0.5" />
+                                        <div className="tw-text-xs tw-text-green-800">
+                                            <strong>Your most used address has been pre-filled.</strong> You can edit it below or select a different one.
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="tw-grid tw-gap-4">
                                     <Field
                                         label="Address line 1"
@@ -603,7 +781,19 @@ export default function Checkout(props) {
 
                             {/* Shipping */}
                             <Card className="tw-space-y-4">
-                                <SectionTitle>Shipping Address</SectionTitle>
+                                <div className="tw-flex tw-items-center tw-justify-between">
+                                    <SectionTitle>Shipping Address</SectionTitle>
+                                    {isAuthenticated && previousAddresses.shipping.length > 0 && !sameShip && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowShippingAddressList(!showShippingAddressList)}
+                                            className="tw-text-sm tw-text-[#f44032] hover:tw-underline tw-flex tw-items-center tw-gap-1"
+                                        >
+                                            <Icon icon="mdi:map-marker-multiple" />
+                                            {showShippingAddressList ? 'Hide' : 'Use previous address'}
+                                        </button>
+                                    )}
+                                </div>
                                 <Checkbox
                                     label="Use billing address as shipping address"
                                     checked={sameShip}
@@ -613,6 +803,40 @@ export default function Checkout(props) {
                                 />
                                 {!sameShip && (
                                     <div className="tw-grid tw-gap-4">
+                                        {/* Previous Shipping Addresses List */}
+                                        {showShippingAddressList && previousAddresses.shipping.length > 0 && (
+                                            <div className="tw-rounded-lg tw-border tw-border-blue-200 tw-bg-blue-50 tw-p-3">
+                                                <div className="tw-mb-2 tw-text-xs tw-font-semibold tw-text-blue-900">
+                                                    Select a previous address:
+                                                </div>
+                                                <div className="tw-space-y-2">
+                                                    {previousAddresses.shipping.map((addr, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            type="button"
+                                                            onClick={() => applyShippingAddress(addr)}
+                                                            className="tw-w-full tw-rounded-md tw-border tw-border-blue-300 tw-bg-white tw-p-2 tw-text-left tw-text-xs hover:tw-bg-blue-100 tw-transition"
+                                                        >
+                                                            <div className="tw-font-medium tw-text-gray-900">{addr.line1}</div>
+                                                            {addr.line2 && <div className="tw-text-gray-600">{addr.line2}</div>}
+                                                            <div className="tw-text-gray-600">
+                                                                {addr.city}, {addr.region} {addr.postal_code}
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Suggested Shipping Address Notification */}
+                                        {suggestedShippingAddress && !showShippingAddressList && !sameShip && (
+                                            <div className="tw-rounded-lg tw-border tw-border-green-200 tw-bg-green-50 tw-p-3 tw-flex tw-items-start tw-gap-2">
+                                                <Icon icon="mdi:check-circle" className="tw-text-green-600 tw-text-lg tw-flex-shrink-0 tw-mt-0.5" />
+                                                <div className="tw-text-xs tw-text-green-800">
+                                                    <strong>Your most used shipping address has been pre-filled.</strong> You can edit it below or select a different one.
+                                                </div>
+                                            </div>
+                                        )}
                                         <Field
                                             label="Address line 1"
                                             required

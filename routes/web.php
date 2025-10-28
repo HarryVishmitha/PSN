@@ -32,6 +32,7 @@ Route::get('/', [Home::class, 'index'])->name('home');
 Route::get('/about-us', [Home::class, 'aboutUs'])->name('aboutUs');
 Route::get('/cart', [Home::class, 'cart'])->name('cart');
 Route::get('/cart/checkout', [Home::class, 'checkout'])->name('checkout');
+Route::get('/products/all', [Home::class, 'allProducts'])->name('links.continue_shopping');
 Route::get('/products/all', [Home::class, 'allProducts'])->name('products.all');
 Route::get('/api/products', [Home::class, 'fetchProducts']);
 Route::get('/api/categories', [Home::class, 'fetchCategories']);

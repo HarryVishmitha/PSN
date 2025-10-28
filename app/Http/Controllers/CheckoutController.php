@@ -151,7 +151,7 @@ class CheckoutController extends Controller
     public function thankyou(Order $order)
     {
         $order->load([
-            'items.product',
+            'items.product.images',
             'items.variant',
             'items.subvariant',
             'shippingAddress',
@@ -171,6 +171,19 @@ class CheckoutController extends Controller
             $unit = (float) ($item->unit_price ?? 0);
             $line = (float) ($item->line_total ?? $qty * $unit);
 
+            // Get primary image or first image
+            $imageUrl = null;
+            if ($item->product && $item->product->images) {
+                $primaryImage = $item->product->images
+                    ->sortBy([
+                        ['is_primary', 'desc'],
+                        ['image_order', 'asc'],
+                        ['id', 'asc'],
+                    ])
+                    ->first();
+                $imageUrl = $primaryImage ? $primaryImage->image_url : null;
+            }
+
             return [
                 'id'         => $item->id,
                 'name'       => $item->name ?? optional($item->product)->name,
@@ -181,6 +194,7 @@ class CheckoutController extends Controller
                 'variant'    => $item->description
                     ?: optional($item->variant)->name
                     ?: optional($item->subvariant)->name,
+                'image_url'  => $imageUrl,
             ];
         })->values()->all();
 
@@ -236,7 +250,7 @@ class CheckoutController extends Controller
 
         if (Auth::check()) {
             $user = Auth::user();
-            return [$user->getMorphClass(), $user->getAuthIdentifier(), $user->working_group_id ?? $defaultGroup];
+            return [User::class, $user->getAuthIdentifier(), $user->working_group_id ?? $defaultGroup];
         }
 
         $email = $r->email;
@@ -271,7 +285,7 @@ class CheckoutController extends Controller
             $dc->update($updates);
         }
 
-        return [$dc->getMorphClass(), $dc->id, $dc->working_group_id ?? $defaultGroup];
+        return [DailyCustomer::class, $dc->id, $dc->working_group_id ?? $defaultGroup];
     }
 
     /** Parse .env list like: PRINTAIR_NOTIFY_EMAILS="a@x.com,b@y.com" */
