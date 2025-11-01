@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
-import AdminDashboard from '@/Layouts/AdminDashboard';
 import Breadcrumb from '@/Components/Breadcrumb';
+import AdminDashboard from '@/Layouts/AdminDashboard';
 import { Icon } from '@iconify/react';
+import { Head, Link, router } from '@inertiajs/react';
 import axios from 'axios';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ItemEditor from './components/ItemEditor';
 import SummarySidebar from './components/SummarySidebar';
 import TimelinePanel from './components/TimelinePanel';
@@ -30,22 +30,41 @@ const statusPalette = {
     cancelled: 'tw-bg-rose-100 tw-text-rose-700',
 };
 
-const statusChip = (value) => statusPalette[value] || 'tw-bg-gray-100 tw-text-gray-700';
-const makeTempId = () => crypto.randomUUID?.() || Math.random().toString(36).slice(2, 9);
+const statusChip = (value) =>
+    statusPalette[value] || 'tw-bg-gray-100 tw-text-gray-700';
+const makeTempId = () =>
+    crypto.randomUUID?.() || Math.random().toString(36).slice(2, 9);
 
-const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMethods, userDetails }) => {
+const OrderShow = ({
+    order,
+    timeline,
+    statusOptions,
+    workingGroups,
+    shippingMethods,
+    userDetails,
+}) => {
     const [items, setItems] = useState([]);
     const [status, setStatus] = useState(order.status);
     const [statusNote, setStatusNote] = useState('');
     const [statusVisibility, setStatusVisibility] = useState('admin');
-    const [workingGroupId, setWorkingGroupId] = useState(order.working_group_id || '');
-    const [shippingMethodId, setShippingMethodId] = useState(order.shipping_method?.id || '');
+    const [workingGroupId, setWorkingGroupId] = useState(
+        order.working_group_id || '',
+    );
+    const [shippingMethodId, setShippingMethodId] = useState(
+        order.shipping_method?.id || '',
+    );
 
-    const [discountMode, setDiscountMode] = useState(order.discount_mode || 'none');
-    const [discountValue, setDiscountValue] = useState(order.discount_value || 0);
+    const [discountMode, setDiscountMode] = useState(
+        order.discount_mode || 'none',
+    );
+    const [discountValue, setDiscountValue] = useState(
+        order.discount_value || 0,
+    );
     const [taxMode, setTaxMode] = useState(order.tax_mode || 'none');
     const [taxValue, setTaxValue] = useState(order.tax_value || 0);
-    const [shippingAmount, setShippingAmount] = useState(order.shipping_amount || 0);
+    const [shippingAmount, setShippingAmount] = useState(
+        order.shipping_amount || 0,
+    );
 
     const [notes, setNotes] = useState(order.notes || '');
     const [contact, setContact] = useState({
@@ -79,35 +98,45 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
     });
     const [eventSaving, setEventSaving] = useState(false);
 
-    const initItemsFromOrder = useCallback((records) => (
-        (records || []).map((item) => ({
-            tempId: makeTempId(),
-            product_id: item.product?.id || null,
-            product: item.product || null,
-            variant_id: item.variant?.id || null,
-            subvariant_id: item.subvariant?.id || null,
-            description: item.description || '',
-            quantity: Number(item.quantity || 0),
-            unit: item.unit || item.product?.unit_of_measure || 'unit',
-            unit_price: Number(item.unit_price || 0),
-            line_total: Number(item.line_total || 0),
-            is_roll: !!item.is_roll,
-            roll_id: item.roll_details?.roll?.id || item.roll_id || null,
-            cut_width_in: item.roll_details?.cut_width_in ?? null,
-            cut_height_in: item.roll_details?.cut_height_in ?? null,
-            offcut_price_per_sqft: item.roll_details?.offcut_rate ?? item.offcut_price ?? null,
-            options: item.options || null,
-            roll_meta: item.roll_details
-                ? {
-                    fixedAreaFt2: item.roll_details.cut_width_ft && item.roll_details.cut_height_ft
-                        ? Number((item.roll_details.cut_width_ft * item.roll_details.cut_height_ft).toFixed(3))
-                        : 0,
-                    offcutAreaFt2: item.roll_details.offcut_area_ft2 || 0,
-                    offcutWidthIn: item.roll_details.offcut_width_in || 0,
-                }
-                : { fixedAreaFt2: 0, offcutAreaFt2: 0, offcutWidthIn: 0 },
-        }))
-    ), []);
+    const initItemsFromOrder = useCallback(
+        (records) =>
+            (records || []).map((item) => ({
+                tempId: makeTempId(),
+                product_id: item.product?.id || null,
+                product: item.product || null,
+                variant_id: item.variant?.id || null,
+                subvariant_id: item.subvariant?.id || null,
+                description: item.description || '',
+                quantity: Number(item.quantity || 0),
+                unit: item.unit || item.product?.unit_of_measure || 'unit',
+                unit_price: Number(item.unit_price || 0),
+                line_total: Number(item.line_total || 0),
+                is_roll: !!item.is_roll,
+                roll_id: item.roll_details?.roll?.id || item.roll_id || null,
+                cut_width_in: item.roll_details?.cut_width_in ?? null,
+                cut_height_in: item.roll_details?.cut_height_in ?? null,
+                offcut_price_per_sqft:
+                    item.roll_details?.offcut_rate ?? item.offcut_price ?? null,
+                options: item.options || null,
+                roll_meta: item.roll_details
+                    ? {
+                          fixedAreaFt2:
+                              item.roll_details.cut_width_ft &&
+                              item.roll_details.cut_height_ft
+                                  ? Number(
+                                        (
+                                            item.roll_details.cut_width_ft *
+                                            item.roll_details.cut_height_ft
+                                        ).toFixed(3),
+                                    )
+                                  : 0,
+                          offcutAreaFt2: item.roll_details.offcut_area_ft2 || 0,
+                          offcutWidthIn: item.roll_details.offcut_width_in || 0,
+                      }
+                    : { fixedAreaFt2: 0, offcutAreaFt2: 0, offcutWidthIn: 0 },
+            })),
+        [],
+    );
 
     useEffect(() => {
         setItems(initItemsFromOrder(order.items || []));
@@ -133,13 +162,18 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
         setIsCompany(order.is_company || false);
     }, [order, initItemsFromOrder]);
 
-    const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.line_total || 0), 0), [items]);
+    const subtotal = useMemo(
+        () =>
+            items.reduce((sum, item) => sum + Number(item.line_total || 0), 0),
+        [items],
+    );
 
     const discountAmount = useMemo(() => {
-        if (discountMode === 'fixed') return Math.max(0, Number(discountValue || 0));
+        if (discountMode === 'fixed')
+            return Math.max(0, Number(discountValue || 0));
         if (discountMode === 'percent') {
             const pct = Math.max(0, Math.min(100, Number(discountValue || 0)));
-            return Math.round((subtotal * pct) / 100 * 100) / 100;
+            return Math.round(((subtotal * pct) / 100) * 100) / 100;
         }
         return 0;
     }, [discountMode, discountValue, subtotal]);
@@ -149,80 +183,118 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
         if (taxMode === 'percent') {
             const pct = Math.max(0, Math.min(100, Number(taxValue || 0)));
             const base = Math.max(0, subtotal - discountAmount);
-            return Math.round((base * pct) / 100 * 100) / 100;
+            return Math.round(((base * pct) / 100) * 100) / 100;
         }
         return 0;
     }, [taxMode, taxValue, subtotal, discountAmount]);
 
     const grandTotal = useMemo(() => {
         const shipping = Math.max(0, Number(shippingAmount || 0));
-        return Math.round((subtotal - discountAmount + taxAmount + shipping) * 100) / 100;
+        return (
+            Math.round(
+                (subtotal - discountAmount + taxAmount + shipping) * 100,
+            ) / 100
+        );
     }, [subtotal, discountAmount, taxAmount, shippingAmount]);
 
-    const ensureRollOptions = useCallback(async (productId) => {
-        if (rollCache[productId]) return rollCache[productId];
-        try {
-            const { data } = await axios.get(route('admin.product.rolls.get', productId));
-            const rolls = data?.rolls || [];
-            setRollCache((prev) => ({ ...prev, [productId]: rolls }));
-            return rolls;
-        } catch (error) {
-            console.error('Failed to fetch roll options', error);
-            return [];
-        }
-    }, [rollCache]);
-
-    const recalcItem = useCallback((raw) => {
-        const item = { ...raw };
-        const quantity = Math.max(0, Number(item.quantity || 0));
-        item.quantity = quantity;
-
-        if (item.is_roll) {
-            const rollList = rollCache[item.product_id] || [];
-            const matchedRoll = rollList.find((roll) => roll.id === item.roll_id) || null;
-            const rollWidthFt = matchedRoll?.roll_width ? Number(matchedRoll.roll_width) : null;
-            const widthIn = Number(item.cut_width_in || 0);
-            const heightIn = Number(item.cut_height_in || 0);
-            const pricePerSqFt = Number(item.product?.price_per_sqft || 0);
-            const offcutRate = Number(item.offcut_price_per_sqft ?? matchedRoll?.offcut_price ?? 0);
-
-            if (widthIn > 0 && heightIn > 0 && rollWidthFt) {
-                const widthFt = widthIn / 12;
-                const heightFt = heightIn / 12;
-                const fixedAreaFt2 = widthFt * heightFt;
-                const rollWidthIn = rollWidthFt * 12;
-                const offcutWidthIn = Math.max(rollWidthIn - widthIn, 0);
-                const offcutAreaFt2 = (offcutWidthIn / 12) * heightFt;
-
-                const unitPrice = (fixedAreaFt2 * pricePerSqFt) + (offcutAreaFt2 * offcutRate);
-                item.unit_price = Math.round(unitPrice * 100) / 100;
-                item.line_total = Math.round(item.unit_price * quantity * 100) / 100;
-                item.roll_meta = {
-                    fixedAreaFt2: Math.round(fixedAreaFt2 * 1000) / 1000,
-                    offcutAreaFt2: Math.round(offcutAreaFt2 * 1000) / 1000,
-                    offcutWidthIn: Math.round(offcutWidthIn * 1000) / 1000,
-                };
-            } else {
-                item.unit_price = 0;
-                item.line_total = 0;
-                item.roll_meta = { fixedAreaFt2: 0, offcutAreaFt2: 0, offcutWidthIn: 0 };
+    const ensureRollOptions = useCallback(
+        async (productId) => {
+            if (rollCache[productId]) return rollCache[productId];
+            try {
+                const { data } = await axios.get(
+                    route('admin.product.rolls.get', productId),
+                );
+                const rolls = data?.rolls || [];
+                setRollCache((prev) => ({ ...prev, [productId]: rolls }));
+                return rolls;
+            } catch (error) {
+                console.error('Failed to fetch roll options', error);
+                return [];
             }
-        } else {
-            const unitPrice = Number(item.unit_price ?? item.product?.price ?? 0);
-            item.unit_price = Math.round(unitPrice * 100) / 100;
-            item.line_total = Math.round(item.unit_price * quantity * 100) / 100;
-            item.roll_meta = { fixedAreaFt2: 0, offcutAreaFt2: 0, offcutWidthIn: 0 };
-        }
+        },
+        [rollCache],
+    );
 
-        return item;
-    }, [rollCache]);
+    const recalcItem = useCallback(
+        (raw) => {
+            const item = { ...raw };
+            const quantity = Math.max(0, Number(item.quantity || 0));
+            item.quantity = quantity;
 
-    const updateItem = useCallback((tempId, changes) => {
-        setItems((prev) => prev.map((item) => {
-            if (item.tempId !== tempId) return item;
-            return recalcItem({ ...item, ...changes });
-        }));
-    }, [recalcItem]);
+            if (item.is_roll) {
+                const rollList = rollCache[item.product_id] || [];
+                const matchedRoll =
+                    rollList.find((roll) => roll.id === item.roll_id) || null;
+                const rollWidthFt = matchedRoll?.roll_width
+                    ? Number(matchedRoll.roll_width)
+                    : null;
+                const widthIn = Number(item.cut_width_in || 0);
+                const heightIn = Number(item.cut_height_in || 0);
+                const pricePerSqFt = Number(item.product?.price_per_sqft || 0);
+                const offcutRate = Number(
+                    item.offcut_price_per_sqft ??
+                        matchedRoll?.offcut_price ??
+                        0,
+                );
+
+                if (widthIn > 0 && heightIn > 0 && rollWidthFt) {
+                    const widthFt = widthIn / 12;
+                    const heightFt = heightIn / 12;
+                    const fixedAreaFt2 = widthFt * heightFt;
+                    const rollWidthIn = rollWidthFt * 12;
+                    const offcutWidthIn = Math.max(rollWidthIn - widthIn, 0);
+                    const offcutAreaFt2 = (offcutWidthIn / 12) * heightFt;
+
+                    const unitPrice =
+                        fixedAreaFt2 * pricePerSqFt +
+                        offcutAreaFt2 * offcutRate;
+                    item.unit_price = Math.round(unitPrice * 100) / 100;
+                    item.line_total =
+                        Math.round(item.unit_price * quantity * 100) / 100;
+                    item.roll_meta = {
+                        fixedAreaFt2: Math.round(fixedAreaFt2 * 1000) / 1000,
+                        offcutAreaFt2: Math.round(offcutAreaFt2 * 1000) / 1000,
+                        offcutWidthIn: Math.round(offcutWidthIn * 1000) / 1000,
+                    };
+                } else {
+                    item.unit_price = 0;
+                    item.line_total = 0;
+                    item.roll_meta = {
+                        fixedAreaFt2: 0,
+                        offcutAreaFt2: 0,
+                        offcutWidthIn: 0,
+                    };
+                }
+            } else {
+                const unitPrice = Number(
+                    item.unit_price ?? item.product?.price ?? 0,
+                );
+                item.unit_price = Math.round(unitPrice * 100) / 100;
+                item.line_total =
+                    Math.round(item.unit_price * quantity * 100) / 100;
+                item.roll_meta = {
+                    fixedAreaFt2: 0,
+                    offcutAreaFt2: 0,
+                    offcutWidthIn: 0,
+                };
+            }
+
+            return item;
+        },
+        [rollCache],
+    );
+
+    const updateItem = useCallback(
+        (tempId, changes) => {
+            setItems((prev) =>
+                prev.map((item) => {
+                    if (item.tempId !== tempId) return item;
+                    return recalcItem({ ...item, ...changes });
+                }),
+            );
+        },
+        [recalcItem],
+    );
 
     const removeItem = useCallback((tempId) => {
         setItems((prev) => prev.filter((item) => item.tempId !== tempId));
@@ -237,43 +309,62 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
         });
     }, []);
 
-    const addProduct = useCallback(async (product) => {
-        const base = {
-            tempId: makeTempId(),
-            product_id: product.id,
-            product,
-            variant_id: null,
-            subvariant_id: null,
-            description: '',
-            quantity: 1,
-            unit: product.unit_of_measure || (product.pricing_method === 'roll' ? 'sq.ft' : 'unit'),
-            unit_price: product.pricing_method === 'roll' ? 0 : Number(product.price || 0),
-            line_total: 0,
-            is_roll: product.pricing_method === 'roll',
-            roll_id: null,
-            cut_width_in: '',
-            cut_height_in: '',
-            offcut_price_per_sqft: product.pricing_method === 'roll' ? 0 : null,
-            options: null,
-            roll_meta: { fixedAreaFt2: 0, offcutAreaFt2: 0, offcutWidthIn: 0 },
-        };
-
-        let hydrated = base;
-        if (product.pricing_method === 'roll') {
-            const rolls = await ensureRollOptions(product.id);
-            const defaultRoll = rolls.find((roll) => roll.pivot?.is_default) || rolls[0] || null;
-            hydrated = {
-                ...base,
-                roll_id: defaultRoll?.id || null,
-                offcut_price_per_sqft: defaultRoll?.offcut_price ?? base.offcut_price_per_sqft ?? 0,
+    const addProduct = useCallback(
+        async (product) => {
+            const base = {
+                tempId: makeTempId(),
+                product_id: product.id,
+                product,
+                variant_id: null,
+                subvariant_id: null,
+                description: '',
+                quantity: 1,
+                unit:
+                    product.unit_of_measure ||
+                    (product.pricing_method === 'roll' ? 'sq.ft' : 'unit'),
+                unit_price:
+                    product.pricing_method === 'roll'
+                        ? 0
+                        : Number(product.price || 0),
+                line_total: 0,
+                is_roll: product.pricing_method === 'roll',
+                roll_id: null,
+                cut_width_in: '',
+                cut_height_in: '',
+                offcut_price_per_sqft:
+                    product.pricing_method === 'roll' ? 0 : null,
+                options: null,
+                roll_meta: {
+                    fixedAreaFt2: 0,
+                    offcutAreaFt2: 0,
+                    offcutWidthIn: 0,
+                },
             };
-        }
 
-        const computed = recalcItem(hydrated);
-        setItems((prev) => [...prev, computed]);
-        setProductDrawerOpen(false);
-        setProductQuery('');
-    }, [ensureRollOptions, recalcItem]);
+            let hydrated = base;
+            if (product.pricing_method === 'roll') {
+                const rolls = await ensureRollOptions(product.id);
+                const defaultRoll =
+                    rolls.find((roll) => roll.pivot?.is_default) ||
+                    rolls[0] ||
+                    null;
+                hydrated = {
+                    ...base,
+                    roll_id: defaultRoll?.id || null,
+                    offcut_price_per_sqft:
+                        defaultRoll?.offcut_price ??
+                        base.offcut_price_per_sqft ??
+                        0,
+                };
+            }
+
+            const computed = recalcItem(hydrated);
+            setItems((prev) => [...prev, computed]);
+            setProductDrawerOpen(false);
+            setProductQuery('');
+        },
+        [ensureRollOptions, recalcItem],
+    );
 
     useEffect(() => {
         if (!productDrawerOpen) return;
@@ -285,12 +376,15 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
         const handle = setTimeout(async () => {
             try {
                 setProductLoading(true);
-                const { data } = await axios.get(route('admin.orders.products'), {
-                    params: {
-                        search: productQuery,
-                        working_group_id: workingGroupId || undefined,
+                const { data } = await axios.get(
+                    route('admin.orders.products'),
+                    {
+                        params: {
+                            search: productQuery,
+                            working_group_id: workingGroupId || undefined,
+                        },
                     },
-                });
+                );
                 setProductResults(data.items || []);
             } catch (error) {
                 console.error('Product search failed', error);
@@ -315,36 +409,58 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
                     product_id: item.product_id,
                     quantity: Number(item.quantity || 0),
                     unit: item.unit,
-                    unit_price: item.is_roll ? null : Number(item.unit_price || 0),
+                    unit_price: item.is_roll
+                        ? null
+                        : Number(item.unit_price || 0),
                     is_roll: item.is_roll,
                     roll_id: item.is_roll ? item.roll_id : null,
-                    cut_width_in: item.is_roll ? Number(item.cut_width_in || 0) : null,
-                    cut_height_in: item.is_roll ? Number(item.cut_height_in || 0) : null,
-                    offcut_price_per_sqft: item.is_roll ? Number(item.offcut_price_per_sqft || 0) : null,
+                    cut_width_in: item.is_roll
+                        ? Number(item.cut_width_in || 0)
+                        : null,
+                    cut_height_in: item.is_roll
+                        ? Number(item.cut_height_in || 0)
+                        : null,
+                    offcut_price_per_sqft: item.is_roll
+                        ? Number(item.offcut_price_per_sqft || 0)
+                        : null,
                 })),
             };
 
-            const { data } = await axios.post(route('admin.orders.preview'), payload);
-            setItems((prev) => prev.map((item, idx) => {
-                const serverItem = data.items?.[idx];
-                if (!serverItem) return item;
-                return {
-                    ...item,
-                    unit_price: serverItem.unit_price,
-                    line_total: serverItem.line_total,
-                    roll_meta: serverItem.meta?.roll
-                        ? {
-                            fixedAreaFt2: serverItem.meta.roll.fixed_area_ft2 || 0,
-                            offcutAreaFt2: serverItem.meta.roll.offcut_area_ft2 || 0,
-                            offcutWidthIn: serverItem.meta.roll.offcut_width_in || 0,
-                        }
-                        : item.roll_meta,
-                };
-            }));
-            setToast({ type: 'success', message: 'Pricing preview synced with server.' });
+            const { data } = await axios.post(
+                route('admin.orders.preview'),
+                payload,
+            );
+            setItems((prev) =>
+                prev.map((item, idx) => {
+                    const serverItem = data.items?.[idx];
+                    if (!serverItem) return item;
+                    return {
+                        ...item,
+                        unit_price: serverItem.unit_price,
+                        line_total: serverItem.line_total,
+                        roll_meta: serverItem.meta?.roll
+                            ? {
+                                  fixedAreaFt2:
+                                      serverItem.meta.roll.fixed_area_ft2 || 0,
+                                  offcutAreaFt2:
+                                      serverItem.meta.roll.offcut_area_ft2 || 0,
+                                  offcutWidthIn:
+                                      serverItem.meta.roll.offcut_width_in || 0,
+                              }
+                            : item.roll_meta,
+                    };
+                }),
+            );
+            setToast({
+                type: 'success',
+                message: 'Pricing preview synced with server.',
+            });
         } catch (error) {
             console.error('Preview failed', error);
-            setToast({ type: 'error', message: 'Unable to preview pricing. Check inputs and retry.' });
+            setToast({
+                type: 'error',
+                message: 'Unable to preview pricing. Check inputs and retry.',
+            });
         } finally {
             setPreviewLoading(false);
         }
@@ -382,13 +498,21 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
                     description: item.description,
                     quantity: Number(item.quantity || 0),
                     unit: item.unit,
-                    unit_price: item.is_roll ? null : Number(item.unit_price || 0),
+                    unit_price: item.is_roll
+                        ? null
+                        : Number(item.unit_price || 0),
                     options: item.options,
                     is_roll: item.is_roll,
                     roll_id: item.is_roll ? item.roll_id : null,
-                    cut_width_in: item.is_roll ? Number(item.cut_width_in || 0) : null,
-                    cut_height_in: item.is_roll ? Number(item.cut_height_in || 0) : null,
-                    offcut_price_per_sqft: item.is_roll ? Number(item.offcut_price_per_sqft || 0) : null,
+                    cut_width_in: item.is_roll
+                        ? Number(item.cut_width_in || 0)
+                        : null,
+                    cut_height_in: item.is_roll
+                        ? Number(item.cut_height_in || 0)
+                        : null,
+                    offcut_price_per_sqft: item.is_roll
+                        ? Number(item.offcut_price_per_sqft || 0)
+                        : null,
                 })),
             };
 
@@ -398,33 +522,67 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
         } catch (error) {
             if (error.response?.status === 422) {
                 setErrors(error.response.data.errors || {});
-                setToast({ type: 'error', message: 'Validation failed. Please review highlighted fields.' });
+                setToast({
+                    type: 'error',
+                    message:
+                        'Validation failed. Please review highlighted fields.',
+                });
             } else {
-                setToast({ type: 'error', message: 'Failed to save order. Please try again.' });
+                setToast({
+                    type: 'error',
+                    message: 'Failed to save order. Please try again.',
+                });
             }
         } finally {
             setSaving(false);
         }
     }, [
-        contact, companyName, discountMode, discountValue, isCompany, items, notes,
-        order.id, shippingAmount, shippingMethodId, status, statusNote, statusVisibility,
-        taxMode, taxValue, workingGroupId,
+        contact,
+        companyName,
+        discountMode,
+        discountValue,
+        isCompany,
+        items,
+        notes,
+        order.id,
+        shippingAmount,
+        shippingMethodId,
+        status,
+        statusNote,
+        statusVisibility,
+        taxMode,
+        taxValue,
+        workingGroupId,
     ]);
 
     const submitEvent = useCallback(async () => {
         if (!eventForm.message?.trim()) {
-            setToast({ type: 'error', message: 'Event message cannot be empty.' });
+            setToast({
+                type: 'error',
+                message: 'Event message cannot be empty.',
+            });
             return;
         }
         setEventSaving(true);
         try {
-            await axios.post(route('admin.orders.events.store', order.id), eventForm);
-            setEventForm({ event_type: 'note', title: '', message: '', visibility: 'admin' });
+            await axios.post(
+                route('admin.orders.events.store', order.id),
+                eventForm,
+            );
+            setEventForm({
+                event_type: 'note',
+                title: '',
+                message: '',
+                visibility: 'admin',
+            });
             setToast({ type: 'success', message: 'Event added to timeline.' });
             router.reload({ only: ['timeline'] });
         } catch (error) {
             if (error.response?.status === 422) {
-                setToast({ type: 'error', message: 'Could not add event. Check the form.' });
+                setToast({
+                    type: 'error',
+                    message: 'Could not add event. Check the form.',
+                });
             } else {
                 setToast({ type: 'error', message: 'Failed to add event.' });
             }
@@ -451,45 +609,85 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
         return map;
     }, [errors]);
 
-    const statusLabel = statusOptions.find((opt) => opt.value === order.status)?.label || order.status;
+    const statusLabel =
+        statusOptions.find((opt) => opt.value === order.status)?.label ||
+        order.status;
 
     return (
         <AdminDashboard userDetails={userDetails}>
             <Head title={`Order ${order.number}`} />
-            <div className="tw-flex tw-flex-col lg:tw-flex-row tw-items-start lg:tw-items-center tw-justify-between tw-gap-4 tw-mb-6">
+            <div className="tw-mb-6 tw-flex tw-flex-col tw-items-start tw-justify-between tw-gap-4 lg:tw-flex-row lg:tw-items-center">
                 <div className="tw-flex-1">
-                    <Breadcrumb items={[
-                        { label: 'Dashboard', href: route('admin.dashboard') },
-                        { label: 'Orders', href: route('admin.orders.index') },
-                        { label: order.number },
-                    ]}/>
-                    <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-gap-3 tw-mt-3">
+                    <Breadcrumb
+                        items={[
+                            {
+                                label: 'Dashboard',
+                                href: route('admin.dashboard'),
+                            },
+                            {
+                                label: 'Orders',
+                                href: route('admin.orders.index'),
+                            },
+                            { label: order.number },
+                        ]}
+                    />
+                    <div className="tw-mt-3 tw-flex tw-flex-col tw-items-start tw-gap-3 sm:tw-flex-row sm:tw-items-center">
                         <div className="tw-flex tw-items-center tw-gap-3">
-                            <div className="tw-w-12 tw-h-12 tw-rounded-xl tw-bg-gradient-to-br tw-from-blue-500 tw-to-blue-700 tw-flex tw-items-center tw-justify-center tw-shadow-lg">
-                                <Icon icon="solar:document-text-bold" className="tw-text-white tw-text-2xl" />
+                            <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gradient-to-br tw-from-blue-500 tw-to-blue-700 tw-shadow-lg">
+                                <Icon
+                                    icon="solar:document-text-bold"
+                                    className="tw-text-2xl tw-text-white"
+                                />
                             </div>
                             <div>
-                                <h1 className="tw-text-2xl tw-font-bold tw-text-slate-900">{order.number}</h1>
-                                <p className="tw-text-xs tw-text-slate-500">Order ID: #{order.id}</p>
+                                <h1 className="tw-text-2xl tw-font-bold tw-text-slate-900">
+                                    {order.number}
+                                </h1>
+                                <p className="tw-text-xs tw-text-slate-500">
+                                    Order ID: #{order.id}
+                                </p>
                             </div>
                         </div>
-                        <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-uppercase tw-tracking-wide ${statusChip(order.status)}`}>
-                            <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-current tw-animate-pulse"></span>
+                        <span
+                            className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-uppercase tw-tracking-wide ${statusChip(order.status)}`}
+                        >
+                            <span className="tw-h-2 tw-w-2 tw-animate-pulse tw-rounded-full tw-bg-current"></span>
                             {statusLabel}
                         </span>
-                        <span className="tw-text-xs tw-text-slate-500 tw-flex tw-items-center tw-gap-1.5 tw-bg-slate-50 tw-px-3 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-200">
-                            <Icon icon="solar:calendar-bold-duotone" className="tw-text-sm tw-text-blue-500" />
-                            Created {order.created_at ? new Date(order.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        <span className="tw-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-slate-200 tw-bg-slate-50 tw-px-3 tw-py-1.5 tw-text-xs tw-text-slate-500">
+                            <Icon
+                                icon="solar:calendar-bold-duotone"
+                                className="tw-text-sm tw-text-blue-500"
+                            />
+                            Created{' '}
+                            {order.created_at
+                                ? new Date(order.created_at).toLocaleString(
+                                      'en-GB',
+                                      {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                      },
+                                  )
+                                : '—'}
                         </span>
                     </div>
                 </div>
                 <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
                     {order.estimate?.id && (
                         <Link
-                            href={route('admin.estimates.edit', order.estimate.id)}
-                            className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-purple-600 tw-bg-purple-50 tw-px-4 tw-py-2.5 tw-text-sm tw-font-bold tw-text-purple-700 hover:tw-bg-purple-100 tw-transition-all tw-shadow-md hover:tw-shadow-lg"
+                            href={route(
+                                'admin.estimates.edit',
+                                order.estimate.id,
+                            )}
+                            className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-purple-600 tw-bg-purple-50 tw-px-4 tw-py-2.5 tw-text-sm tw-font-bold tw-text-purple-700 tw-shadow-md tw-transition-all hover:tw-bg-purple-100 hover:tw-shadow-lg"
                         >
-                            <Icon icon="solar:document-bold-duotone" className="tw-text-lg" />
+                            <Icon
+                                icon="solar:document-bold-duotone"
+                                className="tw-text-lg"
+                            />
                             Estimate {order.estimate.estimate_number}
                         </Link>
                     )}
@@ -497,16 +695,22 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
                         type="button"
                         onClick={saveOrder}
                         disabled={saving}
-                        className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-lg tw-bg-gradient-to-r tw-from-blue-600 tw-to-blue-700 tw-text-white tw-px-6 tw-py-2.5 tw-text-sm tw-font-bold hover:tw-from-blue-700 hover:tw-to-blue-800 focus:tw-ring-2 focus:tw-ring-offset-2 focus:tw-ring-blue-500 disabled:tw-opacity-60 disabled:tw-cursor-not-allowed tw-transition-all tw-shadow-lg hover:tw-shadow-xl"
+                        className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-lg tw-bg-gradient-to-r tw-from-blue-600 tw-to-blue-700 tw-px-6 tw-py-2.5 tw-text-sm tw-font-bold tw-text-white tw-shadow-lg tw-transition-all hover:tw-from-blue-700 hover:tw-to-blue-800 hover:tw-shadow-xl focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-ring-offset-2 disabled:tw-cursor-not-allowed disabled:tw-opacity-60"
                     >
                         {saving ? (
                             <>
-                                <Icon icon="svg-spinners:ring-resize" className="tw-text-xl" />
+                                <Icon
+                                    icon="svg-spinners:ring-resize"
+                                    className="tw-text-xl"
+                                />
                                 Saving...
                             </>
                         ) : (
                             <>
-                                <Icon icon="solar:floppy-disk-bold-duotone" className="tw-text-xl" />
+                                <Icon
+                                    icon="solar:floppy-disk-bold-duotone"
+                                    className="tw-text-xl"
+                                />
                                 Save Order
                             </>
                         )}
@@ -516,27 +720,34 @@ const OrderShow = ({ order, timeline, statusOptions, workingGroups, shippingMeth
 
             {toast && (
                 <div
-                    className={`tw-mb-6 tw-rounded-xl tw-border-2 tw-px-5 tw-py-4 tw-text-sm tw-font-semibold tw-flex tw-items-center tw-gap-3 tw-shadow-lg tw-animate-[slideDown_0.3s_ease-out] ${
+                    className={`tw-mb-6 tw-flex tw-animate-[slideDown_0.3s_ease-out] tw-items-center tw-gap-3 tw-rounded-xl tw-border-2 tw-px-5 tw-py-4 tw-text-sm tw-font-semibold tw-shadow-lg ${
                         toast.type === 'success'
                             ? 'tw-border-emerald-300 tw-bg-gradient-to-r tw-from-emerald-50 tw-to-emerald-100 tw-text-emerald-800'
                             : 'tw-border-rose-300 tw-bg-gradient-to-r tw-from-rose-50 tw-to-rose-100 tw-text-rose-800'
                     }`}
                 >
-                    <Icon 
-                        icon={toast.type === 'success' ? 'solar:check-circle-bold' : 'solar:danger-circle-bold'} 
+                    <Icon
+                        icon={
+                            toast.type === 'success'
+                                ? 'solar:check-circle-bold'
+                                : 'solar:danger-circle-bold'
+                        }
                         className={`tw-text-2xl ${toast.type === 'success' ? 'tw-text-emerald-600' : 'tw-text-rose-600'}`}
                     />
                     <span className="tw-flex-1">{toast.message}</span>
                     <button
                         onClick={() => setToast(null)}
-                        className="tw-text-current hover:tw-opacity-70 tw-transition-opacity"
+                        className="tw-text-current tw-transition-opacity hover:tw-opacity-70"
                     >
-                        <Icon icon="solar:close-circle-bold" className="tw-text-xl" />
+                        <Icon
+                            icon="solar:close-circle-bold"
+                            className="tw-text-xl"
+                        />
                     </button>
                 </div>
             )}
 
-            <div className="tw-grid tw-gap-6 xl:tw-grid-cols-3 tw-mb-10">
+            <div className="tw-mb-10 tw-grid tw-gap-6 xl:tw-grid-cols-3">
                 <div className="xl:tw-col-span-2">
                     <ItemEditor
                         items={items}
