@@ -1167,6 +1167,12 @@ class AdminController extends Controller
                         $uniqueFileName = uniqid() . '_' . time() . '.' . $extension;
                         // Move the file to the public/images/products folder.
                         $destinationPath = public_path('images/products');
+                        
+                        // Ensure directory exists
+                        if (!is_dir($destinationPath)) {
+                            mkdir($destinationPath, 0755, true);
+                        }
+                        
                         $file->move($destinationPath, $uniqueFileName);
 
                         $order = $request->input("images.$index.order");
@@ -2022,6 +2028,12 @@ class AdminController extends Controller
                         $extension = $file->getClientOriginalExtension();
                         $uniqueFileName = uniqid() . '_' . time() . '.' . $extension;
                         $destinationPath = public_path('images/products');
+                        
+                        // Ensure directory exists
+                        if (!is_dir($destinationPath)) {
+                            mkdir($destinationPath, 0755, true);
+                        }
+                        
                         $file->move($destinationPath, $uniqueFileName);
                         $order = $request->input("images.$index.order");
                         $isPrimary = $request->input("images.$index.is_primary");
@@ -2034,12 +2046,18 @@ class AdminController extends Controller
                             'created_by'  => Auth::id(),
                             'updated_by'  => Auth::id(),
                         ]);
+                        Log::info("Image uploaded successfully", ['filename' => $uniqueFileName]);
                     } else {
                         Log::warning("No file found for images.$index.file");
                     }
                 }
             } else {
-                Log::info('No new images provided; existing images remain unchanged.');
+                // Check if the flag to keep existing images is present
+                if (!$request->input('keep_existing_images')) {
+                    Log::info('No new images provided and no keep_existing_images flag; this might indicate an issue.');
+                } else {
+                    Log::info('No new images provided; keeping existing images as requested.');
+                }
             }
 
             // --------- Log Activity ---------

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ItemEditor from './components/ItemEditor';
 import SummarySidebar from './components/SummarySidebar';
 import TimelinePanel from './components/TimelinePanel';
+import PaymentRequestPanel from './PaymentRequestPanel';
 
 const money = (value) => {
     const amount = Number(value || 0);
@@ -39,6 +40,7 @@ const OrderShow = ({
     order,
     timeline,
     statusOptions,
+    availableStatuses = {},
     workingGroups,
     shippingMethods,
     userDetails,
@@ -47,6 +49,12 @@ const OrderShow = ({
     const [status, setStatus] = useState(order.status);
     const [statusNote, setStatusNote] = useState('');
     const [statusVisibility, setStatusVisibility] = useState('admin');
+    const [cancellationReason, setCancellationReason] = useState(
+        order.cancellation_reason || '',
+    );
+    const [showUnlockModal, setShowUnlockModal] = useState(false);
+    const [unlockReason, setUnlockReason] = useState('');
+    const [unlocking, setUnlocking] = useState(false);
     const [workingGroupId, setWorkingGroupId] = useState(
         order.working_group_id || '',
     );
@@ -559,6 +567,10 @@ const OrderShow = ({
                 status,
                 status_note: statusNote?.trim() || null,
                 status_visibility: statusVisibility || 'admin',
+                cancellation_reason:
+                    status === 'cancelled'
+                        ? cancellationReason?.trim() || null
+                        : null,
                 working_group_id: workingGroupId || null,
                 shipping_method_id: shippingMethodId || null,
                 discount_mode: discountMode,
@@ -638,6 +650,7 @@ const OrderShow = ({
             setSaving(false);
         }
     }, [
+        cancellationReason,
         contact,
         companyName,
         discountMode,
@@ -655,6 +668,41 @@ const OrderShow = ({
         taxValue,
         workingGroupId,
     ]);
+
+    const unlockOrder = useCallback(async () => {
+        if (!unlockReason.trim() || unlockReason.trim().length < 10) {
+            setToast({
+                type: 'error',
+                message: 'Unlock reason must be at least 10 characters.',
+            });
+            return;
+        }
+
+        setUnlocking(true);
+        try {
+            await axios.post(route('admin.orders.unlock', order.id), {
+                reason: unlockReason.trim(),
+            });
+
+            setToast({
+                type: 'success',
+                message: 'Order unlocked successfully!',
+            });
+            setShowUnlockModal(false);
+            setUnlockReason('');
+
+            // Reload order data
+            router.reload({ only: ['order', 'timeline'] });
+        } catch (error) {
+            setToast({
+                type: 'error',
+                message:
+                    error.response?.data?.message || 'Failed to unlock order.',
+            });
+        } finally {
+            setUnlocking(false);
+        }
+    }, [unlockReason, order.id]);
 
     const submitEvent = useCallback(async () => {
         if (!eventForm.message?.trim()) {
@@ -1035,6 +1083,7 @@ const OrderShow = ({
             <div className="tw-mb-10 tw-grid tw-gap-6 xl:tw-grid-cols-3">
                 <div className="xl:tw-col-span-2">
                     <ItemEditor
+                        order={order}
                         items={items}
                         updateItem={updateItem}
                         removeItem={removeItem}
@@ -1053,16 +1102,26 @@ const OrderShow = ({
                         ensureRollOptions={ensureRollOptions}
                         rollCache={rollCache}
                         itemErrors={itemErrors}
+                        unlockOrder={unlockOrder}
+                        showUnlockModal={showUnlockModal}
+                        setShowUnlockModal={setShowUnlockModal}
+                        unlockReason={unlockReason}
+                        setUnlockReason={setUnlockReason}
+                        unlocking={unlocking}
                     />
                 </div>
                 <SummarySidebar
+                    order={order}
                     status={status}
                     setStatus={setStatus}
                     statusNote={statusNote}
                     setStatusNote={setStatusNote}
                     statusVisibility={statusVisibility}
                     setStatusVisibility={setStatusVisibility}
+                    cancellationReason={cancellationReason}
+                    setCancellationReason={setCancellationReason}
                     statusOptions={statusOptions}
+                    availableStatuses={availableStatuses}
                     workingGroupId={workingGroupId}
                     setWorkingGroupId={setWorkingGroupId}
                     workingGroups={workingGroups}
@@ -1091,7 +1150,17 @@ const OrderShow = ({
                     setCompanyName={setCompanyName}
                     isCompany={isCompany}
                     setIsCompany={setIsCompany}
+                    unlockOrder={unlockOrder}
+                    showUnlockModal={showUnlockModal}
+                    setShowUnlockModal={setShowUnlockModal}
+                    unlockReason={unlockReason}
+                    setUnlockReason={setUnlockReason}
+                    unlocking={unlocking}
                 />
+            </div>
+
+            <div className="tw-mb-6">
+                <PaymentRequestPanel order={order} />
             </div>
 
             <TimelinePanel

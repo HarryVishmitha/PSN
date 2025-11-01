@@ -259,7 +259,17 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
         Route::get('/products', [AdminOrderController::class, 'searchProducts'])->name('products');
         Route::post('/preview-pricing', [AdminOrderController::class, 'previewPricing'])->name('preview');
         Route::put('/{order}', [AdminOrderController::class, 'update'])->whereNumber('order')->name('update');
+        Route::post('/{order}/unlock', [AdminOrderController::class, 'unlock'])->whereNumber('order')->name('unlock');
+        Route::get('/{order}/available-statuses', [AdminOrderController::class, 'getAvailableStatuses'])->whereNumber('order')->name('available-statuses');
         Route::post('/{order}/events', [AdminOrderController::class, 'storeEvent'])->whereNumber('order')->name('events.store');
+        
+        // Payment Request Management
+        Route::get('/{order}/payment-requests', [\App\Http\Controllers\Admin\PaymentRequestController::class, 'index'])->whereNumber('order')->name('payment-requests.index');
+        Route::post('/{order}/payment-requests', [\App\Http\Controllers\Admin\PaymentRequestController::class, 'store'])->whereNumber('order')->name('payment-requests.store');
+        Route::put('/{order}/payment-requests/{paymentRequest}', [\App\Http\Controllers\Admin\PaymentRequestController::class, 'update'])->whereNumber(['order', 'paymentRequest'])->name('payment-requests.update');
+        Route::post('/{order}/payment-requests/{paymentRequest}/mark-paid', [\App\Http\Controllers\Admin\PaymentRequestController::class, 'markAsPaid'])->whereNumber(['order', 'paymentRequest'])->name('payment-requests.mark-paid');
+        Route::post('/{order}/payment-requests/{paymentRequest}/cancel', [\App\Http\Controllers\Admin\PaymentRequestController::class, 'cancel'])->whereNumber(['order', 'paymentRequest'])->name('payment-requests.cancel');
+        Route::delete('/{order}/payment-requests/{paymentRequest}', [\App\Http\Controllers\Admin\PaymentRequestController::class, 'destroy'])->whereNumber(['order', 'paymentRequest'])->name('payment-requests.destroy');
     });
 
     // Offers Management
@@ -270,6 +280,20 @@ Route::middleware(['auth', 'verified', CheckRole::class . ':admin', 'can:manage-
     Route::put('/api/offers/{offer}', [AdminController::class, 'offersUpdate'])->name('offers.update');
     Route::delete('/api/offers/{offer}', [AdminController::class, 'offersDestroy'])->name('offers.destroy');
     Route::patch('/api/offers/{offer}/toggle', [AdminController::class, 'offersToggleStatus'])->name('offers.toggle');
+
+    // Message Template Management
+    Route::get('/templates', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'index'])->name('templates.index');
+    
+    Route::prefix('api/templates')->name('templates.')->group(function () {
+        Route::get('/variables', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'variables'])->name('variables');
+        Route::get('/{template}', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'show'])->whereNumber('template')->name('show');
+        Route::post('/', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'store'])->name('store');
+        Route::put('/{template}', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'update'])->whereNumber('template')->name('update');
+        Route::delete('/{template}', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'destroy'])->whereNumber('template')->name('destroy');
+        Route::post('/{template}/duplicate', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'duplicate'])->whereNumber('template')->name('duplicate');
+        Route::post('/{template}/preview', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'preview'])->whereNumber('template')->name('preview');
+        Route::patch('/{template}/toggle', [\App\Http\Controllers\Admin\MessageTemplateController::class, 'toggleActive'])->whereNumber('template')->name('toggle');
+    });
 
     // Add more admin routes here
 });

@@ -210,11 +210,16 @@ class OrderController extends Controller
                 'author'     => $event->author?->only(['id', 'name']),
             ]);
 
+        // Get available status transitions
+        $availableTransitions = $order->getAvailableTransitions();
+        $statusConfig = $order->getStatusConfig();
+
         return Inertia::render('admin/orders/show', [
             'order' => [
                 'id'                => $order->id,
                 'number'            => $order->number ?? sprintf('ORD-%05d', $order->id),
                 'status'            => $order->status,
+                'status_config'     => $statusConfig,
                 'working_group_id'  => $order->working_group_id,
                 'working_group'     => $order->workingGroup?->only(['id', 'name']),
                 'estimate'          => $order->estimate?->only(['id', 'estimate_number', 'status', 'total_amount']),
@@ -243,12 +248,20 @@ class OrderController extends Controller
                 'created_at'        => optional($order->created_at)->toIso8601String(),
                 'placed_at'         => optional($order->placed_at)->toIso8601String(),
                 'items'             => $items,
+                'is_locked'         => $order->isLocked(),
+                'locked_at'         => optional($order->locked_at)->toIso8601String(),
+                'locked_total'      => $order->locked_total,
+                'locked_by'         => $order->locker?->only(['id', 'name']),
+                'is_pricing_locked' => $order->isLockedForPricing(),
+                'is_items_locked'   => $order->isLockedForItems(),
+                'cancellation_reason' => $order->cancellation_reason,
             ],
-            'timeline'        => $timeline,
-            'statusOptions'   => $this->statusOptions(),
-            'workingGroups'   => WorkingGroup::orderBy('name')->get(['id', 'name']),
-            'shippingMethods' => ShippingMethod::orderBy('name')->get(['id', 'name', 'estimated_eta']),
-            'userDetails'     => Auth::user(),
+            'timeline'           => $timeline,
+            'statusOptions'      => $this->statusOptions(),
+            'availableStatuses'  => $availableTransitions,
+            'workingGroups'      => WorkingGroup::orderBy('name')->get(['id', 'name']),
+            'shippingMethods'    => ShippingMethod::orderBy('name')->get(['id', 'name', 'estimated_eta']),
+            'userDetails'        => Auth::user(),
         ]);
     }
 
@@ -280,6 +293,7 @@ class OrderController extends Controller
             'phone_alt_1'       => ['nullable', 'string', 'max:64'],
             'phone_alt_2'       => ['nullable', 'string', 'max:64'],
             'shipping_method_id'=> ['nullable', 'integer', 'exists:shipping_methods,id'],
+            'cancellation_reason' => ['nullable', 'string', 'max:500'],
             'items'             => ['required', 'array', 'min:1'],
             'items.*.product_id'           => ['required', 'integer', 'exists:products,id'],
             'items.*.variant_id'           => ['nullable', 'integer'],
@@ -295,6 +309,113 @@ class OrderController extends Controller
             'items.*.cut_height_in'        => ['nullable', 'numeric', 'min:0'],
             'items.*.offcut_price_per_sqft'=> ['nullable', 'numeric', 'min:0'],
         ]);
+
+        $oldStatus = $order->status;
+        $newStatus = $data['status'];
+
+        // VALIDATION 1: Check status transition is allowed
+        if ($oldStatus !== $newStatus && !$order->canTransitionTo($newStatus)) {
+            return response()->json([
+                'message' => "Cannot transition from '{$oldStatus}' to '{$newStatus}'. This transition is not allowed.",
+                'error' => 'invalid_transition',
+            ], 422);
+        }
+
+        // VALIDATION 2: Check if status requires a note
+        if ($oldStatus !== $newStatus && $order->statusRequiresNote($newStatus)) {
+            if (empty(trim($data['status_note'] ?? ''))) {
+                $statusLabel = config("order-statuses.statuses.{$newStatus}.label", $newStatus);
+                return response()->json([
+                    'message' => "Status '{$statusLabel}' requires a note explaining the reason.",
+                    'error' => 'note_required',
+                ], 422);
+            }
+        }
+
+        // VALIDATION 3: Check if status requires cancellation reason
+        if ($newStatus === 'cancelled' && empty(trim($data['cancellation_reason'] ?? ''))) {
+            return response()->json([
+                'message' => 'Cancellation reason is required.',
+                'error' => 'cancellation_reason_required',
+            ], 422);
+        }
+
+        // VALIDATION 4: Check if order is locked for item changes
+        if ($order->isLockedForItems()) {
+            // Compare old items vs new items to detect changes
+            $oldItemIds = $order->items->pluck('id')->sort()->values()->toArray();
+            $itemsChanged = count($oldItemIds) !== count($data['items']);
+            
+            if (!$itemsChanged) {
+                // Check if quantities or products changed
+                foreach ($order->items as $idx => $oldItem) {
+                    $newItem = $data['items'][$idx] ?? null;
+                    if (!$newItem || 
+                        $oldItem->product_id != $newItem['product_id'] ||
+                        abs($oldItem->quantity - $newItem['quantity']) > 0.001) {
+                        $itemsChanged = true;
+                        break;
+                    }
+                }
+            }
+            
+            if ($itemsChanged) {
+                return response()->json([
+                    'message' => 'Order items are locked. Cannot add, remove, or modify items for orders in this status.',
+                    'error' => 'items_locked',
+                    'locked_at' => $order->locked_at?->toIso8601String(),
+                ], 423);
+            }
+        }
+
+        // VALIDATION 5: Check if order is locked for pricing changes
+        if ($order->isLockedForPricing()) {
+            $pricingChanged = false;
+
+            // Treat omitted pricing-related fields as "no change" by defaulting to existing values.
+            $incomingDiscountValue = $data['discount_value'] ?? $order->discount_value;
+            $incomingTaxValue = $data['tax_value'] ?? $order->tax_value;
+            $incomingDiscountMode = $data['discount_mode'] ?? $order->discount_mode;
+            $incomingTaxMode = $data['tax_mode'] ?? $order->tax_mode;
+            $incomingShipping = $data['shipping_amount'] ?? $order->shipping_amount;
+
+            // Check if discount, tax, or shipping changed
+            if (abs($order->discount_value - $incomingDiscountValue) > 0.01 ||
+                abs($order->tax_value - $incomingTaxValue) > 0.01 ||
+                abs($order->shipping_amount - $incomingShipping) > 0.01 ||
+                $order->discount_mode !== $incomingDiscountMode ||
+                $order->tax_mode !== $incomingTaxMode) {
+                $pricingChanged = true;
+            }
+
+            // Check item prices, but only when the incoming payload explicitly provides a unit_price
+            if (!$pricingChanged) {
+                foreach ($order->items as $idx => $oldItem) {
+                    $newItem = $data['items'][$idx] ?? null;
+                    if (!$newItem) {
+                        // No corresponding incoming item for an existing item -> treat as change
+                        $pricingChanged = true;
+                        break;
+                    }
+
+                    if (array_key_exists('unit_price', $newItem)) {
+                        // Compare only when unit_price is explicitly provided
+                        if (abs($oldItem->unit_price - (float) $newItem['unit_price']) > 0.01) {
+                            $pricingChanged = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if ($pricingChanged) {
+                return response()->json([
+                    'message' => 'Pricing is locked for this order status. Cannot modify prices, discounts, shipping, or taxes.',
+                    'error' => 'pricing_locked',
+                    'status' => $order->status,
+                ], 423);
+            }
+        }
 
         $calculated = $calculator->compute($data['items']);
 
@@ -314,11 +435,21 @@ class OrderController extends Controller
         $shipping = max(0, (float) ($data['shipping_amount'] ?? 0));
         $total = round(max(0, $calculated['subtotal'] - $discount + $tax + $shipping), 2);
 
-        $oldStatus = $order->status;
+        // Track field changes for detailed logging
+        $changes = [];
+        if ($order->discount_value != ($data['discount_value'] ?? 0)) {
+            $changes[] = ['field' => 'discount_value', 'old' => $order->discount_value, 'new' => $data['discount_value'] ?? 0];
+        }
+        if ($order->tax_value != ($data['tax_value'] ?? 0)) {
+            $changes[] = ['field' => 'tax_value', 'old' => $order->tax_value, 'new' => $data['tax_value'] ?? 0];
+        }
+        if ($order->shipping_amount != $shipping) {
+            $changes[] = ['field' => 'shipping_amount', 'old' => $order->shipping_amount, 'new' => $shipping];
+        }
 
-        DB::transaction(function () use ($order, $data, $calculated, $discount, $tax, $shipping, $total) {
-            $order->forceFill([
-                'status'            => $data['status'],
+        DB::transaction(function () use ($order, $data, $calculated, $discount, $tax, $shipping, $total, $oldStatus, $newStatus, $changes) {
+            $updateData = [
+                'status'            => $newStatus,
                 'working_group_id'  => $data['working_group_id'] ?? $order->working_group_id,
                 'estimate_id'       => $data['estimate_id'] ?? $order->estimate_id,
                 'subtotal_amount'   => $calculated['subtotal'],
@@ -342,7 +473,14 @@ class OrderController extends Controller
                 'phone_alt_2'       => $data['phone_alt_2'] ?? null,
                 'shipping_method_id'=> $data['shipping_method_id'] ?? $order->shipping_method_id,
                 'updated_by'        => Auth::id(),
-            ])->save();
+            ];
+
+            // Add cancellation reason if transitioning to cancelled
+            if ($newStatus === 'cancelled' && !empty($data['cancellation_reason'])) {
+                $updateData['cancellation_reason'] = $data['cancellation_reason'];
+            }
+
+            $order->forceFill($updateData)->save();
 
             $order->items()->delete();
 
@@ -376,22 +514,137 @@ class OrderController extends Controller
             }
         });
 
-        if ($oldStatus !== $data['status']) {
-            $order->recordStatusChange($data['status'], [
+        // Reload order to get fresh data
+        $order->refresh();
+
+        // Auto-lock order if new status requires it
+        if ($oldStatus !== $newStatus && $order->statusShouldAutoLock($newStatus) && !$order->isLocked()) {
+            $order->lockOrder(Auth::id());
+        }
+
+        // Record status change with detailed information
+        if ($oldStatus !== $newStatus) {
+            $eventData = [
                 'old_status' => $oldStatus,
                 'message'    => $data['status_note'] ?? null,
-                'visibility' => $data['status_visibility'] ?? OrderEvent::VISIBILITY_ADMIN,
+                'visibility' => $data['status_visibility'] ?? OrderEvent::VISIBILITY_CUSTOMER,
                 'created_by' => Auth::id(),
-            ]);
+            ];
+
+            // Add cancellation reason to event data
+            if ($newStatus === 'cancelled' && !empty($data['cancellation_reason'])) {
+                $eventData['data'] = ['cancellation_reason' => $data['cancellation_reason']];
+            }
+
+            $order->recordStatusChange($newStatus, $eventData);
+
+            // Create estimate if transitioning to estimate_sent
+            if ($newStatus === 'estimate_sent' && !$order->estimate_id) {
+                try {
+                    $estimate = $this->createEstimateFromOrder($order);
+                    $order->update(['estimate_id' => $estimate->id]);
+                    
+                    \Illuminate\Support\Facades\Log::info('Estimate created from order', [
+                        'order_id' => $order->id,
+                        'estimate_id' => $estimate->id,
+                    ]);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('Failed to create estimate from order', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // Send email notification if status changed and customer email exists
+            if ($order->contact_email) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($order->contact_email)
+                        ->send(new \App\Mail\OrderStatusChanged($order, $oldStatus, $newStatus));
+                    
+                    \Illuminate\Support\Facades\Log::info('Order status change email sent', [
+                        'order_id' => $order->id,
+                        'old_status' => $oldStatus,
+                        'new_status' => $newStatus,
+                        'email' => $order->contact_email,
+                    ]);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('Failed to send order status change email', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         } else {
-            $order->addEvent('order_updated', [
-                'message'    => 'Order details updated by admin.',
-                'created_by' => Auth::id(),
-            ]);
+            // Log field-level changes if no status change
+            if (!empty($changes)) {
+                $order->addEvent('order_updated', [
+                    'message'    => 'Order details updated by admin.',
+                    'data'       => ['changes' => $changes],
+                    'created_by' => Auth::id(),
+                    'visibility' => OrderEvent::VISIBILITY_ADMIN,
+                ]);
+            } else {
+                $order->addEvent('order_updated', [
+                    'message'    => 'Order details updated by admin.',
+                    'created_by' => Auth::id(),
+                    'visibility' => OrderEvent::VISIBILITY_ADMIN,
+                ]);
+            }
         }
 
         return response()->json([
             'message' => 'Order updated successfully.',
+            'order' => [
+                'id' => $order->id,
+                'status' => $order->status,
+                'is_locked' => $order->isLocked(),
+                'locked_at' => $order->locked_at?->toIso8601String(),
+                'locked_total' => $order->locked_total,
+                'total_amount' => $order->total_amount,
+            ],
+        ]);
+    }
+
+    public function unlock(Request $request, Order $order): JsonResponse
+    {
+        if ($order->isLocked()) {
+            return response()->json([
+                'message' => 'Order is not locked.',
+            ], 422);
+        }
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:10', 'max:500'],
+        ]);
+
+        try {
+            $order->unlockOrder($data['reason'], Auth::id());
+            return response()->json([
+                'message' => 'Order unlocked successfully.',
+                'order' => [
+                    'id' => $order->id,
+                    'is_locked' => false,
+                    'locked_at' => null,
+                ],
+            ]);
+        } catch (\Throwable $th) {
+            return response()->json([
+                'message' => 'Failed to unlock order: ' . $th->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getAvailableStatuses(Order $order): JsonResponse
+    {
+        $available = $order->getAvailableTransitions();
+        
+        return response()->json([
+            'current_status' => $order->status,
+            'available_statuses' => $available,
+            'is_locked' => $order->isLocked(),
+            'is_pricing_locked' => $order->isLockedForPricing(),
+            'is_items_locked' => $order->isLockedForItems(),
         ]);
     }
 
@@ -529,18 +782,95 @@ class OrderController extends Controller
 
     protected function statusOptions(): array
     {
+        // Keep this list in sync with config/order-statuses.php
         return [
+            // Current initial/legacy pending state (shown as Pending Review in UI)
             ['value' => 'pending',            'label' => 'Pending Review'],
-            ['value' => 'estimating',         'label' => 'Estimating'],
-            ['value' => 'quoted',             'label' => 'Estimate Sent'],
-            ['value' => 'awaiting_approval',  'label' => 'Awaiting Approval'],
-            ['value' => 'confirmed',          'label' => 'Confirmed'],
-            ['value' => 'production',         'label' => 'In Production'],
-            ['value' => 'ready_for_dispatch', 'label' => 'Ready for Dispatch'],
-            ['value' => 'shipped',            'label' => 'Shipped'],
+
+            // Draft/estimating phase
+            ['value' => 'draft',              'label' => 'Estimating'],
+
+            // Quotation and customer decision
+            ['value' => 'estimate_sent',      'label' => 'Estimate Sent'],
+            ['value' => 'customer_approved',  'label' => 'Customer Approved'],
+
+            // Payment flow
+            ['value' => 'payment_requested',  'label' => 'Payment Requested'],
+            ['value' => 'partially_paid',     'label' => 'Partially Paid'],
+            ['value' => 'paid',               'label' => 'Payment Confirmed'],
+
+            // Production and fulfillment
+            ['value' => 'in_production',      'label' => 'In Production'],
+            ['value' => 'ready_for_delivery', 'label' => 'Ready for Dispatch'],
             ['value' => 'completed',          'label' => 'Completed'],
+
+            // Pause/cancel
             ['value' => 'on_hold',            'label' => 'On Hold'],
             ['value' => 'cancelled',          'label' => 'Cancelled'],
+
+            // Optional legacy/back-compat statuses (may not appear as available transitions)
+            ['value' => 'pending_review',     'label' => 'Pending Review (Deprecated)'],
+            ['value' => 'confirmed',          'label' => 'Confirmed (Legacy)'],
+            ['value' => 'returned',           'label' => 'Returned (Legacy)'],
         ];
+    }
+
+    /**
+     * Create an estimate from an order
+     */
+    protected function createEstimateFromOrder(Order $order): \App\Models\Estimate
+    {
+        // Generate estimate number
+        $latestEstimate = \App\Models\Estimate::latest('id')->first();
+        $nextNumber = $latestEstimate ? ($latestEstimate->id + 1) : 1;
+        $estimateNumber = 'EST-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+
+        // Create estimate
+        $estimate = \App\Models\Estimate::create([
+            'estimate_number' => $estimateNumber,
+            'customer_type' => 'App\\Models\\User', // Adjust based on your customer type
+            'customer_id' => $order->user_id,
+            'working_group_id' => $order->working_group_id,
+            'status' => 'draft',
+            'valid_from' => now(),
+            'valid_to' => now()->addDays(30),
+            'client_name' => trim(($order->contact_first_name ?? '') . ' ' . ($order->contact_last_name ?? '')),
+            'client_email' => $order->contact_email,
+            'client_phone' => $order->contact_phone,
+            'subtotal_amount' => $order->subtotal_amount,
+            'discount_amount' => $order->discount_amount,
+            'discount_mode' => $order->discount_mode,
+            'discount_value' => $order->discount_value,
+            'tax_amount' => $order->tax_amount,
+            'tax_mode' => $order->tax_mode,
+            'tax_value' => $order->tax_value,
+            'shipping_amount' => $order->shipping_amount,
+            'total_amount' => $order->total_amount,
+            'notes' => $order->notes,
+            'created_by' => Auth::id(),
+        ]);
+
+        // Copy order items to estimate items
+        foreach ($order->items as $orderItem) {
+            \App\Models\EstimateItem::create([
+                'estimate_id' => $estimate->id,
+                'product_id' => $orderItem->product_id,
+                'variant_id' => $orderItem->variant_id,
+                'subvariant_id' => $orderItem->subvariant_id,
+                'description' => $orderItem->description,
+                'quantity' => $orderItem->quantity,
+                'unit' => $orderItem->unit,
+                'unit_price' => $orderItem->unit_price,
+                'line_total' => $orderItem->line_total,
+                'is_roll' => $orderItem->is_roll,
+                'roll_id' => $orderItem->roll_id,
+                'cut_width_in' => $orderItem->cut_width_in,
+                'cut_height_in' => $orderItem->cut_height_in,
+                'offcut_price_per_sqft' => $orderItem->offcut_price_per_sqft,
+                'options' => $orderItem->options,
+            ]);
+        }
+
+        return $estimate;
     }
 }

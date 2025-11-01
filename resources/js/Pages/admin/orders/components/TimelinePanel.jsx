@@ -57,94 +57,249 @@ const TimelinePanel = ({
                         </div>
                     </div>
                 )}
-                {timeline.map((event, index) => (
-                    <div key={event.id} className="tw-flex tw-gap-4">
-                        <div className="tw-flex tw-flex-col tw-items-center tw-pt-1">
-                            <div className="tw-relative tw-flex tw-h-10 tw-w-10 tw-flex-shrink-0 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gradient-to-br tw-from-blue-500 tw-to-purple-600 tw-shadow-lg">
-                                <Icon
-                                    icon="solar:check-circle-bold"
-                                    className="tw-text-xl tw-text-white"
-                                />
-                                {event.visibility === 'customer' && (
-                                    <div className="tw-absolute -tw-right-1 -tw-top-1 tw-h-4 tw-w-4 tw-rounded-full tw-bg-emerald-500 tw-ring-2 tw-ring-white"></div>
+                {timeline.map((event, index) => {
+                    const isLockEvent = event.event_type === 'order_locked';
+                    const isUnlockEvent = event.event_type === 'order_unlocked';
+                    const hasFieldChanges =
+                        event.data &&
+                        typeof event.data === 'object' &&
+                        Object.keys(event.data).length > 0;
+
+                    return (
+                        <div key={event.id} className="tw-flex tw-gap-4">
+                            <div className="tw-flex tw-flex-col tw-items-center tw-pt-1">
+                                <div
+                                    className={`tw-relative tw-flex tw-h-10 tw-w-10 tw-flex-shrink-0 tw-items-center tw-justify-center tw-rounded-xl tw-shadow-lg ${
+                                        isLockEvent
+                                            ? 'tw-bg-gradient-to-br tw-from-red-500 tw-to-orange-600'
+                                            : isUnlockEvent
+                                              ? 'tw-bg-gradient-to-br tw-from-green-500 tw-to-emerald-600'
+                                              : 'tw-bg-gradient-to-br tw-from-blue-500 tw-to-purple-600'
+                                    }`}
+                                >
+                                    <Icon
+                                        icon={
+                                            isLockEvent
+                                                ? 'solar:lock-bold'
+                                                : isUnlockEvent
+                                                  ? 'solar:lock-unlocked-bold'
+                                                  : 'solar:check-circle-bold'
+                                        }
+                                        className="tw-text-xl tw-text-white"
+                                    />
+                                    {event.visibility === 'customer' && (
+                                        <div className="tw-absolute -tw-right-1 -tw-top-1 tw-h-4 tw-w-4 tw-rounded-full tw-bg-emerald-500 tw-ring-2 tw-ring-white"></div>
+                                    )}
+                                </div>
+                                {index < timeline.length - 1 && (
+                                    <div className="tw-my-2 tw-w-0.5 tw-flex-1 tw-bg-gradient-to-b tw-from-slate-300 tw-to-transparent" />
                                 )}
                             </div>
-                            {index < timeline.length - 1 && (
-                                <div className="tw-my-2 tw-w-0.5 tw-flex-1 tw-bg-gradient-to-b tw-from-slate-300 tw-to-transparent" />
-                            )}
-                        </div>
-                        <div className="tw-group tw-flex-1 tw-rounded-xl tw-border-2 tw-border-slate-200 tw-bg-gradient-to-br tw-from-white tw-to-slate-50 tw-p-5 tw-shadow-md tw-transition-all hover:tw-border-blue-300 hover:tw-shadow-lg">
-                            <div className="tw-mb-3 tw-flex tw-items-start tw-justify-between tw-gap-4">
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Icon
-                                        icon="solar:clock-circle-bold-duotone"
-                                        className="tw-text-lg tw-text-blue-600"
-                                    />
-                                    <span className="tw-text-xs tw-font-semibold tw-text-slate-600">
-                                        {event.created_at
-                                            ? new Date(
-                                                  event.created_at,
-                                              ).toLocaleString('en-GB', {
-                                                  day: '2-digit',
-                                                  month: 'short',
-                                                  year: 'numeric',
-                                                  hour: '2-digit',
-                                                  minute: '2-digit',
-                                              })
-                                            : '—'}
-                                    </span>
-                                </div>
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    {event.visibility && (
-                                        <span
-                                            className={`tw-rounded-lg tw-px-2.5 tw-py-1 tw-text-[10px] tw-font-bold tw-uppercase tw-shadow-sm ${
-                                                event.visibility === 'customer'
-                                                    ? 'tw-bg-emerald-600 tw-text-white'
-                                                    : event.visibility ===
-                                                        'public'
-                                                      ? 'tw-bg-blue-600 tw-text-white'
-                                                      : 'tw-bg-slate-600 tw-text-white'
-                                            }`}
-                                        >
-                                            {event.visibility}
+                            <div
+                                className={`tw-group tw-flex-1 tw-rounded-xl tw-border-2 tw-p-5 tw-shadow-md tw-transition-all hover:tw-shadow-lg ${
+                                    isLockEvent
+                                        ? 'tw-border-red-200 tw-bg-gradient-to-br tw-from-red-50 tw-to-orange-50 hover:tw-border-red-300'
+                                        : isUnlockEvent
+                                          ? 'tw-border-green-200 tw-bg-gradient-to-br tw-from-green-50 tw-to-emerald-50 hover:tw-border-green-300'
+                                          : 'tw-border-slate-200 tw-bg-gradient-to-br tw-from-white tw-to-slate-50 hover:tw-border-blue-300'
+                                }`}
+                            >
+                                <div className="tw-mb-3 tw-flex tw-items-start tw-justify-between tw-gap-4">
+                                    <div className="tw-flex tw-items-center tw-gap-2">
+                                        <Icon
+                                            icon="solar:clock-circle-bold-duotone"
+                                            className="tw-text-lg tw-text-blue-600"
+                                        />
+                                        <span className="tw-text-xs tw-font-semibold tw-text-slate-600">
+                                            {event.created_at
+                                                ? new Date(
+                                                      event.created_at,
+                                                  ).toLocaleString('en-GB', {
+                                                      day: '2-digit',
+                                                      month: 'short',
+                                                      year: 'numeric',
+                                                      hour: '2-digit',
+                                                      minute: '2-digit',
+                                                  })
+                                                : '—'}
                                         </span>
-                                    )}
-                                    {event.author && (
-                                        <span className="tw-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-bg-slate-100 tw-px-2.5 tw-py-1 tw-text-xs tw-font-semibold tw-text-slate-700">
+                                    </div>
+                                    <div className="tw-flex tw-items-center tw-gap-2">
+                                        {event.visibility && (
+                                            <span
+                                                className={`tw-rounded-lg tw-px-2.5 tw-py-1 tw-text-[10px] tw-font-bold tw-uppercase tw-shadow-sm ${
+                                                    event.visibility ===
+                                                    'customer'
+                                                        ? 'tw-bg-emerald-600 tw-text-white'
+                                                        : event.visibility ===
+                                                            'public'
+                                                          ? 'tw-bg-blue-600 tw-text-white'
+                                                          : 'tw-bg-slate-600 tw-text-white'
+                                                }`}
+                                            >
+                                                {event.visibility}
+                                            </span>
+                                        )}
+                                        {event.author && (
+                                            <span className="tw-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-bg-slate-100 tw-px-2.5 tw-py-1 tw-text-xs tw-font-semibold tw-text-slate-700">
+                                                <Icon
+                                                    icon="solar:user-bold-duotone"
+                                                    className="tw-text-sm"
+                                                />
+                                                {event.author.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <h6 className="tw-mb-2 tw-text-base tw-font-bold tw-text-slate-900">
+                                    {event.title || event.event_type}
+                                </h6>
+                                {event.message && (
+                                    <p className="tw-mb-3 tw-whitespace-pre-line tw-text-sm tw-leading-relaxed tw-text-slate-700">
+                                        {event.message}
+                                    </p>
+                                )}
+                                {(event.old_status || event.new_status) && (
+                                    <div className="tw-mt-4 tw-flex tw-items-center tw-gap-3 tw-rounded-lg tw-bg-slate-100 tw-p-3">
+                                        <span className="tw-rounded-lg tw-bg-white tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-text-slate-700 tw-shadow-sm">
+                                            {event.old_status || '—'}
+                                        </span>
+                                        <Icon
+                                            icon="solar:arrow-right-bold"
+                                            className="tw-text-xl tw-text-blue-600"
+                                        />
+                                        <span className="tw-rounded-lg tw-bg-blue-600 tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-text-white tw-shadow-md">
+                                            {event.new_status || '—'}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Field-level changes display */}
+                                {hasFieldChanges && (
+                                    <div className="tw-mt-4 tw-space-y-2">
+                                        <div className="tw-mb-2 tw-flex tw-items-center tw-gap-2 tw-text-xs tw-font-bold tw-uppercase tw-tracking-wide tw-text-slate-600">
                                             <Icon
-                                                icon="solar:user-bold-duotone"
+                                                icon="solar:document-text-bold-duotone"
+                                                className="tw-text-sm tw-text-blue-600"
+                                            />
+                                            Changes Made
+                                        </div>
+                                        {Object.entries(event.data).map(
+                                            ([field, value]) => {
+                                                // Skip internal fields
+                                                if (
+                                                    field.startsWith('_') ||
+                                                    field === 'id' ||
+                                                    field === 'user_id'
+                                                ) {
+                                                    return null;
+                                                }
+
+                                                // Handle different value types
+                                                let displayValue = value;
+                                                if (
+                                                    typeof value === 'object' &&
+                                                    value !== null
+                                                ) {
+                                                    if (
+                                                        value.old !==
+                                                            undefined &&
+                                                        value.new !== undefined
+                                                    ) {
+                                                        // It's a change object with old/new values
+                                                        return (
+                                                            <div
+                                                                key={field}
+                                                                className="tw-flex tw-items-center tw-gap-2 tw-rounded-lg tw-bg-white tw-p-2.5 tw-text-xs"
+                                                            >
+                                                                <span className="tw-font-semibold tw-capitalize tw-text-slate-700">
+                                                                    {field.replace(
+                                                                        /_/g,
+                                                                        ' ',
+                                                                    )}
+                                                                    :
+                                                                </span>
+                                                                <span className="tw-rounded tw-bg-red-100 tw-px-2 tw-py-0.5 tw-font-medium tw-text-red-700 tw-line-through">
+                                                                    {value.old ||
+                                                                        '(empty)'}
+                                                                </span>
+                                                                <Icon
+                                                                    icon="solar:arrow-right-bold"
+                                                                    className="tw-text-sm tw-text-slate-400"
+                                                                />
+                                                                <span className="tw-rounded tw-bg-green-100 tw-px-2 tw-py-0.5 tw-font-bold tw-text-green-700">
+                                                                    {value.new ||
+                                                                        '(empty)'}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    displayValue =
+                                                        JSON.stringify(value);
+                                                }
+
+                                                return (
+                                                    <div
+                                                        key={field}
+                                                        className="tw-flex tw-items-start tw-gap-2 tw-rounded-lg tw-bg-white tw-p-2.5 tw-text-xs"
+                                                    >
+                                                        <span className="tw-font-semibold tw-capitalize tw-text-slate-700">
+                                                            {field.replace(
+                                                                /_/g,
+                                                                ' ',
+                                                            )}
+                                                            :
+                                                        </span>
+                                                        <span className="tw-flex-1 tw-font-medium tw-text-slate-600">
+                                                            {displayValue}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            },
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Lock-specific information */}
+                                {isLockEvent && event.data?.locked_total && (
+                                    <div className="tw-mt-3 tw-flex tw-items-center tw-gap-2 tw-rounded-lg tw-bg-red-100 tw-p-3">
+                                        <Icon
+                                            icon="solar:shield-check-bold-duotone"
+                                            className="tw-text-lg tw-text-red-600"
+                                        />
+                                        <div className="tw-text-xs tw-text-red-800">
+                                            <span className="tw-font-bold">
+                                                Order locked at:
+                                            </span>{' '}
+                                            LKR{' '}
+                                            {parseFloat(
+                                                event.data.locked_total,
+                                            ).toLocaleString('en-LK', {
+                                                minimumFractionDigits: 2,
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Unlock-specific information */}
+                                {isUnlockEvent && event.data?.reason && (
+                                    <div className="tw-mt-3 tw-rounded-lg tw-bg-green-100 tw-p-3">
+                                        <div className="tw-mb-1 tw-flex tw-items-center tw-gap-2 tw-text-xs tw-font-bold tw-text-green-800">
+                                            <Icon
+                                                icon="solar:document-text-bold-duotone"
                                                 className="tw-text-sm"
                                             />
-                                            {event.author.name}
-                                        </span>
-                                    )}
-                                </div>
+                                            Unlock Reason
+                                        </div>
+                                        <p className="tw-text-xs tw-leading-relaxed tw-text-green-700">
+                                            {event.data.reason}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
-                            <h6 className="tw-mb-2 tw-text-base tw-font-bold tw-text-slate-900">
-                                {event.title || event.event_type}
-                            </h6>
-                            {event.message && (
-                                <p className="tw-mb-3 tw-whitespace-pre-line tw-text-sm tw-leading-relaxed tw-text-slate-700">
-                                    {event.message}
-                                </p>
-                            )}
-                            {(event.old_status || event.new_status) && (
-                                <div className="tw-mt-4 tw-flex tw-items-center tw-gap-3 tw-rounded-lg tw-bg-slate-100 tw-p-3">
-                                    <span className="tw-rounded-lg tw-bg-white tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-text-slate-700 tw-shadow-sm">
-                                        {event.old_status || '—'}
-                                    </span>
-                                    <Icon
-                                        icon="solar:arrow-right-bold"
-                                        className="tw-text-xl tw-text-blue-600"
-                                    />
-                                    <span className="tw-rounded-lg tw-bg-blue-600 tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-text-white tw-shadow-md">
-                                        {event.new_status || '—'}
-                                    </span>
-                                </div>
-                            )}
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </section>
         <section className="tw-sticky tw-top-6 tw-space-y-5 tw-rounded-2xl tw-border-2 tw-border-blue-200 tw-bg-gradient-to-br tw-from-blue-50 tw-via-white tw-to-purple-50 tw-p-6 tw-shadow-xl">

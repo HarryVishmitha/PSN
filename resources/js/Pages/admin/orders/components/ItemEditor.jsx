@@ -1,6 +1,7 @@
 import { Icon } from '@iconify/react';
 
 const ItemEditor = ({
+    order,
     items,
     updateItem,
     removeItem,
@@ -19,7 +20,15 @@ const ItemEditor = ({
     ensureRollOptions,
     rollCache,
     itemErrors = {},
+    unlockOrder,
+    showUnlockModal,
+    setShowUnlockModal,
+    unlockReason,
+    setUnlockReason,
+    unlocking,
 }) => {
+    const isItemsLocked = order?.is_items_locked;
+    const isLocked = order?.is_locked;
     const renderRollSection = (item, index) => {
         const errors = itemErrors[index] || [];
         const rollOptions = rollCache[item.product_id] || [];
@@ -79,7 +88,8 @@ const ItemEditor = ({
                                 });
                             }}
                             onFocus={() => ensureRollOptions(item.product_id)}
-                            className={`tw-w-full tw-rounded-lg tw-border-2 tw-bg-white tw-px-2.5 tw-py-2 tw-text-xs tw-font-semibold tw-transition-all focus:tw-ring-2 ${
+                            disabled={isItemsLocked}
+                            className={`tw-w-full tw-rounded-lg tw-border-2 tw-bg-white tw-px-2.5 tw-py-2 tw-text-xs tw-font-semibold tw-transition-all focus:tw-ring-2 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-100 disabled:tw-opacity-60 ${
                                 !hasRollId
                                     ? 'tw-border-amber-300 focus:tw-border-amber-400 focus:tw-ring-amber-500/20'
                                     : 'tw-border-purple-200 focus:tw-border-purple-400 focus:tw-ring-purple-500/20'
@@ -118,7 +128,8 @@ const ItemEditor = ({
                                         offcut_price_per_sqft: e.target.value,
                                     })
                                 }
-                                className="tw-w-full tw-rounded-lg tw-border-2 tw-border-purple-200 tw-bg-white tw-py-2 tw-pl-10 tw-pr-2.5 tw-text-xs tw-font-semibold tw-transition-all focus:tw-border-purple-400 focus:tw-ring-2 focus:tw-ring-purple-500/20"
+                                disabled={isItemsLocked}
+                                className="tw-w-full tw-rounded-lg tw-border-2 tw-border-purple-200 tw-bg-white tw-py-2 tw-pl-10 tw-pr-2.5 tw-text-xs tw-font-semibold tw-transition-all focus:tw-border-purple-400 focus:tw-ring-2 focus:tw-ring-purple-500/20 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-100 disabled:tw-opacity-60"
                             />
                         </div>
                     </div>
@@ -143,7 +154,8 @@ const ItemEditor = ({
                                         cut_width_in: e.target.value,
                                     })
                                 }
-                                className="tw-w-full tw-rounded-lg tw-border-2 tw-border-blue-200 tw-bg-white tw-px-2.5 tw-py-2 tw-pr-8 tw-text-xs tw-font-semibold tw-transition-all focus:tw-border-blue-400 focus:tw-ring-2 focus:tw-ring-blue-500/20"
+                                disabled={isItemsLocked}
+                                className="tw-w-full tw-rounded-lg tw-border-2 tw-border-blue-200 tw-bg-white tw-px-2.5 tw-py-2 tw-pr-8 tw-text-xs tw-font-semibold tw-transition-all focus:tw-border-blue-400 focus:tw-ring-2 focus:tw-ring-blue-500/20 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-100 disabled:tw-opacity-60"
                             />
                             <span className="tw-absolute tw-right-2.5 tw-top-1/2 tw--translate-y-1/2 tw-text-[10px] tw-font-bold tw-text-slate-500">
                                 in
@@ -169,7 +181,8 @@ const ItemEditor = ({
                                         cut_height_in: e.target.value,
                                     })
                                 }
-                                className="tw-w-full tw-rounded-lg tw-border-2 tw-border-blue-200 tw-bg-white tw-px-2.5 tw-py-2 tw-pr-8 tw-text-xs tw-font-semibold tw-transition-all focus:tw-border-blue-400 focus:tw-ring-2 focus:tw-ring-blue-500/20"
+                                disabled={isItemsLocked}
+                                className="tw-w-full tw-rounded-lg tw-border-2 tw-border-blue-200 tw-bg-white tw-px-2.5 tw-py-2 tw-pr-8 tw-text-xs tw-font-semibold tw-transition-all focus:tw-border-blue-400 focus:tw-ring-2 focus:tw-ring-blue-500/20 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-100 disabled:tw-opacity-60"
                             />
                             <span className="tw-absolute tw-right-2.5 tw-top-1/2 tw--translate-y-1/2 tw-text-[10px] tw-font-bold tw-text-slate-500">
                                 in
@@ -245,6 +258,62 @@ const ItemEditor = ({
 
     return (
         <div className="tw-group tw-space-y-6 tw-rounded-2xl tw-border-2 tw-border-slate-200 tw-bg-gradient-to-br tw-from-white tw-to-slate-50 tw-p-6 tw-shadow-xl tw-transition-all hover:tw-shadow-2xl">
+            {isItemsLocked && (
+                <div className="tw-rounded-xl tw-border-2 tw-border-red-300 tw-bg-gradient-to-r tw-from-red-50 tw-to-orange-50 tw-p-4 tw-shadow-md">
+                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-4">
+                        <div className="tw-flex tw-flex-1 tw-items-start tw-gap-3">
+                            <div className="tw-flex tw-h-10 tw-w-10 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gradient-to-br tw-from-red-500 tw-to-orange-600 tw-shadow-lg">
+                                <Icon
+                                    icon="solar:lock-bold"
+                                    className="tw-text-xl tw-text-white"
+                                />
+                            </div>
+                            <div className="tw-flex-1">
+                                <h4 className="tw-flex tw-items-center tw-gap-2 tw-text-base tw-font-bold tw-text-red-800">
+                                    <Icon
+                                        icon="solar:shield-warning-bold"
+                                        className="tw-text-lg"
+                                    />
+                                    Items Locked
+                                </h4>
+                                <p className="tw-mt-1 tw-text-sm tw-text-red-700">
+                                    This order's items are locked and cannot be
+                                    modified. Items were locked on{' '}
+                                    <span className="tw-font-bold">
+                                        {order?.locked_at
+                                            ? new Date(
+                                                  order.locked_at,
+                                              ).toLocaleDateString()
+                                            : 'unknown date'}
+                                    </span>
+                                    {order?.locked_total && (
+                                        <>
+                                            {' '}
+                                            at a total of{' '}
+                                            <span className="tw-font-bold">
+                                                {money(order.locked_total)}
+                                            </span>
+                                        </>
+                                    )}
+                                    . You cannot add, remove, or modify items
+                                    while locked.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowUnlockModal(true)}
+                            className="tw-flex tw-shrink-0 tw-items-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-red-600 tw-bg-red-600 tw-px-4 tw-py-2 tw-text-sm tw-font-bold tw-text-white tw-shadow-lg tw-transition-all hover:tw-bg-red-700"
+                        >
+                            <Icon
+                                icon="solar:lock-unlocked-bold"
+                                className="tw-text-base"
+                            />
+                            Unlock Order
+                        </button>
+                    </div>
+                </div>
+            )}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-4">
                 <div className="tw-flex tw-items-center tw-gap-3">
                     <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gradient-to-br tw-from-blue-500 tw-to-purple-600 tw-shadow-lg">
@@ -269,7 +338,8 @@ const ItemEditor = ({
                 <button
                     type="button"
                     onClick={openDrawer}
-                    className="tw-group/btn tw-inline-flex tw-items-center tw-gap-2.5 tw-rounded-xl tw-border-2 tw-border-blue-600 tw-bg-gradient-to-r tw-from-blue-600 tw-to-purple-600 tw-px-5 tw-py-2.5 tw-text-sm tw-font-bold tw-text-white tw-shadow-lg tw-transition-all hover:tw-scale-105 hover:tw-from-blue-700 hover:tw-to-purple-700 hover:tw-shadow-xl"
+                    disabled={isItemsLocked}
+                    className="tw-group/btn tw-inline-flex tw-items-center tw-gap-2.5 tw-rounded-xl tw-border-2 tw-border-blue-600 tw-bg-gradient-to-r tw-from-blue-600 tw-to-purple-600 tw-px-5 tw-py-2.5 tw-text-sm tw-font-bold tw-text-white tw-shadow-lg tw-transition-all hover:tw-scale-105 hover:tw-from-blue-700 hover:tw-to-purple-700 hover:tw-shadow-xl disabled:tw-cursor-not-allowed disabled:tw-opacity-50 disabled:hover:tw-scale-100"
                 >
                     <Icon
                         icon="solar:add-circle-bold-duotone"
@@ -387,7 +457,8 @@ const ItemEditor = ({
                                                     quantity: e.target.value,
                                                 })
                                             }
-                                            className="tw-w-full tw-rounded-lg tw-border-2 tw-border-slate-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-font-semibold tw-transition-all focus:tw-border-purple-400 focus:tw-ring-2 focus:tw-ring-purple-500/20"
+                                            disabled={isItemsLocked}
+                                            className="tw-w-full tw-rounded-lg tw-border-2 tw-border-slate-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-font-semibold tw-transition-all focus:tw-border-purple-400 focus:tw-ring-2 focus:tw-ring-purple-500/20 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-100 disabled:tw-opacity-60"
                                         />
                                     </div>
                                 </td>
@@ -400,7 +471,8 @@ const ItemEditor = ({
                                                 unit: e.target.value,
                                             })
                                         }
-                                        className="tw-w-full tw-rounded-lg tw-border-2 tw-border-slate-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-font-medium tw-transition-all focus:tw-border-emerald-400 focus:tw-ring-2 focus:tw-ring-emerald-500/20"
+                                        disabled={isItemsLocked}
+                                        className="tw-w-full tw-rounded-lg tw-border-2 tw-border-slate-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-font-medium tw-transition-all focus:tw-border-emerald-400 focus:tw-ring-2 focus:tw-ring-emerald-500/20 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-100 disabled:tw-opacity-60"
                                     />
                                 </td>
                                 <td className="tw-px-4 tw-py-4 tw-align-top">
@@ -409,7 +481,9 @@ const ItemEditor = ({
                                             type="number"
                                             min="0"
                                             step="0.01"
-                                            disabled={item.is_roll}
+                                            disabled={
+                                                item.is_roll || isItemsLocked
+                                            }
                                             value={item.unit_price}
                                             onChange={(e) =>
                                                 updateItem(item.tempId, {
@@ -417,7 +491,7 @@ const ItemEditor = ({
                                                 })
                                             }
                                             className={`tw-w-full tw-rounded-lg tw-border-2 tw-px-3 tw-py-2.5 tw-text-sm tw-font-semibold tw-transition-all ${
-                                                item.is_roll
+                                                item.is_roll || isItemsLocked
                                                     ? 'tw-cursor-not-allowed tw-border-slate-200 tw-bg-gradient-to-br tw-from-slate-100 tw-to-slate-200 tw-text-slate-500'
                                                     : 'tw-border-slate-200 tw-bg-white focus:tw-border-amber-400 focus:tw-ring-2 focus:tw-ring-amber-500/20'
                                             }`}
@@ -517,8 +591,13 @@ const ItemEditor = ({
                                             onClick={() =>
                                                 duplicateItem(item.tempId)
                                             }
-                                            title="Duplicate item"
-                                            className="tw-group/btn tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-border-2 tw-border-blue-200 tw-bg-blue-50 tw-p-2 tw-text-blue-600 tw-shadow-sm tw-transition-all hover:tw-scale-110 hover:tw-border-blue-400 hover:tw-bg-blue-100 hover:tw-shadow-md"
+                                            disabled={isItemsLocked}
+                                            title={
+                                                isItemsLocked
+                                                    ? 'Items locked - cannot duplicate'
+                                                    : 'Duplicate item'
+                                            }
+                                            className="tw-group/btn tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-border-2 tw-border-blue-200 tw-bg-blue-50 tw-p-2 tw-text-blue-600 tw-shadow-sm tw-transition-all hover:tw-scale-110 hover:tw-border-blue-400 hover:tw-bg-blue-100 hover:tw-shadow-md disabled:tw-cursor-not-allowed disabled:tw-opacity-40 disabled:hover:tw-scale-100"
                                         >
                                             <Icon
                                                 icon="solar:copy-bold-duotone"
@@ -530,8 +609,13 @@ const ItemEditor = ({
                                             onClick={() =>
                                                 removeItem(item.tempId)
                                             }
-                                            title="Remove item"
-                                            className="tw-group/btn tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-border-2 tw-border-rose-200 tw-bg-rose-50 tw-p-2 tw-text-rose-600 tw-shadow-sm tw-transition-all hover:tw-scale-110 hover:tw-border-rose-400 hover:tw-bg-rose-100 hover:tw-shadow-md"
+                                            disabled={isItemsLocked}
+                                            title={
+                                                isItemsLocked
+                                                    ? 'Items locked - cannot remove'
+                                                    : 'Remove item'
+                                            }
+                                            className="tw-group/btn tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-border-2 tw-border-rose-200 tw-bg-rose-50 tw-p-2 tw-text-rose-600 tw-shadow-sm tw-transition-all hover:tw-scale-110 hover:tw-border-rose-400 hover:tw-bg-rose-100 hover:tw-shadow-md disabled:tw-cursor-not-allowed disabled:tw-opacity-40 disabled:hover:tw-scale-100"
                                         >
                                             <Icon
                                                 icon="solar:trash-bin-minimalistic-bold-duotone"
