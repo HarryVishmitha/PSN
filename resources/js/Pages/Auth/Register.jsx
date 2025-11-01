@@ -4,6 +4,7 @@ import TextInput from '@/Components/TextInput';
 import { Head, Link, useForm } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
 import InputLabel from '@/Components/InputLabel';
+import { mergeGuestCartOnLogin } from '@/lib/cartApi';
 
 export default function Register() {
     const [imageUrl, setImageUrl] = useState(null);
@@ -22,6 +23,12 @@ export default function Register() {
 
         post(route('register'), {
             onFinish: () => reset('password', 'password_confirmation'),
+            onSuccess: () => {
+                // Merge guest cart with new user account after successful registration
+                mergeGuestCartOnLogin().catch((err) => {
+                    console.error('Failed to merge cart after registration:', err);
+                });
+            },
         });
     };
 

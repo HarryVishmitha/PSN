@@ -94,6 +94,7 @@ const OrderIndex = ({
             <div className="tw-mb-6 tw-flex tw-flex-col tw-items-start tw-justify-between tw-gap-4 sm:tw-flex-row sm:tw-items-center">
                 <div>
                     <Breadcrumb
+                        title="Orders"
                         items={[
                             {
                                 label: 'Dashboard',
@@ -102,13 +103,13 @@ const OrderIndex = ({
                             { label: 'Orders' },
                         ]}
                     />
-                    <h1 className="tw-mt-2 tw-flex tw-items-center tw-gap-3 tw-text-3xl tw-font-bold tw-text-slate-900">
+                    <h3 className="tw-mt-2 tw-flex tw-items-center tw-gap-3 tw-text-3xl tw-font-bold tw-text-slate-900">
                         <Icon
                             icon="solar:clipboard-list-bold-duotone"
                             className="tw-text-blue-600"
                         />
                         Order Management
-                    </h1>
+                    </h3>
                 </div>
                 <div className="tw-flex tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-slate-200 tw-bg-slate-50 tw-px-4 tw-py-2 tw-text-sm tw-text-slate-500">
                     <Icon
@@ -200,9 +201,9 @@ const OrderIndex = ({
                         />
                     </div>
                     <div>
-                        <h2 className="tw-text-lg tw-font-bold tw-text-slate-900">
+                        <h5 className="tw-text-lg tw-font-bold tw-text-slate-900">
                             Filters & Search
-                        </h2>
+                        </h5>
                         <p className="tw-text-xs tw-text-slate-500">
                             Refine your order list
                         </p>
@@ -394,10 +395,10 @@ const OrderIndex = ({
                                 />
                             </div>
                             <div>
-                                <h3 className="tw-text-lg tw-font-bold tw-text-slate-900">
+                                <h4 className="tw-text-lg tw-font-bold tw-text-slate-900">
                                     Orders List
-                                </h3>
-                                <p className="tw-text-xs tw-text-slate-500">
+                                </h4>
+                                <p className="tw-mt-2 tw-text-xs tw-text-slate-500">
                                     Showing {orders.from || 0} -{' '}
                                     {orders.to || 0} of {orders.total} orders
                                 </p>

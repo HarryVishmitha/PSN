@@ -7,6 +7,7 @@ import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
 import { Icon } from '@iconify/react';
+import { mergeGuestCartOnLogin } from '@/lib/cartApi';
 
 export default function Login({ status, canResetPassword }) {
     const [imageUrl, setImageUrl] = useState(null);
@@ -23,6 +24,12 @@ export default function Login({ status, canResetPassword }) {
 
         post(route('login'), {
             onFinish: () => reset('password'),
+            onSuccess: () => {
+                // Merge guest cart with user cart after successful login
+                mergeGuestCartOnLogin().catch((err) => {
+                    console.error('Failed to merge cart after login:', err);
+                });
+            },
         });
     };
 

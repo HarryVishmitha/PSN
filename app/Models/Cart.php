@@ -99,10 +99,10 @@ class Cart extends Model
      */
     public static function forRequest(Request $req, bool $isQuote = false): self
     {
-        if (!$req->session()->has('_cart_sid')) {
-            $req->session()->put('_cart_sid', bin2hex(random_bytes(16)));
+        if (!$req->session()->has('_cart_sess')) {
+            $req->session()->put('_cart_sess', bin2hex(random_bytes(16)));
         }
-        $sid   = $req->session()->get('_cart_sid');
+        $sid   = $req->session()->get('_cart_sess');
         $query = static::query()->open()->where('is_quote', $isQuote);
 
         if ($req->user()) {

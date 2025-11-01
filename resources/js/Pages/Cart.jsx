@@ -745,7 +745,8 @@ export default function CartPage() {
 
     useEffect(() => {
         AOS.init({ duration: 700, once: true });
-        mergeGuestCartOnLogin().catch(() => { });
+        // Only merge cart if user is authenticated - don't call this on every page load!
+        // mergeGuestCartOnLogin().catch(() => { });
 
         const unSubUpd = onCartUpdated?.(({ cart: c }) => { if (c) setCart(c); });
         const unSubErr = onCartError?.(({ message }) => { pushToast({ type: "error", title: "Cart error", message }); });

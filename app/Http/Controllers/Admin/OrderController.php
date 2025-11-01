@@ -139,30 +139,39 @@ class OrderController extends Controller
         ]);
 
         $items = $order->items->values()->map(function ($item, $idx) {
+            // Determine if this is a roll item from either the is_roll flag or product pricing method
+            $isRollItem = (bool) $item->is_roll || $item->product?->pricing_method === 'roll';
+            
             $rollInfo = null;
-            if ($item->is_roll) {
-                $widthFt = $item->cut_width_in ? $item->cut_width_in / 12.0 : null;
-                $heightFt = $item->cut_height_in ? $item->cut_height_in / 12.0 : null;
+            if ($isRollItem) {
+                // Get cut dimensions from either cut_width_in/cut_height_in fields OR width/height fields
+                $cutWidthIn = $item->cut_width_in ?? $item->width ?? null;
+                $cutHeightIn = $item->cut_height_in ?? $item->height ?? null;
+                
+                $widthFt = $cutWidthIn ? $cutWidthIn / 12.0 : null;
+                $heightFt = $cutHeightIn ? $cutHeightIn / 12.0 : null;
                 $offcutIn = null;
                 $offcutArea = null;
+                
                 if ($item->roll) {
                     $rollWidthIn = ($item->roll->roll_width ?? 0) * 12.0;
-                    if ($rollWidthIn > 0 && $item->cut_width_in) {
-                        $offcutIn = max($rollWidthIn - $item->cut_width_in, 0.0);
-                        if ($item->cut_height_in) {
-                            $offcutArea = ($offcutIn / 12.0) * ($item->cut_height_in / 12.0);
+                    if ($rollWidthIn > 0 && $cutWidthIn) {
+                        $offcutIn = max($rollWidthIn - $cutWidthIn, 0.0);
+                        if ($cutHeightIn) {
+                            $offcutArea = ($offcutIn / 12.0) * ($cutHeightIn / 12.0);
                         }
                     }
                 }
+                
                 $rollInfo = [
                     'roll'             => $item->roll?->only(['id', 'roll_type', 'roll_size', 'roll_width', 'roll_height', 'price_rate_per_sqft', 'offcut_price']),
-                    'cut_width_in'     => $item->cut_width_in,
-                    'cut_height_in'    => $item->cut_height_in,
+                    'cut_width_in'     => $cutWidthIn,
+                    'cut_height_in'    => $cutHeightIn,
                     'cut_width_ft'     => $widthFt ? round($widthFt, 3) : null,
                     'cut_height_ft'    => $heightFt ? round($heightFt, 3) : null,
                     'offcut_width_in'  => $offcutIn ? round($offcutIn, 3) : null,
                     'offcut_area_ft2'  => $offcutArea ? round($offcutArea, 3) : null,
-                    'offcut_rate'      => $item->offcut_price_per_sqft,
+                    'offcut_rate'      => $item->offcut_price_per_sqft ?? $item->roll?->offcut_price ?? null,
                 ];
             }
 
@@ -177,7 +186,7 @@ class OrderController extends Controller
                 'quantity'           => (float) $item->quantity,
                 'unit_price'         => (float) $item->unit_price,
                 'line_total'         => (float) $item->line_total,
-                'is_roll'            => (bool) $item->is_roll,
+                'is_roll'            => $isRollItem,
                 'roll_details'       => $rollInfo,
                 'roll_id'            => $item->roll_id,
                 'offcut_price'       => $item->offcut_price_per_sqft,
