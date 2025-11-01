@@ -374,6 +374,10 @@ return [
     'locking' => [
         // Statuses that lock pricing
         'pricing_locked_statuses' => [
+            'payment_requested',
+            'partially_paid',
+            'paid',
+            'in_production',
             'ready_for_delivery',
             'completed',
             'cancelled',
