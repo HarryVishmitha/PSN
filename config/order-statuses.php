@@ -54,6 +54,20 @@ return [
             'can_edit_pricing' => true, // But log changes
         ],
 
+        'awaiting_customer_approval' => [
+            'label' => 'Awaiting Customer Approval',
+            'description' => 'Waiting for customer confirmation on the estimate',
+            'color' => 'teal',
+            'icon' => 'solar:hourglass-bold-duotone',
+            'locks_pricing' => false,
+            'locks_items' => false,
+            'requires_note' => false,
+            'visibility' => 'customer',
+            'send_email' => true,
+            'can_edit_items' => true,
+            'can_edit_pricing' => true,
+        ],
+
         'pending_review' => [
             'label' => 'Pending Review',
             'description' => 'Order requires admin review before proceeding',
@@ -75,7 +89,7 @@ return [
             'icon' => 'solar:check-circle-bold-duotone',
             'locks_pricing' => true, // FREEZE PRICING HERE
             'locks_items' => false,
-            'requires_note' => false,
+            'requires_note' => true,
             'visibility' => 'customer',
             'send_email' => true,
             'can_edit_items' => true,
@@ -244,6 +258,7 @@ return [
             'draft',
             'estimate_sent',
             'pending_review',
+            'awaiting_customer_approval',
             'customer_approved',
             'payment_requested',
             'on_hold',
@@ -252,11 +267,13 @@ return [
 
         'draft' => [
             'estimate_sent',
+            'awaiting_customer_approval',
             'cancelled',
         ],
         
         'estimate_sent' => [
             'draft', // Can go back to draft for corrections
+            'awaiting_customer_approval',
             'customer_approved',
             'payment_requested', // Direct to payment if customer approves verbally
             'pending_review',
@@ -267,8 +284,17 @@ return [
         'pending_review' => [
             'draft',
             'estimate_sent',
+            'awaiting_customer_approval',
             'customer_approved',
             'payment_requested',
+            'on_hold',
+            'cancelled',
+        ],
+
+        'awaiting_customer_approval' => [
+            'draft',
+            'estimate_sent',
+            'customer_approved',
             'on_hold',
             'cancelled',
         ],
@@ -348,11 +374,6 @@ return [
     'locking' => [
         // Statuses that lock pricing
         'pricing_locked_statuses' => [
-            'customer_approved',
-            'payment_requested',
-            'partially_paid',
-            'paid',
-            'in_production',
             'ready_for_delivery',
             'completed',
             'cancelled',

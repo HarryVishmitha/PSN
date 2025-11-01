@@ -233,6 +233,18 @@ const UserDashboard = ({ children, userDetails, WG }) => {
                                     <span>Products</span>
                                 </Link>
                             </li>
+                            <li className='mb-3'>
+                                <Link
+                                    href={route('user.orders.index')}
+                                    className={url === '/user/orders' ? 'active-page' : ''}
+                                >
+                                    <Icon
+                                        icon='solar:bag-check-outline'
+                                        className='menu-icon'
+                                    />
+                                    <span>Orders</span>
+                                </Link>
+                            </li>
                             <li className='dropdown'>
                                 <Link href={route('admin.estimates')}>
                                     <Icon icon='ph:invoice' className='menu-icon' alt='designs' />

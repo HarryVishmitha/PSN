@@ -49,11 +49,11 @@ const SummarySidebar = ({
 }) => {
     const isLocked = order?.is_locked;
     const isPricingLocked = order?.is_pricing_locked;
-    const isItemsLocked = order?.is_items_locked;
 
     // Get status config for current status
-    const currentStatusConfig = order?.status_config || {};
-    const statusRequiresNote = currentStatusConfig.requires_note || false;
+    const selectedStatusConfig =
+        statusOptions.find((option) => option.value === status) || {};
+    const statusRequiresNote = selectedStatusConfig.requires_note || false;
 
     return (
         <div className="tw-sticky tw-top-6 tw-space-y-6">
@@ -134,13 +134,18 @@ const SummarySidebar = ({
                             <button
                                 type="button"
                                 onClick={() => setShowUnlockModal(true)}
-                                className="tw-mt-2 tw-flex tw-w-full tw-items-center tw-justify-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-text-red-600 tw-transition-all hover:tw-border-red-300 hover:tw-bg-red-100"
+                                disabled={unlocking}
+                                className={`tw-mt-2 tw-flex tw-w-full tw-items-center tw-justify-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-text-red-600 tw-transition-all hover:tw-border-red-300 hover:tw-bg-red-100 ${
+                                    unlocking
+                                        ? 'tw-cursor-not-allowed tw-opacity-70'
+                                        : ''
+                                }`}
                             >
                                 <Icon
                                     icon="solar:lock-unlocked-bold"
                                     className="tw-text-sm"
                                 />
-                                Request Unlock
+                                {unlocking ? 'Submitting...' : 'Request Unlock'}
                             </button>
                         )}
                         {order?.locked_at && (
@@ -176,17 +181,44 @@ const SummarySidebar = ({
                                     className="tw-text-sm tw-text-blue-600"
                                 />
                                 Status Note
-                                <span className="tw-ml-auto tw-text-[10px] tw-font-normal tw-normal-case tw-text-slate-400">
-                                    (Optional)
+                                <span
+                                    className={`tw-ml-auto tw-rounded-full tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-normal-case ${
+                                        statusRequiresNote
+                                            ? 'tw-bg-red-100 tw-text-red-600'
+                                            : 'tw-text-slate-400'
+                                    }`}
+                                >
+                                    {statusRequiresNote
+                                        ? 'REQUIRED'
+                                        : '(Optional)'}
                                 </span>
                             </label>
                             <textarea
                                 rows={3}
                                 value={statusNote}
                                 onChange={(e) => setStatusNote(e.target.value)}
-                                placeholder="Add a note about the status change..."
-                                className="tw-placeholder:text-slate-400 tw-w-full tw-rounded-xl tw-border-2 tw-border-slate-200 tw-bg-white tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-transition-all focus:tw-border-blue-400 focus:tw-ring-4 focus:tw-ring-blue-500/20"
+                                placeholder={
+                                    statusRequiresNote
+                                        ? 'Explain how this status was confirmed...'
+                                        : 'Add a note about the status change...'
+                                }
+                                required={statusRequiresNote}
+                                className={`tw-w-full tw-rounded-xl tw-border-2 tw-bg-white tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-transition-all focus:tw-border-blue-400 focus:tw-ring-4 focus:tw-ring-blue-500/20 ${
+                                    statusRequiresNote
+                                        ? 'tw-border-red-300 tw-placeholder:text-red-300'
+                                        : 'tw-border-slate-200 tw-placeholder:text-slate-400'
+                                }`}
                             />
+                            {statusRequiresNote && (
+                                <p className="tw-mt-2 tw-text-[11px] tw-font-medium tw-text-red-600">
+                                    <Icon
+                                        icon="solar:info-circle-bold"
+                                        className="tw-mr-1 tw-inline tw-text-xs"
+                                    />
+                                    Please include the confirmation method or
+                                    customer communication details.
+                                </p>
+                            )}
                         </div>
                         <div>
                             <label className="tw-mb-2 tw-flex tw-items-center tw-gap-1.5 tw-text-xs tw-font-bold tw-uppercase tw-tracking-wide tw-text-slate-700">
@@ -370,19 +402,22 @@ const SummarySidebar = ({
                                 </div>
                             </div>
                         </div>
-                        {!isLocked && (
-                            <button
-                                type="button"
-                                onClick={() => setShowUnlockModal(true)}
-                                className="tw-flex tw-w-full tw-items-center tw-justify-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-text-red-600 tw-transition-all hover:tw-border-red-300 hover:tw-bg-red-100"
-                            >
-                                <Icon
-                                    icon="solar:lock-unlocked-bold"
-                                    className="tw-text-sm"
-                                />
-                                Request Unlock
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={() => setShowUnlockModal(true)}
+                            disabled={unlocking}
+                            className={`tw-flex tw-w-full tw-items-center tw-justify-center tw-gap-2 tw-rounded-lg tw-border-2 tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-text-red-600 tw-transition-all hover:tw-border-red-300 hover:tw-bg-red-100 ${
+                                unlocking
+                                    ? 'tw-cursor-not-allowed tw-opacity-70'
+                                    : ''
+                            }`}
+                        >
+                            <Icon
+                                icon="solar:lock-unlocked-bold"
+                                className="tw-text-sm"
+                            />
+                            {unlocking ? 'Submitting...' : 'Request Unlock'}
+                        </button>
                     </div>
                 )}
                 <div className="tw-space-y-3">

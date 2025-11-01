@@ -12,6 +12,7 @@ use App\Http\Middleware\CheckRole;
 use App\Models\Notification;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\User\OrderController as UserOrderController;
 use App\Http\Controllers\DesignShareLinkController;
 use App\Models\Estimate;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -129,6 +130,17 @@ Route::middleware(['auth', CheckRole::class . ':user'])->prefix('user')->as('use
     Route::post('/api/product/{product}/share', [UserController::class, 'sharedesigns'])->name('shareDesign');
     Route::get('/api/product/{product}/shared-links', [UserController::class, 'sharedLinks'])->name('getSharedLinks');
     Route::get('/api/product/{product}/shared-links', [UserController::class, 'sharedLinks'])->name('getSharedLinks');
+
+    Route::get('/orders', [UserOrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [UserOrderController::class, 'show'])
+        ->whereNumber('order')
+        ->name('orders.show');
+    Route::post('/orders/{order}/approve', [UserOrderController::class, 'approve'])
+        ->whereNumber('order')
+        ->name('orders.approve');
+    Route::get('/orders/{order}/attachments/{attachment}', [UserOrderController::class, 'downloadAttachment'])
+        ->whereNumber(['order', 'attachment'])
+        ->name('orders.attachments.download');
 });
 
 Route::get('/auth/redirection', [Authredirection::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');

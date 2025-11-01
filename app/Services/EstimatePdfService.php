@@ -10,7 +10,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class EstimatePdfService
 {
-    public function generate(int $estimateId, bool $save = true): string
+    public function generate(int $estimateId, bool $save = true): array|\Symfony\Component\HttpFoundation\Response
     {
         $estimate = Estimate::with(['items.product', 'customer', 'workingGroup'])->findOrFail($estimateId);
         $payments = PaymentMethod::where([
@@ -41,11 +41,20 @@ class EstimatePdfService
 
         if ($save) {
             Storage::disk('public')->put($path, $pdf->output());
-            // Return absolute URL using APP_URL from .env
-            // return config('app.url') . Storage::url($path);
-            return Storage::url($path);
-        }
 
+            $size = Storage::disk('public')->exists($path)
+                ? Storage::disk('public')->size($path)
+                : null;
+
+            return [
+                'url'       => Storage::url($path),
+                'path'      => $path,
+                'disk'      => 'public',
+                'filename'  => $filename,
+                'size'      => $size,
+                'mime_type' => 'application/pdf',
+            ];
+        }
 
         return $pdf->download($filename);
     }

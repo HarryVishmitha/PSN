@@ -71,7 +71,7 @@ class OrderAttachment extends Model
     protected static function booted(): void
     {
         static::deleting(function (OrderAttachment $attachment) {
-            Storage::delete($attachment->file_path);
+            Storage::disk('public')->delete($attachment->file_path);
         });
     }
 }

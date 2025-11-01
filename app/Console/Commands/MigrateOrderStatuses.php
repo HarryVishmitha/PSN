@@ -33,7 +33,7 @@ class MigrateOrderStatuses extends Command
         'returned' => 'cancelled', // Map returned to cancelled
         'estimating' => 'estimate_sent',
         'quoted' => 'estimate_sent',
-        'awaiting_approval' => 'customer_approved',
+        'awaiting_approval' => 'awaiting_customer_approval',
         'production' => 'in_production',
         'ready_for_dispatch' => 'ready_for_delivery',
         'shipped' => 'completed',

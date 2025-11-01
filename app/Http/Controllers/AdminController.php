@@ -1167,12 +1167,12 @@ class AdminController extends Controller
                         $uniqueFileName = uniqid() . '_' . time() . '.' . $extension;
                         // Move the file to the public/images/products folder.
                         $destinationPath = public_path('images/products');
-                        
+
                         // Ensure directory exists
                         if (!is_dir($destinationPath)) {
                             mkdir($destinationPath, 0755, true);
                         }
-                        
+
                         $file->move($destinationPath, $uniqueFileName);
 
                         $order = $request->input("images.$index.order");
@@ -1877,12 +1877,12 @@ class AdminController extends Controller
 
             // Merge existing tag IDs with newly created tag IDs
             $allTagIds = array_merge($tagIds, $newTagIds);
-            
+
             // Get current tag IDs for comparison
             $currentTagIds = $product->tags()->pluck('id')->toArray();
             sort($allTagIds);
             sort($currentTagIds);
-            
+
             // Only sync if tags have changed
             if ($allTagIds !== $currentTagIds) {
                 $product->tags()->sync($allTagIds);
@@ -2028,12 +2028,12 @@ class AdminController extends Controller
                         $extension = $file->getClientOriginalExtension();
                         $uniqueFileName = uniqid() . '_' . time() . '.' . $extension;
                         $destinationPath = public_path('images/products');
-                        
+
                         // Ensure directory exists
                         if (!is_dir($destinationPath)) {
                             mkdir($destinationPath, 0755, true);
                         }
-                        
+
                         $file->move($destinationPath, $uniqueFileName);
                         $order = $request->input("images.$index.order");
                         $isPrimary = $request->input("images.$index.is_primary");
@@ -3417,10 +3417,10 @@ class AdminController extends Controller
                                 downloadUrl: $pdfUrl
                             ))->onQueue('mail') // optional
                         );
-                        Log::info('Estimate notification dispatched', [
-                            'estimate_id' => $estimate->id,
-                            'to'          => $estimate->client_email,
-                        ]);
+                    Log::info('Estimate notification dispatched', [
+                        'estimate_id' => $estimate->id,
+                        'to'          => $estimate->client_email,
+                    ]);
                 } catch (\Throwable $e) {
                     Log::error('Estimate notification dispatch failed', [
                         'estimate_id' => $estimate->id,
@@ -3504,7 +3504,7 @@ class AdminController extends Controller
         DB::beginTransaction();
         try {
             $targetStatus = match ($data['action']) {
-                'publish','download','print' => 'published',
+                'publish', 'download', 'print' => 'published',
                 'expire' => 'expired',
                 default => 'draft',
             };
@@ -3808,7 +3808,12 @@ class AdminController extends Controller
             // Generate PDF if needed
             $pdfUrl = null;
             try {
-                $pdfUrl = app(EstimatePdfService::class)->generate($estimate->id, true);
+                $pdfResult = app(EstimatePdfService::class)->generate($estimate->id, true);
+                if (is_array($pdfResult)) {
+                    $pdfUrl = $pdfResult['url'] ?? null;
+                } else {
+                    $pdfUrl = $pdfResult;
+                }
             } catch (\Throwable $e) {
                 Log::error('PDF generation failed for email', [
                     'estimate_id' => $estimate->id,
@@ -3838,7 +3843,6 @@ class AdminController extends Controller
                 'msgtype' => 'success',
                 'message' => 'Email sent successfully to ' . $estimate->client_email,
             ], 200);
-
         } catch (\Throwable $e) {
             Log::error('Failed to send quotation email manually', [
                 'estimate_id' => $estimate->id,
@@ -4386,14 +4390,14 @@ class AdminController extends Controller
 
             $product->load([
                 'rolls' => fn($q) => $q->select(
-                        'rolls.id',
-                        'roll_type',
-                        'roll_size',
-                        'roll_width',
-                        'roll_height',
-                        'price_rate_per_sqft',
-                        'offcut_price'
-                    )->withPivot('is_default')
+                    'rolls.id',
+                    'roll_type',
+                    'roll_size',
+                    'roll_width',
+                    'roll_height',
+                    'price_rate_per_sqft',
+                    'offcut_price'
+                )->withPivot('is_default')
             ]);
 
             return response()->json([

@@ -81,6 +81,11 @@
             color: #115e59;
         }
 
+        .status-awaiting_customer_approval {
+            background: #e0f2fe;
+            color: #075985;
+        }
+
         .status-completed {
             background: #d1fae5;
             color: #065f46;

@@ -21,7 +21,7 @@ const statusPalette = {
     pending: 'tw-bg-amber-100 tw-text-amber-700',
     estimating: 'tw-bg-slate-100 tw-text-slate-700',
     quoted: 'tw-bg-sky-100 tw-text-sky-700',
-    awaiting_approval: 'tw-bg-emerald-100 tw-text-emerald-700',
+    awaiting_customer_approval: 'tw-bg-emerald-100 tw-text-emerald-700',
     confirmed: 'tw-bg-blue-100 tw-text-blue-700',
     production: 'tw-bg-purple-100 tw-text-purple-700',
     ready_for_dispatch: 'tw-bg-indigo-100 tw-text-indigo-700',
@@ -624,7 +624,7 @@ const OrderShow = ({
             });
 
             // Reload only the order and timeline data
-            router.reload({ only: ['order', 'timeline'] });
+            router.reload({ only: ['order', 'timeline', 'availableStatuses'] });
         } catch (error) {
             console.error('Save order failed', error);
 

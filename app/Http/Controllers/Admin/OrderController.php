@@ -8,12 +8,15 @@ use App\Models\OrderEvent;
 use App\Models\Product;
 use App\Models\ShippingMethod;
 use App\Models\WorkingGroup;
+use App\Services\EstimatePdfService;
 use App\Services\OrderItemCalculator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -315,6 +318,12 @@ class OrderController extends Controller
 
         // VALIDATION 1: Check status transition is allowed
         if ($oldStatus !== $newStatus && !$order->canTransitionTo($newStatus)) {
+            Log::info("Invalid status transition attempted", [
+                'order_id'   => $order->id,
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+                'user_id'    => Auth::id(),
+            ]);
             return response()->json([
                 'message' => "Cannot transition from '{$oldStatus}' to '{$newStatus}'. This transition is not allowed.",
                 'error' => 'invalid_transition',
@@ -323,6 +332,7 @@ class OrderController extends Controller
 
         // VALIDATION 2: Check if status requires a note
         if ($oldStatus !== $newStatus && $order->statusRequiresNote($newStatus)) {
+            Log::error('new status requires a note');
             if (empty(trim($data['status_note'] ?? ''))) {
                 $statusLabel = config("order-statuses.statuses.{$newStatus}.label", $newStatus);
                 return response()->json([
@@ -334,6 +344,7 @@ class OrderController extends Controller
 
         // VALIDATION 3: Check if status requires cancellation reason
         if ($newStatus === 'cancelled' && empty(trim($data['cancellation_reason'] ?? ''))) {
+            Log::error('Cancellation reason is required');
             return response()->json([
                 'message' => 'Cancellation reason is required.',
                 'error' => 'cancellation_reason_required',
@@ -399,8 +410,15 @@ class OrderController extends Controller
                     }
 
                     if (array_key_exists('unit_price', $newItem)) {
+                        $incomingUnitPrice = $newItem['unit_price'];
+
+                        // Treat null/empty values as "no intent to change pricing"
+                        if ($incomingUnitPrice === null || $incomingUnitPrice === '') {
+                            continue;
+                        }
+
                         // Compare only when unit_price is explicitly provided
-                        if (abs($oldItem->unit_price - (float) $newItem['unit_price']) > 0.01) {
+                        if (abs($oldItem->unit_price - (float) $incomingUnitPrice) > 0.01) {
                             $pricingChanged = true;
                             break;
                         }
@@ -536,20 +554,34 @@ class OrderController extends Controller
                 $eventData['data'] = ['cancellation_reason' => $data['cancellation_reason']];
             }
 
-            $order->recordStatusChange($newStatus, $eventData);
+            $statusEvent = $order->recordStatusChange($newStatus, $eventData);
 
-            // Create estimate if transitioning to estimate_sent
-            if ($newStatus === 'estimate_sent' && !$order->estimate_id) {
+            // Create/refresh estimate when transitioning to estimate_sent
+            if ($newStatus === 'estimate_sent') {
                 try {
-                    $estimate = $this->createEstimateFromOrder($order);
-                    $order->update(['estimate_id' => $estimate->id]);
-                    
-                    \Illuminate\Support\Facades\Log::info('Estimate created from order', [
-                        'order_id' => $order->id,
-                        'estimate_id' => $estimate->id,
-                    ]);
-                } catch (\Exception $e) {
-                    \Illuminate\Support\Facades\Log::error('Failed to create estimate from order', [
+                    $estimate = null;
+
+                    if (!$order->estimate_id) {
+                        $estimate = $this->createEstimateFromOrder($order);
+                        $order->update(['estimate_id' => $estimate->id]);
+                        $order->setRelation('estimate', $estimate);
+
+                        \Illuminate\Support\Facades\Log::info('Estimate created from order', [
+                            'order_id' => $order->id,
+                            'estimate_id' => $estimate->id,
+                        ]);
+                    } else {
+                        $estimate = $order->estimate()->with('items')->first();
+                        if ($estimate) {
+                            $order->setRelation('estimate', $estimate);
+                        }
+                    }
+
+                    if ($estimate) {
+                        $this->attachEstimatePdfToOrder($order, $estimate, $statusEvent);
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('Failed to create estimate or attach PDF for order', [
                         'order_id' => $order->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -608,7 +640,7 @@ class OrderController extends Controller
 
     public function unlock(Request $request, Order $order): JsonResponse
     {
-        if ($order->isLocked()) {
+        if (!$order->isLocked()) {
             return response()->json([
                 'message' => 'Order is not locked.',
             ], 422);
@@ -783,7 +815,7 @@ class OrderController extends Controller
     protected function statusOptions(): array
     {
         // Keep this list in sync with config/order-statuses.php
-        return [
+        $options = [
             // Current initial/legacy pending state (shown as Pending Review in UI)
             ['value' => 'pending',            'label' => 'Pending Review'],
 
@@ -792,6 +824,7 @@ class OrderController extends Controller
 
             // Quotation and customer decision
             ['value' => 'estimate_sent',      'label' => 'Estimate Sent'],
+            ['value' => 'awaiting_customer_approval', 'label' => 'Awaiting Customer Approval'],
             ['value' => 'customer_approved',  'label' => 'Customer Approved'],
 
             // Payment flow
@@ -813,6 +846,78 @@ class OrderController extends Controller
             ['value' => 'confirmed',          'label' => 'Confirmed (Legacy)'],
             ['value' => 'returned',           'label' => 'Returned (Legacy)'],
         ];
+
+        return array_map(function (array $option) {
+            $config = config("order-statuses.statuses.{$option['value']}", []);
+
+            return array_merge($option, [
+                'requires_note' => $config['requires_note'] ?? false,
+                'locks_pricing' => $config['locks_pricing'] ?? false,
+                'locks_items'   => $config['locks_items'] ?? false,
+            ]);
+        }, $options);
+    }
+
+    /**
+     * Create an estimate from an order
+     */
+    protected function attachEstimatePdfToOrder(Order $order, \App\Models\Estimate $estimate, ?OrderEvent $statusEvent = null): void
+    {
+        try {
+            $pdf = app(EstimatePdfService::class)->generate($estimate->id, true);
+
+            $path = null;
+            $filename = $estimate->estimate_number . '.pdf';
+            $disk = 'public';
+            $size = null;
+            $mime = 'application/pdf';
+
+            if (is_array($pdf)) {
+                $path = $pdf['path'] ?? null;
+                $filename = $pdf['filename'] ?? $filename;
+                $disk = $pdf['disk'] ?? 'public';
+                $size = $pdf['size'] ?? null;
+                $mime = $pdf['mime_type'] ?? 'application/pdf';
+            } elseif (is_string($pdf)) {
+                $publicPrefix = '/storage/';
+                if (str_starts_with($pdf, $publicPrefix)) {
+                    $path = ltrim(substr($pdf, strlen($publicPrefix)), '/');
+                } else {
+                    $path = ltrim($pdf, '/');
+                }
+            }
+
+            $path ??= 'estimates/' . $filename;
+
+            $diskInstance = Storage::disk($disk);
+
+            if ($diskInstance->exists($path)) {
+                $size ??= $diskInstance->size($path);
+                $mime ??= $diskInstance->mimeType($path) ?: 'application/pdf';
+            }
+
+            // Remove previous estimate PDFs to avoid duplicates
+            $order->attachments()
+                ->where('file_type', 'estimate_pdf')
+                ->delete();
+
+            $order->attachments()->create([
+                'order_event_id' => $statusEvent?->id,
+                'file_path'      => $path,
+                'file_name'      => $filename,
+                'file_type'      => 'estimate_pdf',
+                'file_size'      => $size,
+                'mime_type'      => $mime,
+                'description'    => 'Estimate PDF generated when status changed to Estimate Sent.',
+                'uploaded_by'    => Auth::id(),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to attach estimate PDF to order', [
+                'order_id'    => $order->id,
+                'estimate_id' => $estimate->id,
+                'error'       => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
