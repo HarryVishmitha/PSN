@@ -205,8 +205,8 @@ const SummarySidebar = ({
                                 required={statusRequiresNote}
                                 className={`tw-w-full tw-rounded-xl tw-border-2 tw-bg-white tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-transition-all focus:tw-border-blue-400 focus:tw-ring-4 focus:tw-ring-blue-500/20 ${
                                     statusRequiresNote
-                                        ? 'tw-border-red-300 tw-placeholder:text-red-300'
-                                        : 'tw-border-slate-200 tw-placeholder:text-slate-400'
+                                        ? 'tw-placeholder:text-red-300 tw-border-red-300'
+                                        : 'tw-placeholder:text-slate-400 tw-border-slate-200'
                                 }`}
                             />
                             {statusRequiresNote && (
@@ -240,7 +240,9 @@ const SummarySidebar = ({
                                     <option value="customer">
                                         Customer Visible
                                     </option>
-                                    <option value="public">Public</option>
+                                    <option value="public" selected>
+                                        Public
+                                    </option>
                                 </select>
                                 <Icon
                                     icon="solar:alt-arrow-down-bold"

@@ -1,4 +1,14 @@
 {{-- Variables passed from QuotationPublished Mailable: $estimate, $viewUrl, $downloadUrl, $companyPhone --}}
+@php
+    $estimateNo = $estimate->estimate_number ?? sprintf('EST-%05d', $estimate->id ?? 0);
+    $clientName = trim($estimate->client_name ?? '')
+        ?: trim(optional($estimate->customer)->full_name ?? optional($estimate->customer)->name ?? '');
+    $clientName = $clientName !== '' ? $clientName : 'Valued Customer';
+    $items = collect($estimate->items ?? []);
+    $issued = optional($estimate->valid_from)->timezone(config('app.timezone'));
+    $due = optional($estimate->valid_to)->timezone(config('app.timezone'));
+    $grand = (float) ($estimate->total_amount ?? 0);
+@endphp
 
 <!DOCTYPE html>
 <html lang="en" style="margin:0;padding:0;">
@@ -161,7 +171,7 @@
                     </tr>
 
           <!-- Line Items -->
-          @if(!empty($estimate->items))
+          @if($items->isNotEmpty())
           <tr>
             <td class="px" style="padding:0 28px 24px;">
               <table role="presentation" width="100%" style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
@@ -174,7 +184,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @foreach($estimate->items as $item)
+                  @foreach($items as $item)
                   <tr style="transition: background-color 0.2s ease;">
                     <td style="padding:14px 16px;border-top:1px solid #e5e7eb;background-color:#ffffff;">
                       <div style="font-weight:600;color:#111827;font-size:14px;">{{ $item->product->name ?? 'Item' }}</div>

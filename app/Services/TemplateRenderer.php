@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Models\PaymentRequest;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 
 class TemplateRenderer
 {
@@ -75,6 +76,7 @@ class TemplateRenderer
     protected function buildOrderData(Order $order): array
     {
         $order->load(['customer', 'workingGroup', 'items.product']);
+        $trackingUrl = $this->generateTrackingUrl($order);
 
         return [
             'order' => [
@@ -82,6 +84,9 @@ class TemplateRenderer
                 'number' => $order->number ?? sprintf('ORD-%05d', $order->id),
                 'status' => $order->status,
                 'status_label' => $this->getStatusLabel($order->status),
+                'tracking_url' => $trackingUrl,
+                'customer_portal_url' => $trackingUrl,
+                'url' => $trackingUrl,
                 'subtotal' => number_format($order->subtotal_amount, 2),
                 'tax' => number_format($order->tax_amount, 2),
                 'discount' => number_format($order->discount_amount, 2),
@@ -118,6 +123,7 @@ class TemplateRenderer
                 'address' => config('app.address', 'Colombo, Sri Lanka'),
                 'website' => config('app.url', 'https://printairnetworks.com'),
             ],
+            'tracking_url' => $trackingUrl,
         ];
     }
 
@@ -140,6 +146,24 @@ class TemplateRenderer
         ];
     }
 
+    protected function generateTrackingUrl(Order $order): ?string
+    {
+        $order->ensureTrackingToken();
+
+        if (empty($order->tracking_token)) {
+            return null;
+        }
+
+        return URL::temporarySignedRoute(
+            'order-tracking.orders.show',
+            now()->addDays(7),
+            [
+                'order' => $order->id,
+                'token' => $order->tracking_token,
+            ]
+        );
+    }
+
     /**
      * Get default sample data for preview
      */
@@ -151,6 +175,9 @@ class TemplateRenderer
                 'number' => 'ORD-00123',
                 'status' => 'confirmed',
                 'status_label' => 'Confirmed',
+                'tracking_url' => 'https://example.com/order-tracking/orders/123?token=sample',
+                'customer_portal_url' => 'https://example.com/order-tracking/orders/123?token=sample',
+                'url' => 'https://example.com/order-tracking/orders/123?token=sample',
                 'subtotal' => '15,000.00',
                 'tax' => '0.00',
                 'discount' => '500.00',

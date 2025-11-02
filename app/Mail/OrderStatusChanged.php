@@ -3,14 +3,13 @@
 namespace App\Mail;
 
 use App\Models\Order;
-use App\Models\MessageTemplate;
-use App\Services\TemplateRenderer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\URL;
 
 class OrderStatusChanged extends Mailable implements ShouldQueue
 {
@@ -19,9 +18,7 @@ class OrderStatusChanged extends Mailable implements ShouldQueue
     public Order $order;
     public string $oldStatus;
     public string $newStatus;
-    protected $template;
-    protected $renderer;
-    protected $renderedContent;
+    protected ?string $trackingUrl = null;
 
     /**
      * Create a new message instance.
@@ -31,19 +28,19 @@ class OrderStatusChanged extends Mailable implements ShouldQueue
         $this->order = $order->loadMissing(['items', 'workingGroup']);
         $this->oldStatus = $oldStatus;
         $this->newStatus = $newStatus;
-        $this->renderer = app(TemplateRenderer::class);
-        
-        // Load template
-        $this->template = MessageTemplate::where('slug', 'order-status-update-customer-email')
-            ->where('is_active', true)
-            ->first();
 
-        // Render template if available
-        if ($this->template) {
-            $this->renderedContent = $this->renderer->renderForOrder($this->template, $this->order, [
-                'old_status' => $oldStatus,
-                'new_status' => $newStatus,
-            ]);
+        $this->order->ensureTrackingToken();
+        $this->order->refresh();
+
+        if (!empty($this->order->tracking_token)) {
+            $this->trackingUrl = URL::temporarySignedRoute(
+                'order-tracking.orders.show',
+                now()->addDays(7),
+                [
+                    'order' => $this->order->id,
+                    'token' => $this->order->tracking_token,
+                ]
+            );
         }
     }
 
@@ -52,8 +49,9 @@ class OrderStatusChanged extends Mailable implements ShouldQueue
      */
     public function envelope(): Envelope
     {
-        $subject = $this->renderedContent['subject'] ?? 'Order #' . $this->order->id . ' Status Update';
-        
+        $orderNumber = $this->order->number ?? sprintf('ORD-%05d', $this->order->id);
+        $subject = 'Order ' . $orderNumber . ' - Status Update';
+
         return new Envelope(
             subject: $subject,
         );
@@ -64,23 +62,13 @@ class OrderStatusChanged extends Mailable implements ShouldQueue
      */
     public function content(): Content
     {
-        // if ($this->template) {
-        //     return new Content(
-        //         text: 'emails.template-text',
-        //         with: [
-        //             'content' => $this->renderedContent['body'],
-        //             'order' => $this->order,
-        //         ]
-        //     );
-        // }
-
-        // Fallback to the branded HTML view
         return new Content(
             html: 'emails.order-status-changed',
             with: [
                 'order' => $this->order,
                 'oldStatus' => $this->oldStatus,
                 'newStatus' => $this->newStatus,
+                'trackingUrl' => $this->trackingUrl,
             ]
         );
     }

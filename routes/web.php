@@ -21,6 +21,7 @@ use App\Http\Controllers\CartController;
 use App\Http\Controllers\Admin\AdminWidgetApiController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\SupportRequestController as AdminSupportRequestController;
+use App\Http\Controllers\OrderTrackingController;
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
 use App\Http\Controllers\SupportRequestController;
@@ -65,6 +66,24 @@ Route::get('/api/shipping-methods', [Home::class, 'shippingMethods'])->name('shi
 Route::get('/checkout', [Home::class, 'checkout'])->name('checkout');
 Route::post('/api/checkout/review', [\App\Http\Controllers\CheckoutController::class, 'checkoutReview'])->name('checkout.review');
 Route::get('/thank-you/{order}', [\App\Http\Controllers\CheckoutController::class, 'thankyou'])->name('orders.thankyou');
+
+Route::prefix('order-tracking')->name('order-tracking.')->group(function () {
+    Route::get('/', [OrderTrackingController::class, 'index'])->name('index');
+    Route::post('/request-code', [OrderTrackingController::class, 'requestCode'])->name('request-code');
+    Route::post('/verify-code', [OrderTrackingController::class, 'verifyCode'])->name('verify-code');
+    Route::get('/orders/{order}', [OrderTrackingController::class, 'show'])
+        ->middleware('signed')
+        ->whereNumber('order')
+        ->name('orders.show');
+    Route::post('/orders/{order}/approve', [OrderTrackingController::class, 'approve'])
+        ->middleware('signed')
+        ->whereNumber('order')
+        ->name('orders.approve');
+    Route::get('/orders/{order}/attachments/{attachment}', [OrderTrackingController::class, 'downloadAttachment'])
+        ->middleware('signed')
+        ->whereNumber(['order', 'attachment'])
+        ->name('orders.attachments.download');
+});
 
 Route::get('/api/product-summaries', function (\Illuminate\Http\Request $req) {
     $ids = collect(explode(',', (string)$req->query('ids')))

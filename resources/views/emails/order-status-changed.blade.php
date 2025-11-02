@@ -1,4 +1,16 @@
 {{-- Variables passed from OrderStatusChanged Mailable: $order, $oldStatus, $newStatus --}}
+@php
+    if (empty($trackingUrl) && !empty($order->tracking_token)) {
+        $trackingUrl = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'order-tracking.orders.show',
+            now()->addDays(7),
+            [
+                'order' => $order->id,
+                'token' => $order->tracking_token,
+            ]
+        );
+    }
+@endphp
 
 <!DOCTYPE html>
 <html lang="en" style="margin:0;padding:0;">
@@ -260,7 +272,19 @@
                                         <p style="margin:0 0 16px;color:#4b5563;font-size:14px;line-height:1.6;">
                                             We're committed to delivering your order with excellence. If you have any questions, please don't hesitate to reach out.
                                         </p>
-                                        <a href="{{ config('app.url') }}/orders" class="btn">View Order Details</a>
+                                        @if(!empty($trackingUrl))
+                                        <a href="{{ $trackingUrl }}" class="btn">Track Your Order</a>
+                                        <p style="margin:12px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+                                            Or copy this tracking link:<br>
+                                            <a href="{{ $trackingUrl }}" style="color:#f44032;text-decoration:none;word-break:break-all;">
+                                                {{ $trackingUrl }}
+                                            </a>
+                                        </p>
+                                        @else
+                                        <span style="display:inline-block;padding:12px 18px;border-radius:8px;background:#94a3b8;color:#ffffff;font-weight:600;">
+                                            Tracking link unavailable
+                                        </span>
+                                        @endif
                                     </td>
                                 </tr>
                                 <tr>

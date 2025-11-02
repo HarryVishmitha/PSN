@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\{
@@ -12,10 +13,15 @@ use Illuminate\Database\Eloquent\Relations\{
     HasMany,
     HasOne
 };
+use Exception;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class Order extends Model
 {
+    use HasFactory;
     use SoftDeletes;
 
     protected $fillable = [
@@ -24,6 +30,7 @@ class Order extends Model
         'customer_id',
         'working_group_id',
         'estimate_id',
+        'number',
         'status',
         'placed_at',
         'billing_address_id',
@@ -58,6 +65,10 @@ class Order extends Model
         'unlock_history',
     ];
 
+    protected $hidden = [
+        'tracking_token',
+    ];
+
     protected $casts = [
         'is_company'        => 'boolean',
         'subtotal_amount'   => 'decimal:2',
@@ -71,7 +82,34 @@ class Order extends Model
         'placed_at'         => 'datetime',
         'locked_at'         => 'datetime',
         'unlock_history'    => 'array',
+        'tracking_token_generated_at' => 'datetime',
     ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function (self $order): void {
+            if (blank($order->tracking_token)) {
+                $order->tracking_token = static::generateUniqueTrackingToken();
+                $order->tracking_token_generated_at = now();
+            }
+        });
+
+        static::created(function (self $order): void {
+            if (!Schema::hasColumn($order->getTable(), 'number')) {
+                return;
+            }
+
+            if (!blank($order->getOriginal('number'))) {
+                return;
+            }
+
+            $order->forceFill([
+                'number' => static::formatOrderNumber($order->id),
+            ])->saveQuietly();
+        });
+    }
 
     public function customer(): MorphTo
     {
@@ -101,6 +139,11 @@ class Order extends Model
     public function shippingMethod(): BelongsTo
     {
         return $this->belongsTo(ShippingMethod::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function items(): HasMany
@@ -317,11 +360,83 @@ class Order extends Model
     }
 
     /**
+     * Ensure the order has a tracking token and optionally force regeneration.
+     */
+    public function ensureTrackingToken(bool $forceRefresh = false): string
+    {
+        if ($forceRefresh || blank($this->tracking_token)) {
+            $this->refreshTrackingToken();
+
+            if ($this->exists) {
+                $this->saveQuietly();
+            }
+        }
+
+        return $this->tracking_token;
+    }
+
+    /**
+     * Regenerate the tracking token without persisting to the database.
+     */
+    public function refreshTrackingToken(): string
+    {
+        $this->tracking_token = static::generateUniqueTrackingToken();
+        $this->tracking_token_generated_at = now();
+
+        return $this->tracking_token;
+    }
+
+    /**
+     * Generate a unique token for guest order tracking.
+     *
+     * @throws RuntimeException
+     */
+    protected static function generateUniqueTrackingToken(): string
+    {
+        $attempts = 0;
+        $maxAttempts = 5;
+        $token = null;
+        $exists = false;
+
+        do {
+            $token = static::makeTrackingToken();
+            $exists = static::where('tracking_token', $token)->exists();
+            $attempts++;
+        } while ($exists && $attempts < $maxAttempts);
+
+        if ($exists) {
+            throw new RuntimeException('Unable to generate unique order tracking token.');
+        }
+
+        return $token;
+    }
+
+    /**
+     * Create a random tracking token string.
+     */
+    protected static function makeTrackingToken(): string
+    {
+        try {
+            return bin2hex(random_bytes(32));
+        } catch (Exception $exception) {
+            return hash('sha256', Str::uuid()->toString() . microtime(true));
+        }
+    }
+
+    /**
+     * Format order number based on identifier.
+     */
+    protected static function formatOrderNumber(int $orderId): string
+    {
+        return sprintf('ORD-%05d', $orderId);
+    }
+
+    /**
      * Get a formatted order number
      */
     public function getFormattedNumberAttribute(): string
     {
-        return $this->number ?? sprintf('ORD-%05d', $this->id);
+        return $this->number ?? static::formatOrderNumber($this->id);
     }
 
     /**
@@ -374,6 +489,6 @@ class Order extends Model
      */
     public function getNumberAttribute($value): string
     {
-        return $value ?? sprintf('ORD-%05d', $this->id);
+        return $value ?? static::formatOrderNumber($this->id);
     }
 }

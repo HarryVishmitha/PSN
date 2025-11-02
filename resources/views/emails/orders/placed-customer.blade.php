@@ -20,7 +20,7 @@ $fullName = $order->contact_first_name ?? 'there';
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #f44032 0%, #ff6b5e 100%); padding: 40px 30px; text-align: center;">
             <div style="margin-bottom: 20px;">
-                <img src="{{ asset('images/printairlogo.png') }}" alt="Printair Logo" style="max-width: 150px; height: auto;">
+                <img src="{{ asset('assets/images/logo-light.png') }}" alt="Printair Logo" style="max-width: 150px; height: auto;">
             </div>
             <h1 style="margin: 0 0 8px 0; color: #ffffff; font-size: 28px; font-weight: bold; text-align: center;">Thank You for Your Order! 🎉</h1>
             <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 16px; text-align: center;">Order <strong>#{{ $order->id }}</strong></p>

@@ -48,7 +48,7 @@ const OrderShow = ({
     const [items, setItems] = useState([]);
     const [status, setStatus] = useState(order.status);
     const [statusNote, setStatusNote] = useState('');
-    const [statusVisibility, setStatusVisibility] = useState('admin');
+    const [statusVisibility, setStatusVisibility] = useState('public');
     const [cancellationReason, setCancellationReason] = useState(
         order.cancellation_reason || '',
     );
@@ -195,7 +195,7 @@ const OrderShow = ({
 
         setStatus(order.status);
         setStatusNote(''); // Reset status note on order reload
-        setStatusVisibility('admin');
+        setStatusVisibility('public');
         setDiscountMode(order.discount_mode || 'none');
         setDiscountValue(order.discount_value || 0);
         setTaxMode(order.tax_mode || 'none');
@@ -566,7 +566,7 @@ const OrderShow = ({
             const payload = {
                 status,
                 status_note: statusNote?.trim() || null,
-                status_visibility: statusVisibility || 'admin',
+                status_visibility: statusVisibility || 'public',
                 cancellation_reason:
                     status === 'cancelled'
                         ? cancellationReason?.trim() || null
@@ -1007,9 +1007,9 @@ const OrderShow = ({
                                 Total
                             </span>
                         </div>
-                        <h3 className="tw-text-2xl tw-font-extrabold tw-text-blue-900">
+                        <h5 className="tw-text-2xl tw-font-extrabold tw-text-blue-900">
                             {money(grandTotal)}
-                        </h3>
+                        </h5>
                         <p className="tw-mt-1 tw-text-xs tw-font-medium tw-text-blue-700">
                             Order Value
                         </p>
@@ -1028,9 +1028,9 @@ const OrderShow = ({
                                 Items
                             </span>
                         </div>
-                        <h3 className="tw-text-2xl tw-font-extrabold tw-text-purple-900">
+                        <h5 className="tw-text-2xl tw-font-extrabold tw-text-purple-900">
                             {items.length}
-                        </h3>
+                        </h5>
                         <p className="tw-mt-1 tw-text-xs tw-font-medium tw-text-purple-700">
                             Line Items
                         </p>
@@ -1049,9 +1049,9 @@ const OrderShow = ({
                                 Discount
                             </span>
                         </div>
-                        <h3 className="tw-text-2xl tw-font-extrabold tw-text-emerald-900">
+                        <h5 className="tw-text-2xl tw-font-extrabold tw-text-emerald-900">
                             {money(discountAmount)}
-                        </h3>
+                        </h5>
                         <p className="tw-mt-1 tw-text-xs tw-font-medium tw-text-emerald-700">
                             Savings Applied
                         </p>
@@ -1070,9 +1070,9 @@ const OrderShow = ({
                                 Events
                             </span>
                         </div>
-                        <h3 className="tw-text-2xl tw-font-extrabold tw-text-amber-900">
+                        <h5 className="tw-text-2xl tw-font-extrabold tw-text-amber-900">
                             {timeline.length}
-                        </h3>
+                        </h5>
                         <p className="tw-mt-1 tw-text-xs tw-font-medium tw-text-amber-700">
                             Timeline Entries
                         </p>

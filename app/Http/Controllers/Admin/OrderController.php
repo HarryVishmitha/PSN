@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\DailyCustomer;
+use App\Models\Estimate;
+use App\Models\EstimateItem;
 use App\Models\Order;
 use App\Models\OrderEvent;
 use App\Models\Product;
 use App\Models\ShippingMethod;
+use App\Models\User;
 use App\Models\WorkingGroup;
 use App\Services\EstimatePdfService;
 use App\Services\OrderItemCalculator;
@@ -17,6 +21,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -589,7 +594,12 @@ class OrderController extends Controller
             }
 
             // Send email notification if status changed and customer email exists
-            if ($order->contact_email) {
+            $statusConfig = $order->getStatusConfig($newStatus) ?? [];
+            $visibility = $statusConfig['visibility'] ?? OrderEvent::VISIBILITY_CUSTOMER;
+            $shouldNotifyCustomer = in_array($visibility, [OrderEvent::VISIBILITY_CUSTOMER, OrderEvent::VISIBILITY_PUBLIC], true)
+                && $order->statusShouldSendEmail($newStatus);
+
+            if ($shouldNotifyCustomer && $order->contact_email) {
                 try {
                     \Illuminate\Support\Facades\Mail::to($order->contact_email)
                         ->send(new \App\Mail\OrderStatusChanged($order, $oldStatus, $newStatus));
@@ -931,11 +941,13 @@ class OrderController extends Controller
         $estimateNumber = 'EST-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
 
         // Create estimate
-        $estimate = \App\Models\Estimate::create([
+        [$customerType, $customerId, $workingGroupId] = $this->resolveEstimateCustomer($order);
+
+        $estimate = Estimate::create([
             'estimate_number' => $estimateNumber,
-            'customer_type' => 'App\\Models\\User', // Adjust based on your customer type
-            'customer_id' => $order->user_id,
-            'working_group_id' => $order->working_group_id,
+            'customer_type' => $customerType,
+            'customer_id' => $customerId,
+            'working_group_id' => $workingGroupId,
             'status' => 'draft',
             'valid_from' => now(),
             'valid_to' => now()->addDays(30),
@@ -957,7 +969,7 @@ class OrderController extends Controller
 
         // Copy order items to estimate items
         foreach ($order->items as $orderItem) {
-            \App\Models\EstimateItem::create([
+            EstimateItem::create([
                 'estimate_id' => $estimate->id,
                 'product_id' => $orderItem->product_id,
                 'variant_id' => $orderItem->variant_id,
@@ -977,5 +989,130 @@ class OrderController extends Controller
         }
 
         return $estimate;
+    }
+
+    protected function resolveEstimateCustomer(Order $order): array
+    {
+        $order->loadMissing(['shippingAddress', 'billingAddress']);
+
+        if ($order->customer_type && $order->customer_id) {
+            return [
+                $order->customer_type,
+                $order->customer_id,
+                $order->working_group_id ?? $this->defaultWorkingGroupId(),
+            ];
+        }
+
+        $email = Str::lower((string) $order->contact_email);
+
+        if ($email !== '') {
+            $user = User::whereRaw('LOWER(email) = ?', [$email])->first();
+
+            if ($user) {
+                $this->syncOrderCustomer($order, User::class, $user->id, $user->working_group_id);
+
+                return [
+                    User::class,
+                    $user->id,
+                    $order->working_group_id ?? $user->working_group_id ?? $this->defaultWorkingGroupId(),
+                ];
+            }
+
+            $dailyCustomer = DailyCustomer::whereRaw('LOWER(email) = ?', [$email])->first();
+
+            if ($dailyCustomer) {
+                $this->syncOrderCustomer($order, DailyCustomer::class, $dailyCustomer->id, $dailyCustomer->working_group_id);
+
+                return [
+                    DailyCustomer::class,
+                    $dailyCustomer->id,
+                    $order->working_group_id ?? $dailyCustomer->working_group_id ?? $this->defaultWorkingGroupId(),
+                ];
+            }
+        }
+
+        $workingGroupId = $this->resolvePublicWorkingGroupId($order->working_group_id);
+        $fullName = trim(($order->contact_first_name ?? '') . ' ' . ($order->contact_last_name ?? ''));
+
+        $dailyCustomer = DailyCustomer::create([
+            'full_name'        => $fullName !== '' ? $fullName : 'Guest Customer',
+            'phone_number'     => $order->contact_phone,
+            'email'            => $order->contact_email,
+            'address'          => $this->formatOrderAddress($order),
+            'notes'            => $order->notes,
+            'visit_date'       => now()->toDateString(),
+            'working_group_id' => $workingGroupId,
+        ]);
+
+        $this->syncOrderCustomer($order, DailyCustomer::class, $dailyCustomer->id, $workingGroupId);
+
+        return [
+            DailyCustomer::class,
+            $dailyCustomer->id,
+            $workingGroupId,
+        ];
+    }
+
+    protected function syncOrderCustomer(Order $order, string $type, int $id, ?int $workingGroupId = null): void
+    {
+        $changes = [
+            'customer_type' => $type,
+            'customer_id'   => $id,
+        ];
+
+        if ($workingGroupId && $order->working_group_id !== $workingGroupId) {
+            $changes['working_group_id'] = $workingGroupId;
+        }
+
+        if (!empty($changes)) {
+            $order->forceFill($changes)->saveQuietly();
+        }
+    }
+
+    protected function resolvePublicWorkingGroupId(?int $currentId): int
+    {
+        if ($currentId && WorkingGroup::whereKey($currentId)->exists()) {
+            return $currentId;
+        }
+
+        $preferredNames = ['public', 'general'];
+
+        $groupId = WorkingGroup::query()
+            ->where(function ($query) use ($preferredNames) {
+                foreach ($preferredNames as $name) {
+                    $query->orWhereRaw('LOWER(name) = ?', [$name]);
+                }
+            })
+            ->orderBy('id')
+            ->value('id');
+
+        if ($groupId) {
+            return $groupId;
+        }
+
+        return $this->defaultWorkingGroupId();
+    }
+
+    protected function defaultWorkingGroupId(): int
+    {
+        return (int) (WorkingGroup::query()->orderBy('id')->value('id') ?? 1);
+    }
+
+    protected function formatOrderAddress(Order $order): ?string
+    {
+        $address = $order->shippingAddress ?: $order->billingAddress;
+
+        if (!$address) {
+            return null;
+        }
+
+        return collect([
+            $address->line1,
+            $address->line2,
+            $address->city,
+            $address->region,
+            $address->postal_code,
+            $address->country,
+        ])->filter()->implode(', ');
     }
 }
